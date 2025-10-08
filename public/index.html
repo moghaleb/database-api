@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Database API</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        button { padding: 10px; margin: 5px; }
+        pre { background: #f4f4f4; padding: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Database API Tester</h1>
+    <button onclick="testAPI()">Test API</button>
+    <button onclick="testDB()">Test Database</button>
+    <div id="result"></div>
+    
+    <script>
+        const baseURL = 'https://your-app.onrender.com';
+        
+        async function testAPI() {
+            const response = await fetch(baseURL + '/api/test');
+            const data = await response.json();
+            document.getElementById('result').innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+        }
+        
+        async function testDB() {
+            const response = await fetch(baseURL + '/api/db-test');
+            const data = await response.json();
+            document.getElementById('result').innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+        }
+    </script>
+</body>
+</html>
