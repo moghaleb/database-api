@@ -507,6 +507,7 @@ app.get('/admin/advanced', (req, res) => {
             <div class="controls">
                 <a href="/admin" class="btn btn-secondary">📊 العرض البسيط</a>
                 <a href="/admin/orders" class="btn btn-success">🛒 إدارة الطلبات</a>
+                <a href="/admin/coupons" class="btn btn-info">🎫 إدارة الكوبونات</a>
                 <a href="/api/all-data" class="btn btn-success">📋 JSON البيانات</a>
                 <a href="/api/orders" class="btn btn-primary">📦 JSON الطلبات</a>
                 <a href="/" class="btn btn-secondary">🏠 الرئيسية</a>
