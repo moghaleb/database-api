@@ -214,6 +214,7 @@ app.get('/api/all-data', (req, res) => {
 });
 
 // API معالجة الدفع وإرسال الطلب للإدارة
+// في API معالجة الدفع - تحديث ليدعم حساب الخصم
 app.post('/api/process-payment', (req, res) => {
   const { 
     cart_items, 
@@ -223,14 +224,15 @@ app.post('/api/process-payment', (req, res) => {
     customer_name,
     customer_phone, 
     customer_email,
-    payment_method 
+    payment_method,
+    coupon_code  // إضافة الكوبون من Flutter
   } = req.body;
 
   console.log('💰 طلب دفع جديد:', { 
     customer: customer_name,
     items_count: cart_items.length, 
     total_amount, 
-    order_date 
+    coupon_code: coupon_code || 'لا يوجد'
   });
 
   // التحقق من البيانات
@@ -241,51 +243,245 @@ app.post('/api/process-payment', (req, res) => {
     });
   }
 
-  // إنشاء رقم طلب فريد
-  const orderNumber = 'ORD-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+  // متغيرات الخصم
+  let discountAmount = 0;
+  let finalAmount = parseFloat(total_amount);
+  let appliedCoupon = null;
 
-  db.run(
-    `INSERT INTO orders (
-      order_number, cart_items, total_amount, order_date, order_status,
-      customer_name, customer_phone, customer_email, payment_method
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      orderNumber,
-      JSON.stringify(cart_items),
-      total_amount,
-      order_date,
-      order_status || 'pending',
-      customer_name || 'عميل',
-      customer_phone || '',
-      customer_email || '',
-      payment_method || 'online'
-    ],
-    function(err) {
+  // التحقق من الكوبون إذا كان موجوداً
+  const processCoupon = async () => {
+    if (coupon_code) {
+      try {
+        const couponResponse = await new Promise((resolve, reject) => {
+          db.get(
+            'SELECT * FROM coupons WHERE code = ? AND is_active = 1',
+            [coupon_code],
+            (err, coupon) => {
+              if (err) reject(err);
+              else resolve(coupon);
+            }
+          );
+        });
+
+        if (couponResponse) {
+          // التحقق من صلاحية الكوبون
+          const now = new Date();
+          const validFrom = new Date(couponResponse.valid_from);
+          const validUntil = new Date(couponResponse.valid_until);
+
+          if (now >= validFrom && now <= validUntil) {
+            // التحقق من الحد الأقصى للاستخدام
+            if (couponResponse.max_uses === -1 || couponResponse.used_count < couponResponse.max_uses) {
+              // التحقق من الحد الأدنى للطلب
+              if (finalAmount >= couponResponse.min_order_amount) {
+                // حساب قيمة الخصم
+                if (couponResponse.discount_type === 'percentage') {
+                  discountAmount = (finalAmount * couponResponse.discount_value) / 100;
+                } else {
+                  discountAmount = couponResponse.discount_value;
+                }
+
+                // التأكد من أن الخصم لا يتجاوز قيمة الطلب
+                if (discountAmount > finalAmount) {
+                  discountAmount = finalAmount;
+                }
+
+                finalAmount = finalAmount - discountAmount;
+                appliedCoupon = couponResponse;
+
+                // زيادة عداد استخدامات الكوبون
+                db.run(
+                  'UPDATE coupons SET used_count = used_count + 1 WHERE id = ?',
+                  [couponResponse.id]
+                );
+
+                console.log('✅ تم تطبيق الكوبون:', {
+                  code: couponResponse.code,
+                  discount: discountAmount,
+                  final: finalAmount
+                });
+              } else {
+                console.log('❌ قيمة الطلب أقل من الحد الأدنى للكوبون');
+              }
+            } else {
+              console.log('❌ تم الوصول للحد الأقصى لاستخدام الكوبون');
+            }
+          } else {
+            console.log('❌ الكوبون خارج الفترة الزمنية');
+          }
+        }
+      } catch (error) {
+        console.error('❌ خطأ في معالجة الكوبون:', error);
+      }
+    }
+  };
+
+  // معالجة الطلب بعد التحقق من الكوبون
+  processCoupon().then(() => {
+    // إنشاء رقم طلب فريد
+    const orderNumber = 'ORD-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+
+    db.run(
+      `INSERT INTO orders (
+        order_number, cart_items, total_amount, discount_amount, coupon_code,
+        order_date, order_status, customer_name, customer_phone, customer_email, payment_method
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        orderNumber,
+        JSON.stringify(cart_items),
+        total_amount, // المبلغ الأصلي
+        discountAmount, // قيمة الخصم
+        appliedCoupon ? appliedCoupon.code : null,
+        order_date,
+        order_status || 'pending',
+        customer_name || 'عميل',
+        customer_phone || '',
+        customer_email || '',
+        payment_method || 'online'
+      ],
+      function(err) {
+        if (err) {
+          console.error('❌ خطأ في حفظ الطلب:', err);
+          return res.status(500).json({
+            status: 'error',
+            message: 'فشل في معالجة الطلب: ' + err.message
+          });
+        }
+
+        console.log('✅ طلب جديد محفوظ:', {
+          order_id: orderNumber,
+          customer: customer_name,
+          original_total: total_amount,
+          discount: discountAmount,
+          final_total: finalAmount,
+          coupon: appliedCoupon ? appliedCoupon.code : 'لا يوجد'
+        });
+        
+        res.json({
+          status: 'success',
+          message: 'تم إرسال الطلب بنجاح إلى الإدارة',
+          order_id: orderNumber,
+          order_status: 'pending',
+          original_amount: parseFloat(total_amount),
+          discount_amount: discountAmount,
+          final_amount: finalAmount,
+          coupon_code: appliedCoupon ? appliedCoupon.code : null,
+          coupon_details: appliedCoupon ? {
+            code: appliedCoupon.code,
+            description: appliedCoupon.description,
+            discount_type: appliedCoupon.discount_type,
+            discount_value: appliedCoupon.discount_value
+          } : null,
+          items_count: cart_items.length,
+          customer_name: customer_name,
+          timestamp: new Date().toISOString(),
+          admin_url: `https://database-api-kvxr.onrender.com/admin/orders`
+        });
+      }
+    );
+  });
+});
+
+// إضافة API جديد لتحقق سريع من الكوبون مع الحساب
+app.get('/api/validate-coupon', (req, res) => {
+  const { code, order_amount } = req.query;
+
+  if (!code || !order_amount) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'كود الكوبون وقيمة الطلب مطلوبان'
+    });
+  }
+
+  db.get(
+    'SELECT * FROM coupons WHERE code = ? AND is_active = 1',
+    [code],
+    (err, coupon) => {
       if (err) {
-        console.error('❌ خطأ في حفظ الطلب:', err);
+        console.error('❌ خطأ في البحث عن الكوبون:', err);
         return res.status(500).json({
           status: 'error',
-          message: 'فشل في معالجة الطلب: ' + err.message
+          message: err.message
         });
       }
 
-      console.log('✅ طلب جديد محفوظ:', {
-        order_id: orderNumber,
-        customer: customer_name,
-        total: total_amount,
-        items: cart_items.length
-      });
-      
+      if (!coupon) {
+        return res.status(404).json({
+          status: 'error',
+          message: 'كوبون غير صالح أو غير موجود'
+        });
+      }
+
+      // التحقق من صلاحية الكوبون
+      const now = new Date();
+      const validFrom = new Date(coupon.valid_from);
+      const validUntil = new Date(coupon.valid_until);
+
+      if (now < validFrom) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'هذا الكوبون غير فعال حتى ' + validFrom.toLocaleDateString('ar-SA')
+        });
+      }
+
+      if (now > validUntil) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'هذا الكوبون منتهي الصلاحية'
+        });
+      }
+
+      // التحقق من الحد الأقصى للاستخدام
+      if (coupon.max_uses > 0 && coupon.used_count >= coupon.max_uses) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'تم الوصول إلى الحد الأقصى لاستخدام هذا الكوبون'
+        });
+      }
+
+      // التحقق من الحد الأدنى لقيمة الطلب
+      const orderAmount = parseFloat(order_amount);
+      if (orderAmount < coupon.min_order_amount) {
+        return res.status(400).json({
+          status: 'error',
+          message: `الحد الأدنى لقيمة الطلب هو ${coupon.min_order_amount} ريال`
+        });
+      }
+
+      // حساب قيمة الخصم
+      let discountAmount = 0;
+      if (coupon.discount_type === 'percentage') {
+        discountAmount = (orderAmount * coupon.discount_value) / 100;
+      } else {
+        discountAmount = coupon.discount_value;
+      }
+
+      // التأكد من أن الخصم لا يتجاوز قيمة الطلب
+      if (discountAmount > orderAmount) {
+        discountAmount = orderAmount;
+      }
+
+      const finalAmount = orderAmount - discountAmount;
+
       res.json({
         status: 'success',
-        message: 'تم إرسال الطلب بنجاح إلى الإدارة',
-        order_id: orderNumber,
-        order_status: 'pending',
-        total_amount: total_amount,
-        items_count: cart_items.length,
-        customer_name: customer_name,
-        timestamp: new Date().toISOString(),
-        admin_url: `https://database-api-kvxr.onrender.com/admin/orders`
+        message: 'كوبون صالح',
+        valid: true,
+        coupon: {
+          id: coupon.id,
+          code: coupon.code,
+          description: coupon.description,
+          discount_type: coupon.discount_type,
+          discount_value: coupon.discount_value,
+          min_order_amount: coupon.min_order_amount,
+          discount_amount: discountAmount,
+          final_amount: finalAmount
+        },
+        calculation: {
+          original_amount: orderAmount,
+          discount_amount: discountAmount,
+          final_amount: finalAmount
+        }
       });
     }
   );
