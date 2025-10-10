@@ -5,14 +5,14 @@ const sqlite3 = require('sqlite3').verbose();
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Middleware
+// ======== Middleware ========
 app.use(cors());
 app.use(express.json());
 
-// SQLite database (في الذاكرة)
+// ======== Database Configuration ========
 const db = new sqlite3.Database(':memory:');
 
-// تهيئة الجداول
+// ======== تهيئة الجداول ========
 db.serialize(() => {
   // جدول المستخدمين للاختبار
   db.run(`CREATE TABLE IF NOT EXISTS test_users (
@@ -91,6 +91,8 @@ db.serialize(() => {
   });
 });
 
+// ======== Routes ========
+
 // الرابط الأساسي
 app.get('/', (req, res) => {
   res.json({
@@ -106,9 +108,16 @@ app.get('/', (req, res) => {
       'POST /api/process-payment - معالجة الدفع',
       'GET /api/orders - جلب جميع الطلبات',
       'PUT /api/orders/:id/status - تحديث حالة الطلب',
+      'GET /api/validate-coupon - التحقق من الكوبون',
+      'GET /api/coupons - جلب جميع الكوبونات',
+      'GET /api/coupons/:id - جلب كوبون محدد',
+      'POST /api/coupons - إنشاء كوبون جديد',
+      'PUT /api/coupons/:id - تعديل كوبون',
+      'DELETE /api/coupons/:id - حذف كوبون',
       'GET /admin - صفحة عرض البيانات',
       'GET /admin/advanced - لوحة التحكم',
-      'GET /admin/orders - إدارة الطلبات'
+      'GET /admin/orders - إدارة الطلبات',
+      'GET /admin/coupons - إدارة الكوبونات'
     ]
   });
 });
@@ -213,8 +222,112 @@ app.get('/api/all-data', (req, res) => {
   });
 });
 
-// API معالجة الدفع وإرسال الطلب للإدارة
-// في API معالجة الدفع - تحديث ليدعم حساب الخصم
+// API جديد لتحقق سريع من الكوبون مع الحساب
+app.get('/api/validate-coupon', (req, res) => {
+  const { code, order_amount } = req.query;
+
+  if (!code || !order_amount) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'كود الكوبون وقيمة الطلب مطلوبان'
+    });
+  }
+
+  db.get(
+    'SELECT * FROM coupons WHERE code = ? AND is_active = 1',
+    [code],
+    (err, coupon) => {
+      if (err) {
+        console.error('❌ خطأ في البحث عن الكوبون:', err);
+        return res.status(500).json({
+          status: 'error',
+          message: err.message
+        });
+      }
+
+      if (!coupon) {
+        return res.status(404).json({
+          status: 'error',
+          message: 'كوبون غير صالح أو غير موجود'
+        });
+      }
+
+      // التحقق من صلاحية الكوبون
+      const now = new Date();
+      const validFrom = new Date(coupon.valid_from);
+      const validUntil = new Date(coupon.valid_until);
+
+      if (now < validFrom) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'هذا الكوبون غير فعال حتى ' + validFrom.toLocaleDateString('ar-SA')
+        });
+      }
+
+      if (now > validUntil) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'هذا الكوبون منتهي الصلاحية'
+        });
+      }
+
+      // التحقق من الحد الأقصى للاستخدام
+      if (coupon.max_uses > 0 && coupon.used_count >= coupon.max_uses) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'تم الوصول إلى الحد الأقصى لاستخدام هذا الكوبون'
+        });
+      }
+
+      // التحقق من الحد الأدنى لقيمة الطلب
+      const orderAmount = parseFloat(order_amount);
+      if (orderAmount < coupon.min_order_amount) {
+        return res.status(400).json({
+          status: 'error',
+          message: `الحد الأدنى لقيمة الطلب هو ${coupon.min_order_amount} ريال`
+        });
+      }
+
+      // حساب قيمة الخصم
+      let discountAmount = 0;
+      if (coupon.discount_type === 'percentage') {
+        discountAmount = (orderAmount * coupon.discount_value) / 100;
+      } else {
+        discountAmount = coupon.discount_value;
+      }
+
+      // التأكد من أن الخصم لا يتجاوز قيمة الطلب
+      if (discountAmount > orderAmount) {
+        discountAmount = orderAmount;
+      }
+
+      const finalAmount = orderAmount - discountAmount;
+
+      res.json({
+        status: 'success',
+        message: 'كوبون صالح',
+        valid: true,
+        coupon: {
+          id: coupon.id,
+          code: coupon.code,
+          description: coupon.description,
+          discount_type: coupon.discount_type,
+          discount_value: coupon.discount_value,
+          min_order_amount: coupon.min_order_amount,
+          discount_amount: discountAmount,
+          final_amount: finalAmount
+        },
+        calculation: {
+          original_amount: orderAmount,
+          discount_amount: discountAmount,
+          final_amount: finalAmount
+        }
+      });
+    }
+  );
+});
+
+// API معالجة الدفع - محدث ليدعم حساب الخصم
 app.post('/api/process-payment', (req, res) => {
   const { 
     cart_items, 
@@ -249,71 +362,72 @@ app.post('/api/process-payment', (req, res) => {
   let appliedCoupon = null;
 
   // التحقق من الكوبون إذا كان موجوداً
-  const processCoupon = async () => {
-    if (coupon_code) {
-      try {
-        const couponResponse = await new Promise((resolve, reject) => {
-          db.get(
-            'SELECT * FROM coupons WHERE code = ? AND is_active = 1',
-            [coupon_code],
-            (err, coupon) => {
-              if (err) reject(err);
-              else resolve(coupon);
+  const processCoupon = () => {
+    return new Promise((resolve, reject) => {
+      if (coupon_code) {
+        db.get(
+          'SELECT * FROM coupons WHERE code = ? AND is_active = 1',
+          [coupon_code],
+          (err, coupon) => {
+            if (err) {
+              reject(err);
+              return;
             }
-          );
-        });
 
-        if (couponResponse) {
-          // التحقق من صلاحية الكوبون
-          const now = new Date();
-          const validFrom = new Date(couponResponse.valid_from);
-          const validUntil = new Date(couponResponse.valid_until);
+            if (coupon) {
+              // التحقق من صلاحية الكوبون
+              const now = new Date();
+              const validFrom = new Date(coupon.valid_from);
+              const validUntil = new Date(coupon.valid_until);
 
-          if (now >= validFrom && now <= validUntil) {
-            // التحقق من الحد الأقصى للاستخدام
-            if (couponResponse.max_uses === -1 || couponResponse.used_count < couponResponse.max_uses) {
-              // التحقق من الحد الأدنى للطلب
-              if (finalAmount >= couponResponse.min_order_amount) {
-                // حساب قيمة الخصم
-                if (couponResponse.discount_type === 'percentage') {
-                  discountAmount = (finalAmount * couponResponse.discount_value) / 100;
+              if (now >= validFrom && now <= validUntil) {
+                // التحقق من الحد الأقصى للاستخدام
+                if (coupon.max_uses === -1 || coupon.used_count < coupon.max_uses) {
+                  // التحقق من الحد الأدنى للطلب
+                  if (finalAmount >= coupon.min_order_amount) {
+                    // حساب قيمة الخصم
+                    if (coupon.discount_type === 'percentage') {
+                      discountAmount = (finalAmount * coupon.discount_value) / 100;
+                    } else {
+                      discountAmount = coupon.discount_value;
+                    }
+
+                    // التأكد من أن الخصم لا يتجاوز قيمة الطلب
+                    if (discountAmount > finalAmount) {
+                      discountAmount = finalAmount;
+                    }
+
+                    finalAmount = finalAmount - discountAmount;
+                    appliedCoupon = coupon;
+
+                    // زيادة عداد استخدامات الكوبون
+                    db.run(
+                      'UPDATE coupons SET used_count = used_count + 1 WHERE id = ?',
+                      [coupon.id]
+                    );
+
+                    console.log('✅ تم تطبيق الكوبون:', {
+                      code: coupon.code,
+                      discount: discountAmount,
+                      final: finalAmount
+                    });
+                  } else {
+                    console.log('❌ قيمة الطلب أقل من الحد الأدنى للكوبون');
+                  }
                 } else {
-                  discountAmount = couponResponse.discount_value;
+                  console.log('❌ تم الوصول للحد الأقصى لاستخدام الكوبون');
                 }
-
-                // التأكد من أن الخصم لا يتجاوز قيمة الطلب
-                if (discountAmount > finalAmount) {
-                  discountAmount = finalAmount;
-                }
-
-                finalAmount = finalAmount - discountAmount;
-                appliedCoupon = couponResponse;
-
-                // زيادة عداد استخدامات الكوبون
-                db.run(
-                  'UPDATE coupons SET used_count = used_count + 1 WHERE id = ?',
-                  [couponResponse.id]
-                );
-
-                console.log('✅ تم تطبيق الكوبون:', {
-                  code: couponResponse.code,
-                  discount: discountAmount,
-                  final: finalAmount
-                });
               } else {
-                console.log('❌ قيمة الطلب أقل من الحد الأدنى للكوبون');
+                console.log('❌ الكوبون خارج الفترة الزمنية');
               }
-            } else {
-              console.log('❌ تم الوصول للحد الأقصى لاستخدام الكوبون');
             }
-          } else {
-            console.log('❌ الكوبون خارج الفترة الزمنية');
+            resolve();
           }
-        }
-      } catch (error) {
-        console.error('❌ خطأ في معالجة الكوبون:', error);
+        );
+      } else {
+        resolve();
       }
-    }
+    });
   };
 
   // معالجة الطلب بعد التحقق من الكوبون
@@ -379,545 +493,12 @@ app.post('/api/process-payment', (req, res) => {
         });
       }
     );
-  });
-});
-
-// إضافة API جديد لتحقق سريع من الكوبون مع الحساب
-// صفحة إدارة الكوبونات - محدثة مع ميزة التعديل
-app.get('/admin/coupons', (req, res) => {
-  db.all('SELECT * FROM coupons ORDER BY created_at DESC', (err, rows) => {
-    let html = `
-    <!DOCTYPE html>
-    <html dir="rtl">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>إدارة الكوبونات - نظام المتجر</title>
-        <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
-            .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; }
-            .coupon-card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-right: 4px solid #4CAF50; transition: all 0.3s; }
-            .coupon-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
-            .coupon-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
-            .coupon-code { background: #4CAF50; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 16px; }
-            .coupon-status { padding: 6px 12px; border-radius: 15px; font-size: 14px; font-weight: bold; }
-            .status-active { background: #d1ecf1; color: #0c5460; }
-            .status-inactive { background: #f8d7da; color: #721c24; }
-            .status-expired { background: #fff3cd; color: #856404; }
-            .coupon-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
-            .detail-item { background: #f8f9fa; padding: 12px; border-radius: 8px; border-left: 3px solid #4CAF50; }
-            .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-            .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
-            .nav-btn:hover { background: #4CAF50; color: white; transform: translateY(-2px); }
-            .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
-            .btn-primary { background: #2196F3; color: white; }
-            .btn-primary:hover { background: #1976D2; transform: translateY(-2px); }
-            .btn-danger { background: #f44336; color: white; }
-            .btn-danger:hover { background: #d32f2f; transform: translateY(-2px); }
-            .btn-success { background: #4CAF50; color: white; }
-            .btn-success:hover { background: #388E3C; transform: translateY(-2px); }
-            .btn-warning { background: #ff9800; color: white; }
-            .btn-warning:hover { background: #f57c00; transform: translateY(-2px); }
-            .empty-state { text-align: center; padding: 60px; color: #666; background: white; border-radius: 15px; }
-            .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1000; }
-            .modal-content { background-color: white; margin: 5% auto; padding: 30px; border-radius: 15px; width: 80%; max-width: 600px; max-height: 80vh; overflow-y: auto; }
-            .form-group { margin-bottom: 15px; }
-            .form-control { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
-            .form-label { display: block; margin-bottom: 5px; font-weight: 600; color: #333; }
-            .form-help { font-size: 12px; color: #666; margin-top: 4px; }
-            .close { float: left; font-size: 28px; font-weight: bold; cursor: pointer; color: #666; }
-            .close:hover { color: #000; }
-            .tab-container { margin-bottom: 20px; }
-            .tab-buttons { display: flex; gap: 10px; margin-bottom: 20px; }
-            .tab-btn { padding: 10px 20px; border: none; border-radius: 8px; background: #f8f9fa; cursor: pointer; transition: all 0.3s; }
-            .tab-btn.active { background: #4CAF50; color: white; }
-            .tab-content { display: none; }
-            .tab-content.active { display: block; }
-            .quick-actions { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-            .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
-            .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-            .stat-number { font-size: 24px; font-weight: bold; color: #4CAF50; }
-            .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1 style="margin: 0;">🎫 إدارة الكوبونات - نظام المتجر</h1>
-                <p style="margin: 10px 0 0 0; opacity: 0.9;">إنشاء وتعديل وحذف كوبونات الخصم مع تحديد الصلاحية</p>
-            </div>
-
-            <div class="nav">
-                <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
-                <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
-                <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
-                <a href="/" class="nav-btn">🏠 الرئيسية</a>
-                <button onclick="showAddModal()" class="btn btn-success">+ إضافة كوبون جديد</button>
-            </div>
-
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-number">${rows.length}</div>
-                    <div class="stat-label">إجمالي الكوبونات</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">${rows.filter(c => c.is_active && new Date(c.valid_until) > new Date()).length}</div>
-                    <div class="stat-label">كوبونات نشطة</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">${rows.filter(c => !c.is_active).length}</div>
-                    <div class="stat-label">كوبونات غير نشطة</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">${rows.filter(c => new Date(c.valid_until) < new Date()).length}</div>
-                    <div class="stat-label">كوبونات منتهية</div>
-                </div>
-            </div>
-
-            <div class="quick-actions">
-                <button onclick="filterCoupons('all')" class="btn btn-primary">جميع الكوبونات</button>
-                <button onclick="filterCoupons('active')" class="btn btn-success">النشطة فقط</button>
-                <button onclick="filterCoupons('inactive')" class="btn btn-warning">غير النشطة</button>
-                <button onclick="filterCoupons('expired')" class="btn btn-danger">المنتهية</button>
-            </div>
-    `;
-
-    if (rows.length === 0) {
-      html += `
-            <div class="empty-state">
-                <h3 style="color: #666; margin-bottom: 10px;">📭 لا توجد كوبونات حتى الآن</h3>
-                <p style="color: #999;">انقر على زر "إضافة كوبون جديد" لإنشاء أول كوبون</p>
-            </div>
-      `;
-    } else {
-      rows.forEach(coupon => {
-        const now = new Date();
-        const validUntil = new Date(coupon.valid_until);
-        const validFrom = new Date(coupon.valid_from);
-        
-        let statusClass = 'status-inactive';
-        let statusText = 'غير نشط';
-        
-        if (coupon.is_active) {
-          if (now > validUntil) {
-            statusClass = 'status-expired';
-            statusText = 'منتهي';
-          } else if (now < validFrom) {
-            statusClass = 'status-inactive';
-            statusText = 'لم يبدأ';
-          } else {
-            statusClass = 'status-active';
-            statusText = 'نشط';
-          }
-        }
-
-        const discountTypeText = coupon.discount_type === 'percentage' ? 'نسبة مئوية' : 'ثابت';
-        const daysLeft = Math.ceil((validUntil - now) / (1000 * 60 * 60 * 24));
-        const daysLeftText = daysLeft > 0 ? `${daysLeft} يوم` : 'منتهي';
-
-        html += `
-            <div class="coupon-card" data-status="${coupon.is_active ? 'active' : 'inactive'}" data-expired="${now > validUntil ? 'true' : 'false'}">
-                <div class="coupon-header">
-                    <div>
-                        <span class="coupon-code">${coupon.code}</span>
-                        <span class="coupon-status ${statusClass}" style="margin-right: 10px;">${statusText}</span>
-                        ${now > validUntil ? '<span style="color: #dc3545; font-size: 12px;">⏰ منتهي</span>' : ''}
-                        ${now < validFrom ? '<span style="color: #ffc107; font-size: 12px;">⏳ لم يبدأ</span>' : ''}
-                    </div>
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                        <button onclick="editCoupon(${coupon.id})" class="btn btn-primary">✏️ تعديل</button>
-                        <button onclick="toggleCouponStatus(${coupon.id}, ${coupon.is_active ? 0 : 1})" class="btn ${coupon.is_active ? 'btn-warning' : 'btn-success'}">
-                            ${coupon.is_active ? '❌ إيقاف' : '✅ تفعيل'}
-                        </button>
-                        <button onclick="deleteCoupon(${coupon.id})" class="btn btn-danger">🗑️ حذف</button>
-                    </div>
-                </div>
-
-                <div class="coupon-details">
-                    <div class="detail-item">
-                        <strong>الوصف:</strong> ${coupon.description || 'لا يوجد وصف'}
-                    </div>
-                    <div class="detail-item">
-                        <strong>نوع الخصم:</strong> ${discountTypeText}
-                    </div>
-                    <div class="detail-item">
-                        <strong>قيمة الخصم:</strong> ${coupon.discount_value} ${coupon.discount_type === 'percentage' ? '%' : 'ريال'}
-                    </div>
-                    <div class="detail-item">
-                        <strong>الحد الأدنى للطلب:</strong> ${coupon.min_order_amount} ريال
-                    </div>
-                    <div class="detail-item">
-                        <strong>الحد الأقصى للاستخدام:</strong> ${coupon.max_uses === -1 ? 'غير محدود' : coupon.max_uses}
-                    </div>
-                    <div class="detail-item">
-                        <strong>تم استخدامه:</strong> ${coupon.used_count} مرة
-                    </div>
-                    <div class="detail-item">
-                        <strong>صالح من:</strong> ${validFrom.toLocaleDateString('ar-SA')} ${validFrom.toLocaleTimeString('ar-SA')}
-                    </div>
-                    <div class="detail-item">
-                        <strong>صالح حتى:</strong> ${validUntil.toLocaleDateString('ar-SA')} ${validUntil.toLocaleTimeString('ar-SA')}
-                    </div>
-                    <div class="detail-item">
-                        <strong>متبقي:</strong> <span style="color: ${daysLeft > 7 ? '#28a745' : daysLeft > 3 ? '#ffc107' : '#dc3545'}">${daysLeftText}</span>
-                    </div>
-                    <div class="detail-item">
-                        <strong>تاريخ الإنشاء:</strong> ${new Date(coupon.created_at).toLocaleDateString('ar-SA')}
-                    </div>
-                </div>
-            </div>
-        `;
-      });
-    }
-
-    html += `
-        </div>
-
-        <!-- نموذج إضافة كوبون -->
-        <div id="addCouponModal" class="modal">
-            <div class="modal-content">
-                <span class="close" onclick="closeModal('addCouponModal')">&times;</span>
-                <h2>🎫 إضافة كوبون جديد</h2>
-                <form id="addCouponForm">
-                    <div class="form-group">
-                        <label class="form-label">كود الكوبون *</label>
-                        <input type="text" name="code" class="form-control" required placeholder="مثال: WELCOME20">
-                        <div class="form-help">يجب أن يكون الكود فريداً وغير مكرر</div>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">وصف الكوبون</label>
-                        <input type="text" name="description" class="form-control" placeholder="مثال: خصم ترحيبي 20%">
-                    </div>
-                    
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div class="form-group">
-                            <label class="form-label">نوع الخصم *</label>
-                            <select name="discount_type" class="form-control" required>
-                                <option value="percentage">نسبة مئوية (%)</option>
-                                <option value="fixed">قيمة ثابتة (ريال)</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">قيمة الخصم *</label>
-                            <input type="number" name="discount_value" class="form-control" required min="0" step="0.01" placeholder="0.00">
-                        </div>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div class="form-group">
-                            <label class="form-label">الحد الأدنى للطلب (ريال)</label>
-                            <input type="number" name="min_order_amount" class="form-control" value="0" min="0" step="0.01">
-                            <div class="form-help">0 يعني لا يوجد حد أدنى</div>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">الحد الأقصى للاستخدام</label>
-                            <input type="number" name="max_uses" class="form-control" value="-1" min="-1">
-                            <div class="form-help">-1 يعني غير محدود</div>
-                        </div>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div class="form-group">
-                            <label class="form-label">تاريخ البدء *</label>
-                            <input type="datetime-local" name="valid_from" class="form-control" required>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">تاريخ الانتهاء *</label>
-                            <input type="datetime-local" name="valid_until" class="form-control" required>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label style="display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" name="is_active" checked> 
-                            <span>تفعيل الكوبون مباشرة</span>
-                        </label>
-                    </div>
-
-                    <div style="display: flex; gap: 10px; margin-top: 20px;">
-                        <button type="submit" class="btn btn-success" style="flex: 1;">💾 حفظ الكوبون</button>
-                        <button type="button" onclick="closeModal('addCouponModal')" class="btn btn-secondary">إلغاء</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <!-- نموذج تعديل كوبون -->
-        <div id="editCouponModal" class="modal">
-            <div class="modal-content">
-                <span class="close" onclick="closeModal('editCouponModal')">&times;</span>
-                <h2>✏️ تعديل الكوبون</h2>
-                <form id="editCouponForm">
-                    <input type="hidden" name="id" id="edit_coupon_id">
-                    
-                    <div class="form-group">
-                        <label class="form-label">كود الكوبون *</label>
-                        <input type="text" name="code" id="edit_code" class="form-control" required>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">وصف الكوبون</label>
-                        <input type="text" name="description" id="edit_description" class="form-control">
-                    </div>
-                    
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div class="form-group">
-                            <label class="form-label">نوع الخصم *</label>
-                            <select name="discount_type" id="edit_discount_type" class="form-control" required>
-                                <option value="percentage">نسبة مئوية (%)</option>
-                                <option value="fixed">قيمة ثابتة (ريال)</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">قيمة الخصم *</label>
-                            <input type="number" name="discount_value" id="edit_discount_value" class="form-control" required min="0" step="0.01">
-                        </div>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div class="form-group">
-                            <label class="form-label">الحد الأدنى للطلب (ريال)</label>
-                            <input type="number" name="min_order_amount" id="edit_min_order_amount" class="form-control" min="0" step="0.01">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">الحد الأقصى للاستخدام</label>
-                            <input type="number" name="max_uses" id="edit_max_uses" class="form-control" min="-1">
-                            <div class="form-help">-1 يعني غير محدود</div>
-                        </div>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div class="form-group">
-                            <label class="form-label">تاريخ البدء *</label>
-                            <input type="datetime-local" name="valid_from" id="edit_valid_from" class="form-control" required>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">تاريخ الانتهاء *</label>
-                            <input type="datetime-local" name="valid_until" id="edit_valid_until" class="form-control" required>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label style="display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" name="is_active" id="edit_is_active"> 
-                            <span>الكوبون نشط</span>
-                        </label>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">عدد مرات الاستخدام</label>
-                        <input type="number" name="used_count" id="edit_used_count" class="form-control" min="0">
-                        <div class="form-help">يمكنك تعديل عدد مرات الاستخدام يدوياً</div>
-                    </div>
-
-                    <div style="display: flex; gap: 10px; margin-top: 20px;">
-                        <button type="submit" class="btn btn-success" style="flex: 1;">💾 حفظ التعديلات</button>
-                        <button type="button" onclick="closeModal('editCouponModal')" class="btn btn-secondary">إلغاء</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <script>
-            // إعداد التواريخ الافتراضية
-            document.addEventListener('DOMContentLoaded', function() {
-                const now = new Date();
-                const tomorrow = new Date(now);
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                
-                // تعيين تاريخ البدء الافتراضي للكوبون الجديد
-                document.querySelector('#addCouponForm input[name="valid_from"]').value = 
-                    now.toISOString().slice(0, 16);
-                
-                // تعيين تاريخ الانتهاء الافتراضي (بعد 30 يوم)
-                const nextMonth = new Date(now);
-                nextMonth.setDate(nextMonth.getDate() + 30);
-                document.querySelector('#addCouponForm input[name="valid_until"]').value = 
-                    nextMonth.toISOString().slice(0, 16);
-            });
-
-            // إظهار وإخفاء النماذج
-            function showAddModal() {
-                document.getElementById('addCouponModal').style.display = 'block';
-            }
-
-            function closeModal(modalId) {
-                document.getElementById(modalId).style.display = 'none';
-            }
-
-            // تصفية الكوبونات
-            function filterCoupons(filter) {
-                const coupons = document.querySelectorAll('.coupon-card');
-                coupons.forEach(coupon => {
-                    switch(filter) {
-                        case 'all':
-                            coupon.style.display = 'block';
-                            break;
-                        case 'active':
-                            coupon.style.display = coupon.dataset.status === 'active' && coupon.dataset.expired === 'false' ? 'block' : 'none';
-                            break;
-                        case 'inactive':
-                            coupon.style.display = coupon.dataset.status === 'inactive' ? 'block' : 'none';
-                            break;
-                        case 'expired':
-                            coupon.style.display = coupon.dataset.expired === 'true' ? 'block' : 'none';
-                            break;
-                    }
-                });
-            }
-
-            // إضافة كوبون جديد
-            document.getElementById('addCouponForm').addEventListener('submit', function(e) {
-                e.preventDefault();
-                const formData = new FormData(this);
-                const data = Object.fromEntries(formData.entries());
-                
-                // تحويل القيم الرقمية
-                data.discount_value = parseFloat(data.discount_value);
-                data.min_order_amount = parseFloat(data.min_order_amount);
-                data.max_uses = parseInt(data.max_uses);
-                data.is_active = data.is_active ? 1 : 0;
-
-                fetch('/api/coupons', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        alert('✅ ' + data.message);
-                        closeModal('addCouponModal');
-                        location.reload();
-                    } else {
-                        alert('❌ ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    alert('❌ حدث خطأ: ' + error);
-                });
-            });
-
-            // تعديل كوبون
-            async function editCoupon(id) {
-                try {
-                    const response = await fetch('/api/coupons/' + id);
-                    const data = await response.json();
-                    
-                    if (data.status === 'success') {
-                        const coupon = data.coupon;
-                        
-                        // تعبئة النموذج ببيانات الكوبون
-                        document.getElementById('edit_coupon_id').value = coupon.id;
-                        document.getElementById('edit_code').value = coupon.code;
-                        document.getElementById('edit_description').value = coupon.description || '';
-                        document.getElementById('edit_discount_type').value = coupon.discount_type;
-                        document.getElementById('edit_discount_value').value = coupon.discount_value;
-                        document.getElementById('edit_min_order_amount').value = coupon.min_order_amount;
-                        document.getElementById('edit_max_uses').value = coupon.max_uses;
-                        document.getElementById('edit_valid_from').value = coupon.valid_from.slice(0, 16);
-                        document.getElementById('edit_valid_until').value = coupon.valid_until.slice(0, 16);
-                        document.getElementById('edit_is_active').checked = coupon.is_active;
-                        document.getElementById('edit_used_count').value = coupon.used_count;
-                        
-                        document.getElementById('editCouponModal').style.display = 'block';
-                    } else {
-                        alert('❌ ' + data.message);
-                    }
-                } catch (error) {
-                    alert('❌ حدث خطأ في جلب بيانات الكوبون: ' + error);
-                }
-            }
-
-            // حفظ التعديلات
-            document.getElementById('editCouponForm').addEventListener('submit', function(e) {
-                e.preventDefault();
-                const formData = new FormData(this);
-                const data = Object.fromEntries(formData.entries());
-                const couponId = data.id;
-                
-                // تحويل القيم الرقمية
-                data.discount_value = parseFloat(data.discount_value);
-                data.min_order_amount = parseFloat(data.min_order_amount);
-                data.max_uses = parseInt(data.max_uses);
-                data.used_count = parseInt(data.used_count);
-                data.is_active = data.is_active ? 1 : 0;
-
-                fetch('/api/coupons/' + couponId, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        alert('✅ ' + data.message);
-                        closeModal('editCouponModal');
-                        location.reload();
-                    } else {
-                        alert('❌ ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    alert('❌ حدث خطأ: ' + error);
-                });
-            });
-
-            // تفعيل/إيقاف الكوبون
-            function toggleCouponStatus(id, newStatus) {
-                fetch('/api/coupons/' + id, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ is_active: newStatus })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        alert('✅ ' + data.message);
-                        location.reload();
-                    } else {
-                        alert('❌ ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    alert('❌ حدث خطأ: ' + error);
-                });
-            }
-
-            // حذف كوبون
-            function deleteCoupon(id) {
-                if (confirm('⚠️ هل أنت متأكد من حذف هذا الكوبون؟ لا يمكن التراجع عن هذا الإجراء!')) {
-                    fetch('/api/coupons/' + id, { method: 'DELETE' })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.status === 'success') {
-                                alert('✅ ' + data.message);
-                                location.reload();
-                            } else {
-                                alert('❌ ' + data.message);
-                            }
-                        })
-                        .catch(error => {
-                            alert('❌ حدث خطأ: ' + error);
-                        });
-                }
-            }
-
-            // إغلاق النماذج عند النقر خارجها
-            window.onclick = function(event) {
-                const modals = document.querySelectorAll('.modal');
-                modals.forEach(modal => {
-                    if (event.target === modal) {
-                        modal.style.display = 'none';
-                    }
-                });
-            }
-        </script>
-    </body>
-    </html>
-    `;
-
-    res.send(html);
+  }).catch(error => {
+    console.error('❌ خطأ في معالجة الكوبون:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'فشل في معالجة الكوبون: ' + error.message
+    });
   });
 });
 
@@ -974,6 +555,334 @@ app.put('/api/orders/:id/status', (req, res) => {
   );
 });
 
+// ======== واجهات برمجية للكوبونات ========
+
+// API جلب جميع الكوبونات
+app.get('/api/coupons', (req, res) => {
+  db.all('SELECT * FROM coupons ORDER BY created_at DESC', (err, rows) => {
+    if (err) {
+      console.error('❌ خطأ في جلب الكوبونات:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+
+    res.json({
+      status: 'success',
+      coupons: rows,
+      count: rows.length,
+      message: `تم العثور على ${rows.length} كوبون`
+    });
+  });
+});
+
+// API جلب بيانات كوبون محدد
+app.get('/api/coupons/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.get('SELECT * FROM coupons WHERE id = ?', [id], (err, coupon) => {
+    if (err) {
+      console.error('❌ خطأ في جلب بيانات الكوبون:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+
+    if (!coupon) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'الكوبون غير موجود'
+      });
+    }
+
+    res.json({
+      status: 'success',
+      coupon: coupon,
+      message: 'تم جلب بيانات الكوبون بنجاح'
+    });
+  });
+});
+
+// API التحقق من صحة كوبون
+app.get('/api/coupons/:code', (req, res) => {
+  const { code } = req.params;
+  const { order_amount } = req.query;
+
+  db.get('SELECT * FROM coupons WHERE code = ? AND is_active = 1', [code], (err, coupon) => {
+    if (err) {
+      console.error('❌ خطأ في البحث عن الكوبون:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+
+    if (!coupon) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'كوبون غير صالح أو غير موجود'
+      });
+    }
+
+    // التحقق من صلاحية الكوبون
+    const now = new Date();
+    const validFrom = new Date(coupon.valid_from);
+    const validUntil = new Date(coupon.valid_until);
+
+    if (now < validFrom || now > validUntil) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'الكوبون منتهي الصلاحية أو غير فعال بعد'
+      });
+    }
+
+    // التحقق من الحد الأقصى للاستخدام
+    if (coupon.max_uses > 0 && coupon.used_count >= coupon.max_uses) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'تم الوصول إلى الحد الأقصى لاستخدام هذا الكوبون'
+      });
+    }
+
+    // التحقق من الحد الأدنى لقيمة الطلب
+    if (order_amount && parseFloat(order_amount) < coupon.min_order_amount) {
+      return res.status(400).json({
+        status: 'error',
+        message: `الحد الأدنى لقيمة الطلب هو ${coupon.min_order_amount} ريال`
+      });
+    }
+
+    // حساب قيمة الخصم
+    let discountAmount = 0;
+    if (coupon.discount_type === 'percentage') {
+      discountAmount = (parseFloat(order_amount) * coupon.discount_value) / 100;
+    } else {
+      discountAmount = coupon.discount_value;
+    }
+
+    // التأكد من أن الخصم لا يتجاوز قيمة الطلب
+    if (order_amount && discountAmount > parseFloat(order_amount)) {
+      discountAmount = parseFloat(order_amount);
+    }
+
+    res.json({
+      status: 'success',
+      message: 'كوبون صالح',
+      coupon: {
+        id: coupon.id,
+        code: coupon.code,
+        description: coupon.description,
+        discount_type: coupon.discount_type,
+        discount_value: coupon.discount_value,
+        discount_amount: discountAmount.toFixed(2)
+      },
+      valid: true
+    });
+  });
+});
+
+// API إنشاء كوبون جديد
+app.post('/api/coupons', (req, res) => {
+  const {
+    code,
+    description,
+    discount_type,
+    discount_value,
+    min_order_amount,
+    max_uses,
+    valid_from,
+    valid_until,
+    is_active
+  } = req.body;
+
+  // التحقق من الحقول المطلوبة
+  if (!code || !discount_type || discount_value === undefined) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'الكود ونوع الخصم وقيمة الخصم مطلوبة'
+    });
+  }
+
+  // التحقق من أن الكود غير مكرر
+  db.get('SELECT id FROM coupons WHERE code = ?', [code], (err, existingCoupon) => {
+    if (err) {
+      console.error('❌ خطأ في التحقق من الكود:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: 'فشل في التحقق من الكود: ' + err.message
+      });
+    }
+
+    if (existingCoupon) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'كود الكوبون مستخدم مسبقاً'
+      });
+    }
+
+    db.run(
+      `INSERT INTO coupons (
+        code, description, discount_type, discount_value, min_order_amount,
+        max_uses, valid_from, valid_until, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        code,
+        description || '',
+        discount_type,
+        discount_value,
+        min_order_amount || 0,
+        max_uses || -1,
+        valid_from || new Date().toISOString(),
+        valid_until || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 يوم افتراضي
+        is_active !== undefined ? is_active : 1
+      ],
+      function(err) {
+        if (err) {
+          console.error('❌ خطأ في إنشاء الكوبون:', err);
+          return res.status(500).json({
+            status: 'error',
+            message: 'فشل في إنشاء الكوبون: ' + err.message
+          });
+        }
+
+        console.log('✅ تم إنشاء كوبون جديد:', { id: this.lastID, code });
+
+        res.json({
+          status: 'success',
+          message: 'تم إنشاء الكوبون بنجاح',
+          coupon_id: this.lastID,
+          code: code
+        });
+      }
+    );
+  });
+});
+
+// API تحديث كوبون - محدث
+app.put('/api/coupons/:id', (req, res) => {
+  const { id } = req.params;
+  const {
+    code,
+    description,
+    discount_type,
+    discount_value,
+    min_order_amount,
+    max_uses,
+    valid_from,
+    valid_until,
+    is_active,
+    used_count
+  } = req.body;
+
+  // التحقق من أن الكود غير مكرر (باستثناء الكوبون الحالي)
+  const checkCodeQuery = 'SELECT id FROM coupons WHERE code = ? AND id != ?';
+  
+  db.get(checkCodeQuery, [code, id], (err, existingCoupon) => {
+    if (err) {
+      console.error('❌ خطأ في التحقق من الكود:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: 'فشل في التحقق من الكود: ' + err.message
+      });
+    }
+
+    if (existingCoupon) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'كود الكوبون مستخدم مسبقاً'
+      });
+    }
+
+    // تحديث البيانات
+    db.run(
+      `UPDATE coupons SET
+        code = COALESCE(?, code),
+        description = COALESCE(?, description),
+        discount_type = COALESCE(?, discount_type),
+        discount_value = COALESCE(?, discount_value),
+        min_order_amount = COALESCE(?, min_order_amount),
+        max_uses = COALESCE(?, max_uses),
+        valid_from = COALESCE(?, valid_from),
+        valid_until = COALESCE(?, valid_until),
+        is_active = COALESCE(?, is_active),
+        used_count = COALESCE(?, used_count)
+      WHERE id = ?`,
+      [
+        code,
+        description,
+        discount_type,
+        discount_value,
+        min_order_amount,
+        max_uses,
+        valid_from,
+        valid_until,
+        is_active,
+        used_count,
+        id
+      ],
+      function(err) {
+        if (err) {
+          console.error('❌ خطأ في تحديث الكوبون:', err);
+          return res.status(500).json({
+            status: 'error',
+            message: 'فشل في تحديث الكوبون: ' + err.message
+          });
+        }
+
+        if (this.changes === 0) {
+          return res.status(404).json({
+            status: 'error',
+            message: 'الكوبون غير موجود'
+          });
+        }
+
+        console.log('✅ تم تحديث الكوبون:', { id, code, is_active });
+
+        res.json({
+          status: 'success',
+          message: 'تم تحديث الكوبون بنجاح',
+          updated_id: id,
+          changes: this.changes
+        });
+      }
+    );
+  });
+});
+
+// API حذف كوبون
+app.delete('/api/coupons/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.run('DELETE FROM coupons WHERE id = ?', [id], function(err) {
+    if (err) {
+      console.error('❌ خطأ في حذف الكوبون:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+
+    if (this.changes === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'الكوبون غير موجود'
+      });
+    }
+
+    console.log('✅ تم حذف الكوبون:', { id });
+
+    res.json({
+      status: 'success',
+      message: 'تم حذف الكوبون بنجاح',
+      deleted_id: id
+    });
+  });
+});
+
+// ======== صفحات الإدارة ========
+
 // صفحة ويب لعرض البيانات
 app.get('/admin', (req, res) => {
   db.all('SELECT * FROM test_users ORDER BY created_at DESC', (err, rows) => {
@@ -1026,6 +935,7 @@ app.get('/admin', (req, res) => {
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
                 <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
                 <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
+                <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
                 <a href="/api/all-data" class="nav-btn">📋 JSON البيانات</a>
                 <a href="/api/test" class="nav-btn">🧪 اختبار الاتصال</a>
             </div>
@@ -1266,6 +1176,7 @@ app.get('/admin/orders', (req, res) => {
             <div class="nav">
                 <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
                 <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
+                <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
             </div>
     `;
@@ -1305,11 +1216,18 @@ app.get('/admin/orders', (req, res) => {
                     الهاتف: ${order.customer_phone || 'غير محدد'} | 
                     البريد: ${order.customer_email || 'غير محدد'}<br>
                     طريقة الدفع: ${order.payment_method === 'online' ? 'دفع إلكتروني' : 'الدفع عند الاستلام'}
+                    ${order.coupon_code ? `<br>كود الخصم: <strong>${order.coupon_code}</strong> (خصم: ${order.discount_amount} ر.س)` : ''}
                 </div>
                 
                 <div class="order-details">
                     <div class="detail-item">
-                        <strong>المجموع:</strong> ${order.total_amount} ر.س
+                        <strong>المجموع الأصلي:</strong> ${order.total_amount} ر.س
+                    </div>
+                    <div class="detail-item">
+                        <strong>الخصم:</strong> ${order.discount_amount} ر.س
+                    </div>
+                    <div class="detail-item">
+                        <strong>المجموع النهائي:</strong> ${(order.total_amount - order.discount_amount).toFixed(2)} ر.س
                     </div>
                     <div class="detail-item">
                         <strong>عدد العناصر:</strong> ${items.length}
@@ -1381,6 +1299,509 @@ app.get('/admin/orders', (req, res) => {
   });
 });
 
+// صفحة إدارة الكوبونات - محدثة مع ميزة التعديل
+app.get('/admin/coupons', (req, res) => {
+  db.all('SELECT * FROM coupons ORDER BY created_at DESC', (err, rows) => {
+    let html = `
+    <!DOCTYPE html>
+    <html dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>إدارة الكوبونات - نظام المتجر</title>
+        <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
+            .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; }
+            .coupon-card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-right: 4px solid #4CAF50; transition: all 0.3s; }
+            .coupon-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
+            .coupon-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
+            .coupon-code { background: #4CAF50; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 16px; }
+            .coupon-status { padding: 6px 12px; border-radius: 15px; font-size: 14px; font-weight: bold; }
+            .status-active { background: #d1ecf1; color: #0c5460; }
+            .status-inactive { background: #f8d7da; color: #721c24; }
+            .status-expired { background: #fff3cd; color: #856404; }
+            .coupon-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
+            .detail-item { background: #f8f9fa; padding: 12px; border-radius: 8px; border-left: 3px solid #4CAF50; }
+            .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+            .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
+            .nav-btn:hover { background: #4CAF50; color: white; transform: translateY(-2px); }
+            .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
+            .btn-primary { background: #2196F3; color: white; }
+            .btn-primary:hover { background: #1976D2; transform: translateY(-2px); }
+            .btn-danger { background: #f44336; color: white; }
+            .btn-danger:hover { background: #d32f2f; transform: translateY(-2px); }
+            .btn-success { background: #4CAF50; color: white; }
+            .btn-success:hover { background: #388E3C; transform: translateY(-2px); }
+            .btn-warning { background: #ff9800; color: white; }
+            .btn-warning:hover { background: #f57c00; transform: translateY(-2px); }
+            .empty-state { text-align: center; padding: 60px; color: #666; background: white; border-radius: 15px; }
+            .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1000; }
+            .modal-content { background-color: white; margin: 5% auto; padding: 30px; border-radius: 15px; width: 80%; max-width: 600px; max-height: 80vh; overflow-y: auto; }
+            .form-group { margin-bottom: 15px; }
+            .form-control { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
+            .form-label { display: block; margin-bottom: 5px; font-weight: 600; color: #333; }
+            .form-help { font-size: 12px; color: #666; margin-top: 4px; }
+            .close { float: left; font-size: 28px; font-weight: bold; cursor: pointer; color: #666; }
+            .close:hover { color: #000; }
+            .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+            .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+            .stat-number { font-size: 24px; font-weight: bold; color: #4CAF50; }
+            .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">🎫 إدارة الكوبونات - نظام المتجر</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">إنشاء وتعديل وحذف كوبونات الخصم مع تحديد الصلاحية</p>
+            </div>
+
+            <div class="nav">
+                <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
+                <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
+                <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
+                <a href="/" class="nav-btn">🏠 الرئيسية</a>
+                <button onclick="showAddModal()" class="btn btn-success">+ إضافة كوبون جديد</button>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">${rows.length}</div>
+                    <div class="stat-label">إجمالي الكوبونات</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${rows.filter(c => c.is_active && new Date(c.valid_until) > new Date()).length}</div>
+                    <div class="stat-label">كوبونات نشطة</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${rows.filter(c => !c.is_active).length}</div>
+                    <div class="stat-label">كوبونات غير نشطة</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${rows.filter(c => new Date(c.valid_until) < new Date()).length}</div>
+                    <div class="stat-label">كوبونات منتهية</div>
+                </div>
+            </div>
+    `;
+
+    if (rows.length === 0) {
+      html += `
+            <div class="empty-state">
+                <h3 style="color: #666; margin-bottom: 10px;">📭 لا توجد كوبونات حتى الآن</h3>
+                <p style="color: #999;">انقر على زر "إضافة كوبون جديد" لإنشاء أول كوبون</p>
+            </div>
+      `;
+    } else {
+      rows.forEach(coupon => {
+        const now = new Date();
+        const validUntil = new Date(coupon.valid_until);
+        const validFrom = new Date(coupon.valid_from);
+        
+        let statusClass = 'status-inactive';
+        let statusText = 'غير نشط';
+        
+        if (coupon.is_active) {
+          if (now > validUntil) {
+            statusClass = 'status-expired';
+            statusText = 'منتهي';
+          } else if (now < validFrom) {
+            statusClass = 'status-inactive';
+            statusText = 'لم يبدأ';
+          } else {
+            statusClass = 'status-active';
+            statusText = 'نشط';
+          }
+        }
+
+        const discountTypeText = coupon.discount_type === 'percentage' ? 'نسبة مئوية' : 'ثابت';
+        const daysLeft = Math.ceil((validUntil - now) / (1000 * 60 * 60 * 24));
+        const daysLeftText = daysLeft > 0 ? `${daysLeft} يوم` : 'منتهي';
+
+        html += `
+            <div class="coupon-card">
+                <div class="coupon-header">
+                    <div>
+                        <span class="coupon-code">${coupon.code}</span>
+                        <span class="coupon-status ${statusClass}" style="margin-right: 10px;">${statusText}</span>
+                        ${now > validUntil ? '<span style="color: #dc3545; font-size: 12px;">⏰ منتهي</span>' : ''}
+                        ${now < validFrom ? '<span style="color: #ffc107; font-size: 12px;">⏳ لم يبدأ</span>' : ''}
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button onclick="editCoupon(${coupon.id})" class="btn btn-primary">✏️ تعديل</button>
+                        <button onclick="toggleCouponStatus(${coupon.id}, ${coupon.is_active ? 0 : 1})" class="btn ${coupon.is_active ? 'btn-warning' : 'btn-success'}">
+                            ${coupon.is_active ? '❌ إيقاف' : '✅ تفعيل'}
+                        </button>
+                        <button onclick="deleteCoupon(${coupon.id})" class="btn btn-danger">🗑️ حذف</button>
+                    </div>
+                </div>
+
+                <div class="coupon-details">
+                    <div class="detail-item">
+                        <strong>الوصف:</strong> ${coupon.description || 'لا يوجد وصف'}
+                    </div>
+                    <div class="detail-item">
+                        <strong>نوع الخصم:</strong> ${discountTypeText}
+                    </div>
+                    <div class="detail-item">
+                        <strong>قيمة الخصم:</strong> ${coupon.discount_value} ${coupon.discount_type === 'percentage' ? '%' : 'ريال'}
+                    </div>
+                    <div class="detail-item">
+                        <strong>الحد الأدنى للطلب:</strong> ${coupon.min_order_amount} ريال
+                    </div>
+                    <div class="detail-item">
+                        <strong>الحد الأقصى للاستخدام:</strong> ${coupon.max_uses === -1 ? 'غير محدود' : coupon.max_uses}
+                    </div>
+                    <div class="detail-item">
+                        <strong>تم استخدامه:</strong> ${coupon.used_count} مرة
+                    </div>
+                    <div class="detail-item">
+                        <strong>صالح من:</strong> ${validFrom.toLocaleDateString('ar-SA')} ${validFrom.toLocaleTimeString('ar-SA')}
+                    </div>
+                    <div class="detail-item">
+                        <strong>صالح حتى:</strong> ${validUntil.toLocaleDateString('ar-SA')} ${validUntil.toLocaleTimeString('ar-SA')}
+                    </div>
+                    <div class="detail-item">
+                        <strong>متبقي:</strong> <span style="color: ${daysLeft > 7 ? '#28a745' : daysLeft > 3 ? '#ffc107' : '#dc3545'}">${daysLeftText}</span>
+                    </div>
+                    <div class="detail-item">
+                        <strong>تاريخ الإنشاء:</strong> ${new Date(coupon.created_at).toLocaleDateString('ar-SA')}
+                    </div>
+                </div>
+            </div>
+        `;
+      });
+    }
+
+    html += `
+        </div>
+
+        <!-- نموذج إضافة كوبون -->
+        <div id="addCouponModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal('addCouponModal')">&times;</span>
+                <h2>🎫 إضافة كوبون جديد</h2>
+                <form id="addCouponForm">
+                    <div class="form-group">
+                        <label class="form-label">كود الكوبون *</label>
+                        <input type="text" name="code" class="form-control" required placeholder="مثال: WELCOME20">
+                        <div class="form-help">يجب أن يكون الكود فريداً وغير مكرر</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">وصف الكوبون</label>
+                        <input type="text" name="description" class="form-control" placeholder="مثال: خصم ترحيبي 20%">
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">نوع الخصم *</label>
+                            <select name="discount_type" class="form-control" required>
+                                <option value="percentage">نسبة مئوية (%)</option>
+                                <option value="fixed">قيمة ثابتة (ريال)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">قيمة الخصم *</label>
+                            <input type="number" name="discount_value" class="form-control" required min="0" step="0.01" placeholder="0.00">
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">الحد الأدنى للطلب (ريال)</label>
+                            <input type="number" name="min_order_amount" class="form-control" value="0" min="0" step="0.01">
+                            <div class="form-help">0 يعني لا يوجد حد أدنى</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">الحد الأقصى للاستخدام</label>
+                            <input type="number" name="max_uses" class="form-control" value="-1" min="-1">
+                            <div class="form-help">-1 يعني غير محدود</div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">تاريخ البدء *</label>
+                            <input type="datetime-local" name="valid_from" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">تاريخ الانتهاء *</label>
+                            <input type="datetime-local" name="valid_until" class="form-control" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="is_active" checked> 
+                            <span>تفعيل الكوبون مباشرة</span>
+                        </label>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-top: 20px;">
+                        <button type="submit" class="btn btn-success" style="flex: 1;">💾 حفظ الكوبون</button>
+                        <button type="button" onclick="closeModal('addCouponModal')" class="btn btn-secondary">إلغاء</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- نموذج تعديل كوبون -->
+        <div id="editCouponModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal('editCouponModal')">&times;</span>
+                <h2>✏️ تعديل الكوبون</h2>
+                <form id="editCouponForm">
+                    <input type="hidden" name="id" id="edit_coupon_id">
+                    
+                    <div class="form-group">
+                        <label class="form-label">كود الكوبون *</label>
+                        <input type="text" name="code" id="edit_code" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">وصف الكوبون</label>
+                        <input type="text" name="description" id="edit_description" class="form-control">
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">نوع الخصم *</label>
+                            <select name="discount_type" id="edit_discount_type" class="form-control" required>
+                                <option value="percentage">نسبة مئوية (%)</option>
+                                <option value="fixed">قيمة ثابتة (ريال)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">قيمة الخصم *</label>
+                            <input type="number" name="discount_value" id="edit_discount_value" class="form-control" required min="0" step="0.01">
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">الحد الأدنى للطلب (ريال)</label>
+                            <input type="number" name="min_order_amount" id="edit_min_order_amount" class="form-control" min="0" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">الحد الأقصى للاستخدام</label>
+                            <input type="number" name="max_uses" id="edit_max_uses" class="form-control" min="-1">
+                            <div class="form-help">-1 يعني غير محدود</div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">تاريخ البدء *</label>
+                            <input type="datetime-local" name="valid_from" id="edit_valid_from" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">تاريخ الانتهاء *</label>
+                            <input type="datetime-local" name="valid_until" id="edit_valid_until" class="form-control" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="is_active" id="edit_is_active"> 
+                            <span>الكوبون نشط</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">عدد مرات الاستخدام</label>
+                        <input type="number" name="used_count" id="edit_used_count" class="form-control" min="0">
+                        <div class="form-help">يمكنك تعديل عدد مرات الاستخدام يدوياً</div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-top: 20px;">
+                        <button type="submit" class="btn btn-success" style="flex: 1;">💾 حفظ التعديلات</button>
+                        <button type="button" onclick="closeModal('editCouponModal')" class="btn btn-secondary">إلغاء</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <script>
+            // إعداد التواريخ الافتراضية
+            document.addEventListener('DOMContentLoaded', function() {
+                const now = new Date();
+                const tomorrow = new Date(now);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                
+                // تعيين تاريخ البدء الافتراضي للكوبون الجديد
+                document.querySelector('#addCouponForm input[name="valid_from"]').value = 
+                    now.toISOString().slice(0, 16);
+                
+                // تعيين تاريخ الانتهاء الافتراضي (بعد 30 يوم)
+                const nextMonth = new Date(now);
+                nextMonth.setDate(nextMonth.getDate() + 30);
+                document.querySelector('#addCouponForm input[name="valid_until"]').value = 
+                    nextMonth.toISOString().slice(0, 16);
+            });
+
+            // إظهار وإخفاء النماذج
+            function showAddModal() {
+                document.getElementById('addCouponModal').style.display = 'block';
+            }
+
+            function closeModal(modalId) {
+                document.getElementById(modalId).style.display = 'none';
+            }
+
+            // إضافة كوبون جديد
+            document.getElementById('addCouponForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                const data = Object.fromEntries(formData.entries());
+                
+                // تحويل القيم الرقمية
+                data.discount_value = parseFloat(data.discount_value);
+                data.min_order_amount = parseFloat(data.min_order_amount);
+                data.max_uses = parseInt(data.max_uses);
+                data.is_active = data.is_active ? 1 : 0;
+
+                fetch('/api/coupons', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('✅ ' + data.message);
+                        closeModal('addCouponModal');
+                        location.reload();
+                    } else {
+                        alert('❌ ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('❌ حدث خطأ: ' + error);
+                });
+            });
+
+            // تعديل كوبون
+            async function editCoupon(id) {
+                try {
+                    const response = await fetch('/api/coupons/' + id);
+                    const data = await response.json();
+                    
+                    if (data.status === 'success') {
+                        const coupon = data.coupon;
+                        
+                        // تعبئة النموذج ببيانات الكوبون
+                        document.getElementById('edit_coupon_id').value = coupon.id;
+                        document.getElementById('edit_code').value = coupon.code;
+                        document.getElementById('edit_description').value = coupon.description || '';
+                        document.getElementById('edit_discount_type').value = coupon.discount_type;
+                        document.getElementById('edit_discount_value').value = coupon.discount_value;
+                        document.getElementById('edit_min_order_amount').value = coupon.min_order_amount;
+                        document.getElementById('edit_max_uses').value = coupon.max_uses;
+                        document.getElementById('edit_valid_from').value = coupon.valid_from.slice(0, 16);
+                        document.getElementById('edit_valid_until').value = coupon.valid_until.slice(0, 16);
+                        document.getElementById('edit_is_active').checked = coupon.is_active;
+                        document.getElementById('edit_used_count').value = coupon.used_count;
+                        
+                        document.getElementById('editCouponModal').style.display = 'block';
+                    } else {
+                        alert('❌ ' + data.message);
+                    }
+                } catch (error) {
+                    alert('❌ حدث خطأ في جلب بيانات الكوبون: ' + error);
+                }
+            }
+
+            // حفظ التعديلات
+            document.getElementById('editCouponForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                const data = Object.fromEntries(formData.entries());
+                const couponId = data.id;
+                
+                // تحويل القيم الرقمية
+                data.discount_value = parseFloat(data.discount_value);
+                data.min_order_amount = parseFloat(data.min_order_amount);
+                data.max_uses = parseInt(data.max_uses);
+                data.used_count = parseInt(data.used_count);
+                data.is_active = data.is_active ? 1 : 0;
+
+                fetch('/api/coupons/' + couponId, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('✅ ' + data.message);
+                        closeModal('editCouponModal');
+                        location.reload();
+                    } else {
+                        alert('❌ ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('❌ حدث خطأ: ' + error);
+                });
+            });
+
+            // تفعيل/إيقاف الكوبون
+            function toggleCouponStatus(id, newStatus) {
+                fetch('/api/coupons/' + id, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_active: newStatus })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('✅ ' + data.message);
+                        location.reload();
+                    } else {
+                        alert('❌ ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('❌ حدث خطأ: ' + error);
+                });
+            }
+
+            // حذف كوبون
+            function deleteCoupon(id) {
+                if (confirm('⚠️ هل أنت متأكد من حذف هذا الكوبون؟ لا يمكن التراجع عن هذا الإجراء!')) {
+                    fetch('/api/coupons/' + id, { method: 'DELETE' })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.status === 'success') {
+                                alert('✅ ' + data.message);
+                                location.reload();
+                            } else {
+                                alert('❌ ' + data.message);
+                            }
+                        })
+                        .catch(error => {
+                            alert('❌ حدث خطأ: ' + error);
+                        });
+                }
+            }
+
+            // إغلاق النماذج عند النقر خارجها
+            window.onclick = function(event) {
+                const modals = document.querySelectorAll('.modal');
+                modals.forEach(modal => {
+                    if (event.target === modal) {
+                        modal.style.display = 'none';
+                    }
+                });
+            }
+        </script>
+    </body>
+    </html>
+    `;
+
+    res.send(html);
+  });
+});
+
 // API مسح جميع البيانات
 app.delete('/api/clear-all-data', (req, res) => {
   db.serialize(() => {
@@ -1412,492 +1833,6 @@ app.delete('/api/clear-all-data', (req, res) => {
   });
 });
 
-// ======== واجهات برمجية للكوبونات ========
-
-// API جلب جميع الكوبونات
-app.get('/api/coupons', (req, res) => {
-  db.all('SELECT * FROM coupons ORDER BY created_at DESC', (err, rows) => {
-    if (err) {
-      console.error('❌ خطأ في جلب الكوبونات:', err);
-      return res.status(500).json({
-        status: 'error',
-        message: err.message
-      });
-    }
-
-    res.json({
-      status: 'success',
-      coupons: rows,
-      count: rows.length,
-      message: `تم العثور على ${rows.length} كوبون`
-    });
-  });
-});
-
-// API التحقق من صحة كوبون
-app.get('/api/coupons/:code', (req, res) => {
-  const { code } = req.params;
-  const { order_amount } = req.query;
-
-  db.get('SELECT * FROM coupons WHERE code = ? AND is_active = 1', [code], (err, coupon) => {
-    if (err) {
-      console.error('❌ خطأ في البحث عن الكوبون:', err);
-      return res.status(500).json({
-        status: 'error',
-        message: err.message
-      });
-    }
-
-    if (!coupon) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'كوبون غير صالح أو غير موجود'
-      });
-    }
-
-    // التحقق من صلاحية الكوبون
-    const now = new Date();
-    const validFrom = new Date(coupon.valid_from);
-    const validUntil = new Date(coupon.valid_until);
-
-    if (now < validFrom || now > validUntil) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'الكوبون منتهي الصلاحية أو غير فعال بعد'
-      });
-    }
-
-    // التحقق من الحد الأقصى للاستخدام
-    if (coupon.max_uses > 0 && coupon.used_count >= coupon.max_uses) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'تم الوصول إلى الحد الأقصى لاستخدام هذا الكوبون'
-      });
-    }
-
-    // التحقق من الحد الأدنى لقيمة الطلب
-    if (order_amount && parseFloat(order_amount) < coupon.min_order_amount) {
-      return res.status(400).json({
-        status: 'error',
-        message: `الحد الأدنى لقيمة الطلب هو ${coupon.min_order_amount} ريال`
-      });
-    }
-
-    // حساب قيمة الخصم
-    let discountAmount = 0;
-    if (coupon.discount_type === 'percentage') {
-      discountAmount = (parseFloat(order_amount) * coupon.discount_value) / 100;
-    } else {
-      discountAmount = coupon.discount_value;
-    }
-
-    // التأكد من أن الخصم لا يتجاوز قيمة الطلب
-    if (order_amount && discountAmount > parseFloat(order_amount)) {
-      discountAmount = parseFloat(order_amount);
-    }
-
-    res.json({
-      status: 'success',
-      message: 'كوبون صالح',
-      coupon: {
-        id: coupon.id,
-        code: coupon.code,
-        description: coupon.description,
-        discount_type: coupon.discount_type,
-        discount_value: coupon.discount_value,
-        discount_amount: discountAmount.toFixed(2)
-      },
-      valid: true
-    });
-  });
-});
-
-// API إنشاء كوبون جديد
-app.post('/api/coupons', (req, res) => {
-  const {
-    code,
-    description,
-    discount_type,
-    discount_value,
-    min_order_amount,
-    max_uses,
-    valid_from,
-    valid_until,
-    is_active
-  } = req.body;
-
-  // التحقق من الحقول المطلوبة
-  if (!code || !discount_type || discount_value === undefined) {
-    return res.status(400).json({
-      status: 'error',
-      message: 'الكود ونوع الخصم وقيمة الخصم مطلوبة'
-    });
-  }
-
-  db.run(
-    `INSERT INTO coupons (
-      code, description, discount_type, discount_value, min_order_amount,
-      max_uses, valid_from, valid_until, is_active
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      code,
-      description || '',
-      discount_type,
-      discount_value,
-      min_order_amount || 0,
-      max_uses || -1,
-      valid_from || new Date().toISOString(),
-      valid_until || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 يوم افتراضي
-      is_active !== undefined ? is_active : 1
-    ],
-    function(err) {
-      if (err) {
-        console.error('❌ خطأ في إنشاء الكوبون:', err);
-        return res.status(500).json({
-          status: 'error',
-          message: 'فشل في إنشاء الكوبون: ' + err.message
-        });
-      }
-
-      res.json({
-        status: 'success',
-        message: 'تم إنشاء الكوبون بنجاح',
-        coupon_id: this.lastID,
-        code: code
-      });
-    }
-  );
-});
-
-// API تحديث كوبون
-app.put('/api/coupons/:id', (req, res) => {
-  const { id } = req.params;
-  const {
-    code,
-    description,
-    discount_type,
-    discount_value,
-    min_order_amount,
-    max_uses,
-    valid_from,
-    valid_until,
-    is_active,
-    used_count
-  } = req.body;
-
-  db.run(
-    `UPDATE coupons SET
-      code = COALESCE(?, code),
-      description = COALESCE(?, description),
-      discount_type = COALESCE(?, discount_type),
-      discount_value = COALESCE(?, discount_value),
-      min_order_amount = COALESCE(?, min_order_amount),
-      max_uses = COALESCE(?, max_uses),
-      valid_from = COALESCE(?, valid_from),
-      valid_until = COALESCE(?, valid_until),
-      is_active = COALESCE(?, is_active),
-      used_count = COALESCE(?, used_count)
-    WHERE id = ?`,
-    [
-      code,
-      description,
-      discount_type,
-      discount_value,
-      min_order_amount,
-      max_uses,
-      valid_from,
-      valid_until,
-      is_active,
-      used_count,
-      id
-    ],
-    function(err) {
-      if (err) {
-        console.error('❌ خطأ في تحديث الكوبون:', err);
-        return res.status(500).json({
-          status: 'error',
-          message: 'فشل في تحديث الكوبون: ' + err.message
-        });
-      }
-
-      if (this.changes === 0) {
-        return res.status(404).json({
-          status: 'error',
-          message: 'الكوبون غير موجود'
-        });
-      }
-
-      res.json({
-        status: 'success',
-        message: 'تم تحديث الكوبون بنجاح',
-        updated_id: id
-      });
-    }
-  );
-});
-
-// API حذف كوبون
-app.delete('/api/coupons/:id', (req, res) => {
-  const { id } = req.params;
-
-  db.run('DELETE FROM coupons WHERE id = ?', [id], function(err) {
-    if (err) {
-      console.error('❌ خطأ في حذف الكوبون:', err);
-      return res.status(500).json({
-        status: 'error',
-        message: err.message
-      });
-    }
-
-    if (this.changes === 0) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'الكوبون غير موجود'
-      });
-    }
-
-    res.json({
-      status: 'success',
-      message: 'تم حذف الكوبون بنجاح',
-      deleted_id: id
-    });
-  });
-});
-
-// صفحة إدارة الكوبونات
-app.get('/admin/coupons', (req, res) => {
-  db.all('SELECT * FROM coupons ORDER BY created_at DESC', (err, rows) => {
-    let html = `
-    <!DOCTYPE html>
-    <html dir="rtl">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>إدارة الكوبونات - نظام المتجر</title>
-        <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
-            .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; }
-            .coupon-card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-right: 4px solid #4CAF50; }
-            .coupon-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
-            .coupon-code { background: #4CAF50; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; }
-            .coupon-status { padding: 6px 12px; border-radius: 15px; font-size: 14px; font-weight: bold; }
-            .status-active { background: #d1ecf1; color: #0c5460; }
-            .status-inactive { background: #f8d7da; color: #721c24; }
-            .coupon-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
-            .detail-item { background: #f8f9fa; padding: 12px; border-radius: 8px; }
-            .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-            .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-            .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; }
-            .btn-primary { background: #2196F3; color: white; }
-            .btn-danger { background: #f44336; color: white; }
-            .btn-success { background: #4CAF50; color: white; }
-            .empty-state { text-align: center; padding: 60px; color: #666; background: white; border-radius: 15px; }
-            .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1000; }
-            .modal-content { background-color: white; margin: 5% auto; padding: 30px; border-radius: 15px; width: 80%; max-width: 600px; }
-            .form-group { margin-bottom: 15px; }
-            .form-control { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
-            .close { float: left; font-size: 28px; font-weight: bold; cursor: pointer; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1 style="margin: 0;">🎫 إدارة الكوبونات - نظام المتجر</h1>
-                <p style="margin: 10px 0 0 0; opacity: 0.9;">إنشاء وتعديل وحذف كوبونات الخصم</p>
-            </div>
-
-            <div class="nav">
-                <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
-                <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
-                <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
-                <a href="/" class="nav-btn">🏠 الرئيسية</a>
-                <button onclick="document.getElementById('addCouponModal').style.display='block'" class="btn btn-success">+ إضافة كوبون جديد</button>
-            </div>
-    `;
-
-    if (rows.length === 0) {
-      html += `
-            <div class="empty-state">
-                <h3 style="color: #666; margin-bottom: 10px;">📭 لا توجد كوبونات حتى الآن</h3>
-                <p style="color: #999;">انقر على زر "إضافة كوبون جديد" لإنشاء أول كوبون</p>
-            </div>
-      `;
-    } else {
-      rows.forEach(coupon => {
-        const statusClass = coupon.is_active ? 'status-active' : 'status-inactive';
-        const statusText = coupon.is_active ? 'نشط' : 'غير نشط';
-        const discountTypeText = coupon.discount_type === 'percentage' ? 'نسبة مئوية' : 'ثابت';
-
-        html += `
-            <div class="coupon-card">
-                <div class="coupon-header">
-                    <div>
-                        <span class="coupon-code">${coupon.code}</span>
-                        <span class="coupon-status ${statusClass}" style="margin-right: 10px;">${statusText}</span>
-                    </div>
-                    <div style="display: flex; gap: 10px;">
-                        <button onclick="editCoupon(${coupon.id})" class="btn btn-primary">تعديل</button>
-                        <button onclick="deleteCoupon(${coupon.id})" class="btn btn-danger">حذف</button>
-                    </div>
-                </div>
-
-                <div class="coupon-details">
-                    <div class="detail-item">
-                        <strong>الوصف:</strong> ${coupon.description || 'لا يوجد وصف'}
-                    </div>
-                    <div class="detail-item">
-                        <strong>نوع الخصم:</strong> ${discountTypeText}
-                    </div>
-                    <div class="detail-item">
-                        <strong>قيمة الخصم:</strong> ${coupon.discount_value} ${coupon.discount_type === 'percentage' ? '%' : 'ريال'}
-                    </div>
-                    <div class="detail-item">
-                        <strong>الحد الأدنى للطلب:</strong> ${coupon.min_order_amount} ريال
-                    </div>
-                    <div class="detail-item">
-                        <strong>الحد الأقصى للاستخدام:</strong> ${coupon.max_uses === -1 ? 'غير محدود' : coupon.max_uses}
-                    </div>
-                    <div class="detail-item">
-                        <strong>تم استخدامه:</strong> ${coupon.used_count} مرة
-                    </div>
-                    <div class="detail-item">
-                        <strong>صالح من:</strong> ${new Date(coupon.valid_from).toLocaleDateString('ar-SA')}
-                    </div>
-                    <div class="detail-item">
-                        <strong>صالح حتى:</strong> ${new Date(coupon.valid_until).toLocaleDateString('ar-SA')}
-                    </div>
-                </div>
-            </div>
-        `;
-      });
-    }
-
-    html += `
-        </div>
-
-        <!-- نموذج إضافة كوبون -->
-        <div id="addCouponModal" class="modal">
-            <div class="modal-content">
-                <span class="close" onclick="document.getElementById('addCouponModal').style.display='none'">&times;</span>
-                <h2>إضافة كوبون جديد</h2>
-                <form id="addCouponForm">
-                    <div class="form-group">
-                        <label>كود الكوبون</label>
-                        <input type="text" name="code" class="form-control" required>
-                    </div>
-                    <div class="form-group">
-                        <label>الوصف</label>
-                        <input type="text" name="description" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label>نوع الخصم</label>
-                        <select name="discount_type" class="form-control">
-                            <option value="percentage">نسبة مئوية (%)</option>
-                            <option value="fixed">ثابت (ريال)</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>قيمة الخصم</label>
-                        <input type="number" name="discount_value" class="form-control" required>
-                    </div>
-                    <div class="form-group">
-                        <label>الحد الأدنى لقيمة الطلب</label>
-                        <input type="number" name="min_order_amount" class="form-control" value="0">
-                    </div>
-                    <div class="form-group">
-                        <label>الحد الأقصى للاستخدامات (-1 للغير محدود)</label>
-                        <input type="number" name="max_uses" class="form-control" value="-1">
-                    </div>
-                    <div class="form-group">
-                        <label>تاريخ البدء</label>
-                        <input type="datetime-local" name="valid_from" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label>تاريخ الانتهاء</label>
-                        <input type="datetime-local" name="valid_until" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" name="is_active" checked> نشط
-                        </label>
-                    </div>
-                    <button type="submit" class="btn btn-success">حفظ الكوبون</button>
-                </form>
-            </div>
-        </div>
-
-        <script>
-            // إضافة كوبون جديد
-            document.getElementById('addCouponForm').addEventListener('submit', function(e) {
-                e.preventDefault();
-
-                const formData = new FormData(this);
-                const data = {};
-
-                for (let [key, value] of formData.entries()) {
-                    if (key === 'is_active') {
-                        data[key] = value ? 1 : 0;
-                    } else if (key === 'discount_value' || key === 'min_order_amount' || key === 'max_uses') {
-                        data[key] = parseFloat(value);
-                    } else {
-                        data[key] = value;
-                    }
-                }
-
-                fetch('/api/coupons', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(data)
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        alert('✅ ' + data.message);
-                        location.reload();
-                    } else {
-                        alert('❌ ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    alert('❌ حدث خطأ: ' + error);
-                });
-            });
-
-            // حذف كوبون
-            function deleteCoupon(id) {
-                if (confirm('⚠️ هل أنت متأكد من حذف هذا الكوبون؟')) {
-                    fetch('/api/coupons/' + id, { method: 'DELETE' })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.status === 'success') {
-                                alert('✅ ' + data.message);
-                                location.reload();
-                            } else {
-                                alert('❌ ' + data.message);
-                            }
-                        })
-                        .catch(error => {
-                            alert('❌ حدث خطأ: ' + error);
-                        });
-                }
-            }
-
-            // تعديل كوبون (سيتم تنفيذها لاحقاً)
-            function editCoupon(id) {
-                alert('ميزة التعديل قيد التطوير');
-            }
-        </script>
-    </body>
-    </html>
-    `;
-
-    res.send(html);
-  });
-});
-
 // معالجة الأخطاء
 app.use((err, req, res, next) => {
   console.error('❌ خطأ غير متوقع:', err);
@@ -1923,8 +1858,10 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('📊 قاعدة البيانات: SQLite (في الذاكرة)');
   console.log('✅ جاهز لاستقبال طلبات Flutter');
   console.log('🎯 يدعم اللغة العربية بشكل كامل');
+  console.log('🎫 نظام الكوبونات: مفعل ومتكامل مع التعديل');
   console.log('📋 صفحات العرض:');
   console.log('   📊 /admin - صفحة عرض البيانات');
   console.log('   🛠️ /admin/advanced - لوحة التحكم');
   console.log('   🛒 /admin/orders - إدارة الطلبات');
+  console.log('   🎫 /admin/coupons - إدارة الكوبونات');
 });
