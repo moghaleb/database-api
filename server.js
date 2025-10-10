@@ -1,6 +1,9 @@
 const express = require('express');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
+const ExcelJS = require('exceljs'); // إضافة مكتبة Excel
+const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -8,6 +11,14 @@ const PORT = process.env.PORT || 10000;
 // ======== Middleware ========
 app.use(cors());
 app.use(express.json());
+app.use(express.static('public')); // لخدمة الملفات المحملة
+
+// ======== إنشاء مجلد التصدير ========
+const exportsDir = path.join(__dirname, 'exports');
+if (!fs.existsSync(exportsDir)) {
+    fs.mkdirSync(exportsDir, { recursive: true });
+    console.log('✅ تم إنشاء مجلد التصدير');
+}
 
 // ======== Database Configuration ========
 const db = new sqlite3.Database(':memory:');
@@ -114,6 +125,8 @@ app.get('/', (req, res) => {
       'POST /api/coupons - إنشاء كوبون جديد',
       'PUT /api/coupons/:id - تعديل كوبون',
       'DELETE /api/coupons/:id - حذف كوبون',
+      'GET /api/export-sales - تصدير المبيعات إلى Excel',
+      'GET /api/export-all-sales - تصدير سريع للمبيعات',
       'GET /admin - صفحة عرض البيانات',
       'GET /admin/advanced - لوحة التحكم',
       'GET /admin/orders - إدارة الطلبات',
@@ -881,6 +894,419 @@ app.delete('/api/coupons/:id', (req, res) => {
   });
 });
 
+// ======== واجهات تصدير المبيعات ========
+
+// دوال مساعدة للتصدير
+function getOrderStatusText(status) {
+    const statusMap = {
+        'pending': 'قيد الانتظار',
+        'completed': 'مكتمل',
+        'cancelled': 'ملغي'
+    };
+    return statusMap[status] || status;
+}
+
+function getPaymentMethodText(method) {
+    const methodMap = {
+        'online': 'دفع إلكتروني',
+        'cash': 'الدفع عند الاستلام'
+    };
+    return methodMap[method] || method;
+}
+
+// API تصدير المبيعات إلى Excel
+app.get('/api/export-sales', async (req, res) => {
+    try {
+        const { 
+            start_date, 
+            end_date, 
+            export_type = 'all',
+            customer_name,
+            order_status 
+        } = req.query;
+
+        console.log('📊 طلب تصدير المبيعات:', { 
+            start_date, 
+            end_date, 
+            export_type,
+            customer_name,
+            order_status 
+        });
+
+        // بناء استعلام SQL بناءً على الفلاتر
+        let sqlQuery = `
+            SELECT o.*,
+                   json_extract(o.cart_items, '$') as cart_items_json
+            FROM orders o
+        `;
+        
+        const conditions = [];
+        const params = [];
+
+        // إضافة الفلاتر إذا كانت موجودة
+        if (start_date && end_date) {
+            conditions.push('o.order_date BETWEEN ? AND ?');
+            params.push(start_date, end_date);
+        } else if (start_date) {
+            conditions.push('o.order_date >= ?');
+            params.push(start_date);
+        } else if (end_date) {
+            conditions.push('o.order_date <= ?');
+            params.push(end_date);
+        }
+
+        if (customer_name) {
+            conditions.push('o.customer_name LIKE ?');
+            params.push(`%${customer_name}%`);
+        }
+
+        if (order_status && order_status !== 'all') {
+            conditions.push('o.order_status = ?');
+            params.push(order_status);
+        }
+
+        if (conditions.length > 0) {
+            sqlQuery += ' WHERE ' + conditions.join(' AND ');
+        }
+
+        sqlQuery += ' ORDER BY o.created_at DESC';
+
+        // جلب البيانات من قاعدة البيانات
+        const orders = await new Promise((resolve, reject) => {
+            db.all(sqlQuery, params, (err, rows) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                
+                // تحويل بيانات السلة من JSON
+                const processedOrders = rows.map(order => ({
+                    ...order,
+                    cart_items: JSON.parse(order.cart_items_json)
+                }));
+                
+                resolve(processedOrders);
+            });
+        });
+
+        if (orders.length === 0) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'لا توجد بيانات للتصدير في الفترة المحددة'
+            });
+        }
+
+        // إنشاء ملف Excel جديد
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'نظام المبيعات';
+        workbook.created = new Date();
+
+        // ======== ورقة الملخص ========
+        const summarySheet = workbook.addWorksheet('ملخص المبيعات');
+        
+        // تنسيق العنوان
+        summarySheet.mergeCells('A1:H1');
+        const titleCell = summarySheet.getCell('A1');
+        titleCell.value = 'تقرير المبيعات - نظام المتجر';
+        titleCell.font = { bold: true, size: 16, color: { argb: 'FFFFFF' } };
+        titleCell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: '2E7D32' }
+        };
+        titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // معلومات الفترة
+        summarySheet.mergeCells('A2:H2');
+        const periodCell = summarySheet.getCell('A2');
+        const periodText = start_date && end_date 
+            ? `الفترة: من ${start_date} إلى ${end_date}`
+            : 'جميع الفترات';
+        periodCell.value = periodText;
+        periodCell.font = { bold: true, size: 12 };
+        periodCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // إحصائيات المبيعات
+        const totalSales = orders.reduce((sum, order) => sum + parseFloat(order.total_amount), 0);
+        const totalDiscounts = orders.reduce((sum, order) => sum + parseFloat(order.discount_amount), 0);
+        const netSales = totalSales - totalDiscounts;
+        const totalOrders = orders.length;
+        const completedOrders = orders.filter(order => order.order_status === 'completed').length;
+        const pendingOrders = orders.filter(order => order.order_status === 'pending').length;
+
+        summarySheet.addRow([]);
+        summarySheet.addRow(['إحصائيات المبيعات', '', '', '', '', '', '', '']);
+        summarySheet.addRow(['إجمالي المبيعات', `${totalSales.toFixed(2)} ر.س`, '', '', '', '', '', '']);
+        summarySheet.addRow(['إجمالي الخصومات', `${totalDiscounts.toFixed(2)} ر.س`, '', '', '', '', '', '']);
+        summarySheet.addRow(['صافي المبيعات', `${netSales.toFixed(2)} ر.س`, '', '', '', '', '', '']);
+        summarySheet.addRow(['إجمالي الطلبات', totalOrders, '', '', '', '', '', '']);
+        summarySheet.addRow(['الطلبات المكتملة', completedOrders, '', '', '', '', '', '']);
+        summarySheet.addRow(['الطلبات قيد الانتظار', pendingOrders, '', '', '', '', '', '']);
+
+        // ======== ورقة التفاصيل ========
+        const detailsSheet = workbook.addWorksheet('تفاصيل الطلبات');
+
+        // عناوين الأعمدة
+        detailsSheet.columns = [
+            { header: 'رقم الطلب', key: 'order_number', width: 15 },
+            { header: 'تاريخ الطلب', key: 'order_date', width: 20 },
+            { header: 'اسم العميل', key: 'customer_name', width: 20 },
+            { header: 'هاتف العميل', key: 'customer_phone', width: 15 },
+            { header: 'بريد العميل', key: 'customer_email', width: 25 },
+            { header: 'حالة الطلب', key: 'order_status', width: 15 },
+            { header: 'طريقة الدفع', key: 'payment_method', width: 15 },
+            { header: 'إجمالي الطلب', key: 'total_amount', width: 15 },
+            { header: 'قيمة الخصم', key: 'discount_amount', width: 15 },
+            { header: 'الصافي', key: 'net_amount', width: 15 },
+            { header: 'كود الخصم', key: 'coupon_code', width: 15 },
+            { header: 'عدد المنتجات', key: 'items_count', width: 15 },
+            { header: 'المنتجات', key: 'products', width: 40 }
+        ];
+
+        // تنسيق رأس الجدول
+        const headerRow = detailsSheet.getRow(1);
+        headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
+        headerRow.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: '2196F3' }
+        };
+        headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // إضافة البيانات
+        orders.forEach(order => {
+            const netAmount = parseFloat(order.total_amount) - parseFloat(order.discount_amount);
+            const productsText = order.cart_items.map(item => 
+                `${item.name} (${item.quantity}x)`
+            ).join('، ');
+
+            detailsSheet.addRow({
+                order_number: order.order_number,
+                order_date: new Date(order.order_date).toLocaleString('ar-SA'),
+                customer_name: order.customer_name,
+                customer_phone: order.customer_phone,
+                customer_email: order.customer_email,
+                order_status: getOrderStatusText(order.order_status),
+                payment_method: getPaymentMethodText(order.payment_method),
+                total_amount: `${parseFloat(order.total_amount).toFixed(2)} ر.س`,
+                discount_amount: `${parseFloat(order.discount_amount).toFixed(2)} ر.س`,
+                net_amount: `${netAmount.toFixed(2)} ر.س`,
+                coupon_code: order.coupon_code || 'لا يوجد',
+                items_count: order.cart_items.length,
+                products: productsText
+            });
+        });
+
+        // تنسيق الأرقام
+        detailsSheet.eachRow((row, rowNumber) => {
+            if (rowNumber > 1) {
+                row.alignment = { horizontal: 'right', vertical: 'middle' };
+            }
+        });
+
+        // ======== ورقة تحليل المنتجات ========
+        const productsSheet = workbook.addWorksheet('تحليل المنتجات');
+
+        // تحليل مبيعات المنتجات
+        const productAnalysis = {};
+        orders.forEach(order => {
+            order.cart_items.forEach(item => {
+                const productName = item.name || 'منتج غير معروف';
+                const quantity = item.quantity || 1;
+                const price = parseFloat(item.price) || 0;
+                const total = quantity * price;
+
+                if (!productAnalysis[productName]) {
+                    productAnalysis[productName] = {
+                        quantity: 0,
+                        totalSales: 0,
+                        ordersCount: 0
+                    };
+                }
+
+                productAnalysis[productName].quantity += quantity;
+                productAnalysis[productName].totalSales += total;
+                productAnalysis[productName].ordersCount += 1;
+            });
+        });
+
+        // عناوين أعمدة تحليل المنتجات
+        productsSheet.columns = [
+            { header: 'اسم المنتج', key: 'product_name', width: 30 },
+            { header: 'الكمية المباعة', key: 'quantity', width: 15 },
+            { header: 'إجمالي المبيعات', key: 'total_sales', width: 20 },
+            { header: 'عدد الطلبات', key: 'orders_count', width: 15 },
+            { header: 'متوسط السعر', key: 'avg_price', width: 15 }
+        ];
+
+        // تنسيق رأس الجدول
+        const productsHeader = productsSheet.getRow(1);
+        productsHeader.font = { bold: true, color: { argb: 'FFFFFF' } };
+        productsHeader.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF9800' }
+        };
+        productsHeader.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // إضافة بيانات تحليل المنتجات
+        Object.entries(productAnalysis).forEach(([productName, data]) => {
+            const avgPrice = data.totalSales / data.quantity;
+            
+            productsSheet.addRow({
+                product_name: productName,
+                quantity: data.quantity,
+                total_sales: `${data.totalSales.toFixed(2)} ر.س`,
+                orders_count: data.ordersCount,
+                avg_price: `${avgPrice.toFixed(2)} ر.س`
+            });
+        });
+
+        // تنسيق أوراق العمل
+        [summarySheet, detailsSheet, productsSheet].forEach(sheet => {
+            sheet.eachRow((row, rowNumber) => {
+                row.alignment = { horizontal: 'right', vertical: 'middle' };
+            });
+        });
+
+        // إنشاء اسم للملف
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `sales-report-${timestamp}.xlsx`;
+        const filepath = path.join(exportsDir, filename);
+
+        // حفظ الملف
+        await workbook.xlsx.writeFile(filepath);
+
+        console.log('✅ تم تصدير المبيعات إلى Excel:', {
+            filename,
+            orders_count: orders.length,
+            file_size: `${(fs.statSync(filepath).size / 1024 / 1024).toFixed(2)} MB`
+        });
+
+        // إرسال الملف للعميل
+        res.download(filepath, filename, (err) => {
+            if (err) {
+                console.error('❌ خطأ في إرسال الملف:', err);
+                return res.status(500).json({
+                    status: 'error',
+                    message: 'فشل في تحميل الملف'
+                });
+            }
+
+            // حذف الملف بعد التنزيل (اختياري)
+            setTimeout(() => {
+                fs.unlink(filepath, (unlinkErr) => {
+                    if (unlinkErr) {
+                        console.error('❌ خطأ في حذف الملف:', unlinkErr);
+                    } else {
+                        console.log('✅ تم حذف الملف المؤقت:', filename);
+                    }
+                });
+            }, 30000); // حذف بعد 30 ثانية
+        });
+
+    } catch (error) {
+        console.error('❌ خطأ في تصدير المبيعات:', error);
+        res.status(500).json({
+            status: 'error',
+            message: 'فشل في تصدير البيانات: ' + error.message
+        });
+    }
+});
+
+// API تصدير سريع لجميع المبيعات
+app.get('/api/export-all-sales', async (req, res) => {
+    try {
+        const orders = await new Promise((resolve, reject) => {
+            db.all(`
+                SELECT o.*, 
+                       json_extract(o.cart_items, '$') as cart_items_json
+                FROM orders o 
+                ORDER BY o.created_at DESC
+            `, (err, rows) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                
+                const processedOrders = rows.map(order => ({
+                    ...order,
+                    cart_items: JSON.parse(order.cart_items_json)
+                }));
+                
+                resolve(processedOrders);
+            });
+        });
+
+        if (orders.length === 0) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'لا توجد طلبات للتصدير'
+            });
+        }
+
+        // إنشاء ملف Excel مبسط
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('المبيعات');
+
+        worksheet.columns = [
+            { header: 'رقم الطلب', key: 'order_number', width: 15 },
+            { header: 'التاريخ', key: 'order_date', width: 20 },
+            { header: 'العميل', key: 'customer_name', width: 20 },
+            { header: 'الهاتف', key: 'customer_phone', width: 15 },
+            { header: 'الإجمالي', key: 'total_amount', width: 15 },
+            { header: 'الخصم', key: 'discount_amount', width: 15 },
+            { header: 'الصافي', key: 'net_amount', width: 15 },
+            { header: 'الحالة', key: 'order_status', width: 15 }
+        ];
+
+        // تنسيق الرأس
+        const headerRow = worksheet.getRow(1);
+        headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
+        headerRow.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: '4CAF50' }
+        };
+
+        // إضافة البيانات
+        orders.forEach(order => {
+            const netAmount = parseFloat(order.total_amount) - parseFloat(order.discount_amount);
+            
+            worksheet.addRow({
+                order_number: order.order_number,
+                order_date: new Date(order.order_date).toLocaleString('ar-SA'),
+                customer_name: order.customer_name,
+                customer_phone: order.customer_phone,
+                total_amount: `${parseFloat(order.total_amount).toFixed(2)} ر.س`,
+                discount_amount: `${parseFloat(order.discount_amount).toFixed(2)} ر.س`,
+                net_amount: `${netAmount.toFixed(2)} ر.س`,
+                order_status: getOrderStatusText(order.order_status)
+            });
+        });
+
+        // تنسيق جميع الصفوف
+        worksheet.eachRow((row, rowNumber) => {
+            row.alignment = { horizontal: 'right', vertical: 'middle' };
+        });
+
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `all-sales-${timestamp}.xlsx`;
+        const filepath = path.join(exportsDir, filename);
+
+        await workbook.xlsx.writeFile(filepath);
+
+        res.download(filepath, filename);
+
+    } catch (error) {
+        console.error('❌ خطأ في التصدير السريع:', error);
+        res.status(500).json({
+            status: 'error',
+            message: 'فشل في التصدير: ' + error.message
+        });
+    }
+});
+
 // ======== صفحات الإدارة ========
 
 // صفحة ويب لعرض البيانات
@@ -1135,7 +1561,7 @@ app.get('/admin/advanced', (req, res) => {
   });
 });
 
-// صفحة إدارة الطلبات
+// صفحة إدارة الطلبات - محدثة مع ميزة التصدير
 app.get('/admin/orders', (req, res) => {
   db.all('SELECT * FROM orders ORDER BY created_at DESC', (err, rows) => {
     let html = `
@@ -1161,9 +1587,25 @@ app.get('/admin/orders', (req, res) => {
             .items-list { background: #f8f9fa; padding: 15px; border-radius: 8px; }
             .item-card { background: white; padding: 10px; margin-bottom: 8px; border-radius: 6px; border-left: 3px solid #ff6b6b; }
             .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-            .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+            .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
+            .nav-btn:hover { background: #ff6b6b; color: white; transform: translateY(-2px); }
             .empty-state { text-align: center; padding: 60px; color: #666; background: white; border-radius: 15px; }
             .customer-info { background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+            .export-section { background: white; padding: 25px; border-radius: 15px; margin-bottom: 30px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+            .export-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px; }
+            .form-group { display: flex; flex-direction: column; }
+            .form-label { margin-bottom: 5px; font-weight: 600; color: #333; }
+            .form-control { padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
+            .btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
+            .btn-success { background: #4CAF50; color: white; }
+            .btn-success:hover { background: #388E3C; transform: translateY(-2px); }
+            .btn-info { background: #2196F3; color: white; }
+            .btn-info:hover { background: #1976D2; transform: translateY(-2px); }
+            .quick-export { display: flex; gap: 10px; flex-wrap: wrap; }
+            .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
+            .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+            .stat-number { font-size: 24px; font-weight: bold; }
+            .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
         </style>
     </head>
     <body>
@@ -1178,6 +1620,69 @@ app.get('/admin/orders', (req, res) => {
                 <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
                 <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
+            </div>
+
+            <!-- قسم تصدير المبيعات -->
+            <div class="export-section">
+                <h3 style="margin: 0 0 20px 0; color: #333;">📈 تصدير تقارير المبيعات</h3>
+                
+                <form id="exportForm" class="export-form">
+                    <div class="form-group">
+                        <label class="form-label">من تاريخ</label>
+                        <input type="date" name="start_date" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">إلى تاريخ</label>
+                        <input type="date" name="end_date" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">اسم العميل</label>
+                        <input type="text" name="customer_name" class="form-control" placeholder="بحث بالاسم...">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">حالة الطلب</label>
+                        <select name="order_status" class="form-control">
+                            <option value="all">جميع الحالات</option>
+                            <option value="pending">قيد الانتظار</option>
+                            <option value="completed">مكتمل</option>
+                            <option value="cancelled">ملغي</option>
+                        </select>
+                    </div>
+                </form>
+
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button onclick="exportSales()" class="btn btn-success">📊 تصدير مفصل (Excel)</button>
+                    <button onclick="exportAllSales()" class="btn btn-info">🚀 تصدير سريع (كل البيانات)</button>
+                    <button onclick="resetExportForm()" class="btn" style="background: #6c757d; color: white;">🔄 مسح الفلاتر</button>
+                </div>
+
+                <div style="margin-top: 15px; padding: 15px; background: #e8f5e8; border-radius: 8px; border-right: 4px solid #4CAF50;">
+                    <strong>💡 ملاحظة:</strong> 
+                    <ul style="margin: 10px 0 0 20px; color: #555;">
+                        <li>التصدير المفصل يحتوي على 3 أوراق: ملخص، تفاصيل الطلبات، تحليل المنتجات</li>
+                        <li>التصدير السريع يحتوي على البيانات الأساسية فقط</li>
+                        <li>يمكنك استخدام الفلاتر لتصدير بيانات محددة</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card" style="border-right: 4px solid #2196F3;">
+                    <div class="stat-number" style="color: #2196F3;">${rows.length}</div>
+                    <div class="stat-label">إجمالي الطلبات</div>
+                </div>
+                <div class="stat-card" style="border-right: 4px solid #4CAF50;">
+                    <div class="stat-number" style="color: #4CAF50;">${rows.filter(o => o.order_status === 'completed').length}</div>
+                    <div class="stat-label">طلبات مكتملة</div>
+                </div>
+                <div class="stat-card" style="border-right: 4px solid #ff9800;">
+                    <div class="stat-number" style="color: #ff9800;">${rows.filter(o => o.order_status === 'pending').length}</div>
+                    <div class="stat-label">طلبات pending</div>
+                </div>
+                <div class="stat-card" style="border-right: 4px solid #6c757d;">
+                    <div class="stat-number" style="color: #6c757d;">${rows.reduce((sum, order) => sum + parseFloat(order.total_amount), 0).toFixed(2)} ر.س</div>
+                    <div class="stat-label">إجمالي المبيعات</div>
+                </div>
             </div>
     `;
 
@@ -1264,6 +1769,30 @@ app.get('/admin/orders', (req, res) => {
         </div>
 
         <script>
+            // تصدير المبيعات مع الفلاتر
+            function exportSales() {
+                const formData = new FormData(document.getElementById('exportForm'));
+                const params = new URLSearchParams();
+                
+                for (let [key, value] of formData.entries()) {
+                    if (value) {
+                        params.append(key, value);
+                    }
+                }
+                
+                window.open('/api/export-sales?' + params.toString(), '_blank');
+            }
+
+            // تصدير سريع لجميع المبيعات
+            function exportAllSales() {
+                window.open('/api/export-all-sales', '_blank');
+            }
+
+            // مسح الفلاتر
+            function resetExportForm() {
+                document.getElementById('exportForm').reset();
+            }
+
             function updateOrderStatus(orderId, newStatus) {
                 fetch('/api/orders/' + orderId + '/status', {
                     method: 'PUT',
@@ -1859,6 +2388,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('✅ جاهز لاستقبال طلبات Flutter');
   console.log('🎯 يدعم اللغة العربية بشكل كامل');
   console.log('🎫 نظام الكوبونات: مفعل ومتكامل مع التعديل');
+  console.log('📈 نظام التصدير: مفعل (Excel)');
   console.log('📋 صفحات العرض:');
   console.log('   📊 /admin - صفحة عرض البيانات');
   console.log('   🛠️ /admin/advanced - لوحة التحكم');
