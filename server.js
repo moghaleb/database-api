@@ -279,7 +279,7 @@ app.get('/', (req, res) => {
 });
 
 // اختبار الاتصال الأساسي
-app.get('/api/test', (req, res) => {
+app.get('/api/test', checkApiAuth, (req, res) => {
   res.json({
     status: 'success',
     message: '✅ تم الاتصال بالخادم بنجاح!',
@@ -291,7 +291,7 @@ app.get('/api/test', (req, res) => {
 });
 
 // اختبار قاعدة البيانات
-app.get('/api/db-test', (req, res) => {
+app.get('/api/db-test', checkApiAuth, (req, res) => {
   db.get('SELECT 1 as test_value, datetime("now") as server_time', (err, row) => {
     if (err) {
       console.error('❌ خطأ في اختبار قاعدة البيانات:', err);
@@ -313,7 +313,7 @@ app.get('/api/db-test', (req, res) => {
 });
 
 // حفظ بيانات الاختبار
-app.post('/api/save-data', (req, res) => {
+app.post('/api/save-data', checkApiAuth, (req, res) => {
   const { name, email, phone, message } = req.body;
 
   console.log('📨 بيانات مستلمة:', { name, email, phone, message });
@@ -358,7 +358,7 @@ app.post('/api/save-data', (req, res) => {
 });
 
 // عرض جميع البيانات المحفوظة (JSON)
-app.get('/api/all-data', (req, res) => {
+app.get('/api/all-data', checkApiAuth, (req, res) => {
   db.all('SELECT * FROM test_users ORDER BY created_at DESC', (err, rows) => {
     if (err) {
       console.error('❌ خطأ في جلب البيانات:', err);
