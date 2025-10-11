@@ -1631,6 +1631,7 @@ app.get('/admin', checkAdminAuth, (req, res) => {
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/api/all-data" class="nav-btn">📋 JSON البيانات</a>
                 <a href="/api/test" class="nav-btn">🧪 اختبار الاتصال</a>
+                <button onclick="logout()" class="nav-btn" style="background: #f44336; color: white;">🚪 تسجيل الخروج</button>
             </div>
             
             <div class="stats">
@@ -1687,6 +1688,31 @@ app.get('/admin', checkAdminAuth, (req, res) => {
             setTimeout(() => {
                 location.reload();
             }, 15000);
+            
+            // دالة تسجيل الخروج
+            function logout() {
+                if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
+                    fetch('/api/admin-logout', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            // مسح الكوكي
+                            document.cookie = 'auth_token=; path=/; max-age=0';
+                            
+                            // التوجيه إلى صفحة تسجيل الدخول
+                            window.location.href = '/admin-login';
+                        } else {
+                            alert('فشل تسجيل الخروج: ' + data.message);
+                        }
+                    })
+                    .catch(error => {
+                        alert('حدث خطأ: ' + error);
+                    });
+                }
+            }
         </script>
     </body>
     </html>
@@ -1746,6 +1772,7 @@ app.get('/admin/advanced', checkAdminAuth, (req, res) => {
                 <a href="/api/orders" class="btn btn-primary">📦 JSON الطلبات</a>
                 <a href="/" class="btn btn-secondary">🏠 الرئيسية</a>
                 <button onclick="clearAllData()" class="btn btn-danger">🗑️ مسح جميع البيانات</button>
+                <button onclick="logout()" class="btn btn-danger">🚪 تسجيل الخروج</button>
                 <div style="margin-left: auto; display: flex; align-items: center; gap: 15px;">
                     <div class="stats-card">
                         <strong>عدد السجلات:</strong> <span style="color: #2196F3; font-weight: bold;">${rows.length}</span>
@@ -1813,6 +1840,31 @@ app.get('/admin/advanced', checkAdminAuth, (req, res) => {
                         .catch(error => {
                             alert('❌ حدث خطأ: ' + error);
                         });
+                }
+            }
+            
+            // دالة تسجيل الخروج
+            function logout() {
+                if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
+                    fetch('/api/admin-logout', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            // مسح الكوكي
+                            document.cookie = 'auth_token=; path=/; max-age=0';
+                            
+                            // التوجيه إلى صفحة تسجيل الدخول
+                            window.location.href = '/admin-login';
+                        } else {
+                            alert('فشل تسجيل الخروج: ' + data.message);
+                        }
+                    })
+                    .catch(error => {
+                        alert('حدث خطأ: ' + error);
+                    });
                 }
             }
             
@@ -1889,6 +1941,7 @@ app.get('/admin/orders', (req, res) => {
                 <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
+                <button onclick="logout()" class="nav-btn" style="background: #f44336; color: white;">🚪 تسجيل الخروج</button>
             </div>
 
             <!-- قسم تصدير المبيعات -->
@@ -2162,6 +2215,7 @@ app.get('/admin/coupons', (req, res) => {
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
                 <button onclick="showAddModal()" class="btn btn-success">+ إضافة كوبون جديد</button>
+                <button onclick="logout()" class="btn btn-danger">🚪 تسجيل الخروج</button>
             </div>
 
             <div class="stats-grid">
@@ -2591,6 +2645,56 @@ app.get('/admin/coupons', (req, res) => {
                         modal.style.display = 'none';
                     }
                 });
+            }
+            
+            // دالة تسجيل الخروج
+            function logout() {
+                if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
+                    fetch('/api/admin-logout', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            // مسح الكوكي
+                            document.cookie = 'auth_token=; path=/; max-age=0';
+                            
+                            // التوجيه إلى صفحة تسجيل الدخول
+                            window.location.href = '/admin-login';
+                        } else {
+                            alert('فشل تسجيل الخروج: ' + data.message);
+                        }
+                    })
+                    .catch(error => {
+                        alert('حدث خطأ: ' + error);
+                    });
+                }
+            }
+            
+            // دالة تسجيل الخروج
+            function logout() {
+                if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
+                    fetch('/api/admin-logout', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            // مسح الكوكي
+                            document.cookie = 'auth_token=; path=/; max-age=0';
+                            
+                            // التوجيه إلى صفحة تسجيل الدخول
+                            window.location.href = '/admin-login';
+                        } else {
+                            alert('فشل تسجيل الخروج: ' + data.message);
+                        }
+                    })
+                    .catch(error => {
+                        alert('حدث خطأ: ' + error);
+                    });
+                }
             }
         </script>
     </body>
