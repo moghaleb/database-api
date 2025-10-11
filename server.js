@@ -100,9 +100,102 @@ db.serialize(() => {
       });
     }
   });
+
+  // جدول إعدادات الـ admin
+  db.run(`CREATE TABLE IF NOT EXISTS admin_settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    setting_key TEXT UNIQUE NOT NULL,
+    setting_value TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`, (err) => {
+    if (err) {
+      console.error('❌ خطأ في إنشاء جدول إعدادات الـ admin:', err);
+    } else {
+      console.log('✅ تم إنشاء جدول إعدادات الـ admin بنجاح');
+
+      // إضافة بعض الإعدادات الافتراضية
+      db.run(`
+        INSERT OR IGNORE INTO admin_settings (setting_key, setting_value)
+        VALUES
+        ('theme', 'light'),
+        ('items_per_page', '10'),
+        ('auto_refresh', 'true'),
+        ('refresh_interval', '30')
+      `, (err) => {
+        if (err) {
+          console.error('❌ خطأ في إضافة الإعدادات الافتراضية:', err);
+        } else {
+          console.log('✅ تمت إضافة الإعدادات الافتراضية بنجاح');
+        }
+      });
+    }
+  });
 });
 
 // ======== Routes ========
+
+// API إعدادات الـ admin
+
+// جلب جميع الإعدادات
+app.get('/api/admin-settings', (req, res) => {
+  db.all('SELECT * FROM admin_settings ORDER BY setting_key', (err, rows) => {
+    if (err) {
+      console.error('❌ خطأ في جلب إعدادات الـ admin:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+
+    // تحويل الإعدادات إلى كائن
+    const settings = {};
+    rows.forEach(row => {
+      settings[row.setting_key] = row.setting_value;
+    });
+
+    res.json({
+      status: 'success',
+      settings: settings,
+      count: rows.length,
+      message: `تم العثور على ${rows.length} إعداد`
+    });
+  });
+});
+
+// تحديث إعداد
+app.put('/api/admin-settings/:key', (req, res) => {
+  const { key } = req.params;
+  const { value } = req.body;
+
+  if (!key || value === undefined) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'مفتاح الإعداد وقيمته مطلوبان'
+    });
+  }
+
+  db.run(
+    `INSERT OR REPLACE INTO admin_settings (setting_key, setting_value, updated_at) 
+     VALUES (?, ?, CURRENT_TIMESTAMP)`,
+    [key, String(value)],
+    function(err) {
+      if (err) {
+        console.error('❌ خطأ في تحديث إعداد الـ admin:', err);
+        return res.status(500).json({
+          status: 'error',
+          message: err.message
+        });
+      }
+
+      res.json({
+        status: 'success',
+        message: `✅ تم تحديث الإعداد "${key}" بنجاح`,
+        key: key,
+        value: value
+      });
+    }
+  );
+});
 
 // الرابط الأساسي
 app.get('/', (req, res) => {
@@ -125,6 +218,8 @@ app.get('/', (req, res) => {
       'POST /api/coupons - إنشاء كوبون جديد',
       'PUT /api/coupons/:id - تعديل كوبون',
       'DELETE /api/coupons/:id - حذف كوبون',
+      'GET /api/admin-settings - جلب إعدادات الـ admin',
+      'PUT /api/admin-settings/:key - تحديث إعداد',
       'GET /api/export-sales - تصدير المبيعات إلى Excel',
       'GET /api/export-all-sales - تصدير سريع للمبيعات',
       'GET /admin - صفحة عرض البيانات',
@@ -2380,6 +2475,213 @@ app.use((req, res) => {
   });
 });
 
+// صفحة إعدادات الـ admin
+app.get('/admin/settings', (req, res) => {
+  res.send(`
+  <!DOCTYPE html>
+  <html dir="rtl">
+  <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>إعدادات النظام - لوحة التحكم</title>
+      <style>
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
+          .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; }
+          .nav { display: flex; gap: 10px; margin-bottom: 30px; flex-wrap: wrap; }
+          .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
+          .nav-btn:hover { background: #4CAF50; color: white; transform: translateY(-2px); }
+          .settings-card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); margin-bottom: 30px; }
+          .setting-item { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid #eee; }
+          .setting-item:last-child { border-bottom: none; }
+          .setting-label { font-weight: 600; color: #333; }
+          .setting-description { font-size: 14px; color: #666; margin-top: 5px; }
+          .setting-control { flex: 1; max-width: 300px; }
+          .form-control { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
+          .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
+          .btn-primary { background: #2196F3; color: white; }
+          .btn-primary:hover { background: #1976D2; }
+          .btn-success { background: #4CAF50; color: white; }
+          .btn-success:hover { background: #388E3C; }
+          .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
+          .switch input { opacity: 0; width: 0; height: 0; }
+          .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
+          .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+          input:checked + .slider { background-color: #4CAF50; }
+          input:checked + .slider:before { transform: translateX(26px); }
+          .toast { position: fixed; bottom: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 25px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: none; z-index: 1000; }
+          .toast.show { display: block; animation: fadeIn 0.5s, fadeOut 0.5s 2.5s; }
+          @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+          @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+          .loading { display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(255,255,255,.3); border-radius: 50%; border-top-color: #fff; animation: spin 1s ease-in-out infinite; }
+          @keyframes spin { to { transform: rotate(360deg); } }
+      </style>
+  </head>
+  <body>
+      <div class="container">
+          <div class="header">
+              <h1 style="margin: 0;">⚙️ إعدادات النظام</h1>
+              <p style="margin: 10px 0 0 0; opacity: 0.9;">تخصيص إعدادات لوحة التحكم والمتجر</p>
+          </div>
+
+          <div class="nav">
+              <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
+              <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
+              <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
+              <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
+              <a href="/" class="nav-btn">🏠 الرئيسية</a>
+          </div>
+
+          <div class="settings-card">
+              <h2 style="margin-top: 0; color: #333;">الإعدادات العامة</h2>
+              
+              <div class="setting-item">
+                  <div>
+                      <div class="setting-label">الثيم</div>
+                      <div class="setting-description">اختر مظهر الواجهة</div>
+                  </div>
+                  <div class="setting-control">
+                      <select id="theme-setting" class="form-control">
+                          <option value="light">فاتح</option>
+                          <option value="dark">داكن</option>
+                          <option value="auto">تلقائي</option>
+                      </select>
+                  </div>
+              </div>
+
+              <div class="setting-item">
+                  <div>
+                      <div class="setting-label">عدد العناصر في الصفحة</div>
+                      <div class="setting-description">حدد عدد العناصر المعروضة في كل صفحة</div>
+                  </div>
+                  <div class="setting-control">
+                      <input type="number" id="items-per-page-setting" class="form-control" min="5" max="100" step="5">
+                  </div>
+              </div>
+
+              <div class="setting-item">
+                  <div>
+                      <div class="setting-label">التحديث التلقائي</div>
+                      <div class="setting-description">تفعيل التحديث التلقائي للبيانات</div>
+                  </div>
+                  <div class="setting-control">
+                      <label class="switch">
+                          <input type="checkbox" id="auto-refresh-setting">
+                          <span class="slider"></span>
+                      </label>
+                  </div>
+              </div>
+
+              <div class="setting-item">
+                  <div>
+                      <div class="setting-label">فترة التحديث</div>
+                      <div class="setting-description">الفترة الزمنية بين التحديثات التلقائية (بالثواني)</div>
+                  </div>
+                  <div class="setting-control">
+                      <input type="number" id="refresh-interval-setting" class="form-control" min="10" max="300" step="10">
+                  </div>
+              </div>
+
+              <div style="text-align: center; margin-top: 30px;">
+                  <button id="save-settings-btn" class="btn btn-success">💾 حفظ الإعدادات</button>
+              </div>
+          </div>
+      </div>
+
+      <div id="toast" class="toast"></div>
+
+      <script>
+          // جلب الإعدادات الحالية
+          document.addEventListener('DOMContentLoaded', function() {
+              fetch('/api/admin-settings')
+                  .then(response => response.json())
+                  .then(data => {
+                      if (data.status === 'success') {
+                          const settings = data.settings;
+                          
+                          // تعيين قيم الإعدادات
+                          document.getElementById('theme-setting').value = settings.theme || 'light';
+                          document.getElementById('items-per-page-setting').value = settings.items_per_page || '10';
+                          document.getElementById('auto-refresh-setting').checked = settings.auto_refresh === 'true';
+                          document.getElementById('refresh-interval-setting').value = settings.refresh_interval || '30';
+                      }
+                  })
+                  .catch(error => {
+                      showToast('حدث خطأ في جلب الإعدادات: ' + error, 'error');
+                  });
+          });
+
+          // حفظ الإعدادات
+          document.getElementById('save-settings-btn').addEventListener('click', function() {
+              const settings = {
+                  theme: document.getElementById('theme-setting').value,
+                  items_per_page: document.getElementById('items-per-page-setting').value,
+                  auto_refresh: document.getElementById('auto-refresh-setting').checked,
+                  refresh_interval: document.getElementById('refresh-interval-setting').value
+              };
+
+              // تعطيل الزر وإظهار التحميل
+              const btn = this;
+              const originalText = btn.innerHTML;
+              btn.innerHTML = '<span class="loading"></span> جاري الحفظ...';
+              btn.disabled = true;
+
+              // حفظ كل إعداد على حدة
+              const promises = Object.entries(settings).map(([key, value]) => {
+                  return fetch('/api/admin-settings/' + key, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ value: value })
+                  })
+                  .then(response => response.json());
+              });
+
+              Promise.all(promises)
+                  .then(results => {
+                      const allSuccess = results.every(result => result.status === 'success');
+                      
+                      if (allSuccess) {
+                          showToast('✅ تم حفظ الإعدادات بنجاح');
+                          
+                          // تطبيق الثيم فوراً
+                          if (settings.theme === 'dark') {
+                              document.body.style.backgroundColor = '#222';
+                              document.body.style.color = '#fff';
+                          } else if (settings.theme === 'light') {
+                              document.body.style.backgroundColor = '#f0f2f5';
+                              document.body.style.color = '#333';
+                          }
+                      } else {
+                          showToast('❌ حدث خطأ في حفظ بعض الإعدادات', 'error');
+                      }
+                  })
+                  .catch(error => {
+                      showToast('❌ حدث خطأ: ' + error, 'error');
+                  })
+                  .finally(() => {
+                      // استعادة الزر
+                      btn.innerHTML = originalText;
+                      btn.disabled = false;
+                  });
+          });
+
+          // دالة عرض الإشعارات
+          function showToast(message, type = 'success') {
+              const toast = document.getElementById('toast');
+              toast.textContent = message;
+              toast.style.background = type === 'success' ? '#4CAF50' : '#f44336';
+              toast.classList.add('show');
+              
+              setTimeout(() => {
+                  toast.classList.remove('show');
+              }, 3000);
+          }
+      </script>
+  </body>
+  </html>
+  `);
+});
+
 // بدء الخادم
 app.listen(PORT, '0.0.0.0', () => {
   console.log('🚀 الخادم يعمل على المنفذ', PORT);
@@ -2394,4 +2696,5 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('   🛠️ /admin/advanced - لوحة التحكم');
   console.log('   🛒 /admin/orders - إدارة الطلبات');
   console.log('   🎫 /admin/coupons - إدارة الكوبونات');
+  console.log('   ⚙️ /admin/settings - إعدادات النظام');
 });
