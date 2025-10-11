@@ -13,6 +13,54 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public')); // لخدمة الملفات المحملة
 
+// متغيرات المصادقة
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+const API_TOKEN = process.env.API_TOKEN || 'api_token_12345';
+
+// Middleware للتحقق من المصادقة لصفحات الـ admin
+function checkAdminAuth(req, res, next) {
+  // التحقق من وجود جلسة مصادقة
+  if (req.session && req.session.authenticated) {
+    return next();
+  }
+  
+  // التحقق من وجود كوكي المصادقة
+  const authCookie = req.cookies.auth_token;
+  if (authCookie === API_TOKEN) {
+    req.session.authenticated = true;
+    return next();
+  }
+  
+  // إذا لم يتم المصادقة، إعادة توجيه إلى صفحة تسجيل الدخول
+  res.redirect('/admin-login');
+}
+
+// Middleware للتحقق من المصادقة لـ API
+function checkApiAuth(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  
+  if (!authHeader || authHeader !== `Bearer ${API_TOKEN}`) {
+    return res.status(401).json({
+      status: 'error',
+      message: 'غير مصرح بالوصول إلى هذا الـ API'
+    });
+  }
+  
+  next();
+}
+
+// إضافة دعم للجلسات والكوكيز
+const session = require('express-session');
+const cookieParser = require('cookie-parser');
+
+app.use(cookieParser());
+app.use(session({
+  secret: 'your-secret-key',
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: false } // في بيئة الإنتاج، يجب أن يكون true مع HTTPS
+}));
+
 // ======== إنشاء مجلد التصدير ========
 const exportsDir = path.join(__dirname, 'exports');
 if (!fs.existsSync(exportsDir)) {
@@ -1404,8 +1452,131 @@ app.get('/api/export-all-sales', async (req, res) => {
 
 // ======== صفحات الإدارة ========
 
+// صفحة تسجيل دخول الـ admin
+app.get('/admin-login', (req, res) => {
+  res.send(`
+  <!DOCTYPE html>
+  <html dir="rtl">
+  <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>تسجيل الدخول - لوحة التحكم</title>
+      <style>
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+          .login-container { background: rgba(255, 255, 255, 0.95); padding: 40px; border-radius: 15px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+          .login-header { text-align: center; margin-bottom: 30px; }
+          .login-header h1 { margin: 0 0 10px 0; color: #333; }
+          .login-header p { margin: 0; color: #666; }
+          .form-group { margin-bottom: 20px; }
+          .form-label { display: block; margin-bottom: 8px; font-weight: 600; color: #333; }
+          .form-control { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
+          .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; background: #667eea; color: white; font-size: 16px; font-weight: 600; cursor: pointer; transition: background 0.3s; }
+          .btn:hover { background: #5a67d8; }
+          .alert { padding: 12px; border-radius: 8px; margin-bottom: 20px; text-align: center; }
+          .alert-danger { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+          .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+          .logo { font-size: 48px; margin-bottom: 20px; }
+      </style>
+  </head>
+  <body>
+      <div class="login-container">
+          <div class="login-header">
+              <div class="logo">🔐</div>
+              <h1>تسجيل الدخول</h1>
+              <p>الرجاء إدخال بيانات الاعتماد للوصول إلى لوحة التحكم</p>
+          </div>
+          
+          <div id="alert-container"></div>
+          
+          <form id="login-form">
+              <div class="form-group">
+                  <label class="form-label">كلمة المرور</label>
+                  <input type="password" id="password" class="form-control" placeholder="أدخل كلمة المرور" required>
+              </div>
+              
+              <button type="submit" class="btn">تسجيل الدخول</button>
+          </form>
+      </div>
+      
+      <script>
+          document.getElementById('login-form').addEventListener('submit', function(e) {
+              e.preventDefault();
+              
+              const password = document.getElementById('password').value;
+              const alertContainer = document.getElementById('alert-container');
+              
+              // إرسال طلب تسجيل الدخول
+              fetch('/api/admin-login', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ password: password })
+              })
+              .then(response => response.json())
+              .then(data => {
+                  if (data.status === 'success') {
+                      // حفظ التوكن في الكوكي
+                      document.cookie = \`auth_token=\${data.token}; path=/; max-age=\${30 * 24 * 60 * 60}\`; // 30 يوم
+                      
+                      // إظهار رسالة نجاح
+                      alertContainer.innerHTML = '<div class="alert alert-success">✅ تم تسجيل الدخول بنجاح، جاري التوجيه...</div>';
+                      
+                      // التوجيه إلى صفحة الـ admin
+                      setTimeout(() => {
+                          window.location.href = '/admin';
+                      }, 1500);
+                  } else {
+                      // إظهار رسالة خطأ
+                      alertContainer.innerHTML = \`<div class="alert alert-danger">❌ \${data.message}</div>\`;
+                  }
+              })
+              .catch(error => {
+                  alertContainer.innerHTML = \`<div class="alert alert-danger">❌ حدث خطأ: \${error}</div>\`;
+              });
+          });
+      </script>
+  </body>
+  </html>
+  `);
+});
+
+// API لتسجيل دخول الـ admin
+app.post('/api/admin-login', (req, res) => {
+  const { password } = req.body;
+  
+  if (!password) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'كلمة المرور مطلوبة'
+    });
+  }
+  
+  if (password === ADMIN_PASSWORD) {
+    res.json({
+      status: 'success',
+      message: 'تم تسجيل الدخول بنجاح',
+      token: API_TOKEN
+    });
+  } else {
+    res.status(401).json({
+      status: 'error',
+      message: 'كلمة المرور غير صحيحة'
+    });
+  }
+});
+
+// API لتسجيل الخروج
+app.post('/api/admin-logout', (req, res) => {
+  // مسح جلسة المستخدم
+  req.session.destroy();
+  
+  res.json({
+    status: 'success',
+    message: 'تم تسجيل الخروج بنجاح'
+  });
+});
+
 // صفحة ويب لعرض البيانات
-app.get('/admin', (req, res) => {
+app.get('/admin', checkAdminAuth, (req, res) => {
   db.all('SELECT * FROM test_users ORDER BY created_at DESC', (err, rows) => {
     if (err) {
       return res.send(`
@@ -1526,7 +1697,7 @@ app.get('/admin', (req, res) => {
 });
 
 // صفحة الإدارة المتقدمة
-app.get('/admin/advanced', (req, res) => {
+app.get('/admin/advanced', checkAdminAuth, (req, res) => {
   db.all('SELECT * FROM test_users ORDER BY created_at DESC', (err, rows) => {
     let html = `
     <!DOCTYPE html>
