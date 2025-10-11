@@ -1457,6 +1457,7 @@ app.get('/admin', (req, res) => {
                 <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
                 <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
                 <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
+                <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/api/all-data" class="nav-btn">📋 JSON البيانات</a>
                 <a href="/api/test" class="nav-btn">🧪 اختبار الاتصال</a>
             </div>
@@ -1569,6 +1570,7 @@ app.get('/admin/advanced', (req, res) => {
                 <a href="/admin" class="btn btn-secondary">📊 العرض البسيط</a>
                 <a href="/admin/orders" class="btn btn-success">🛒 إدارة الطلبات</a>
                 <a href="/admin/coupons" class="btn btn-info">🎫 إدارة الكوبونات</a>
+                <a href="/admin/settings" class="btn btn-info">⚙️ إعدادات النظام</a>
                 <a href="/api/all-data" class="btn btn-success">📋 JSON البيانات</a>
                 <a href="/api/orders" class="btn btn-primary">📦 JSON الطلبات</a>
                 <a href="/" class="btn btn-secondary">🏠 الرئيسية</a>
@@ -1714,6 +1716,7 @@ app.get('/admin/orders', (req, res) => {
                 <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
                 <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
                 <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
+                <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
             </div>
 
@@ -1985,6 +1988,7 @@ app.get('/admin/coupons', (req, res) => {
                 <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
                 <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
                 <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
+                <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
                 <button onclick="showAddModal()" class="btn btn-success">+ إضافة كوبون جديد</button>
             </div>
