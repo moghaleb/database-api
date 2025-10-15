@@ -1,30 +1,26 @@
 {
-  "name": "database-api",
+"name": "database-api",
   "version": "1.0.0",
-  "description": "API for Flutter connection tester with Arabic support and web interface",
+  "description": "Node.js API for Flutter mobile app",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": ["api", "mysql", "flutter", "nodejs"],
+  "author": "Your Name",
+  "license": "MIT",
   "dependencies": {
-    "cookie-parser": "^1.4.7",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "exceljs": "^4.4.0",
     "express": "^4.18.2",
-    "express-session": "^1.18.2",
-    "sqlite3": "^5.1.6"
+    "cors": "^2.8.5",
+    "mysql2": "^3.6.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "keywords": [
-    "flutter",
-    "api",
-    "sqlite",
-    "arabic",
-    "render",
-    "web-interface"
-  ]
+  }
 }
