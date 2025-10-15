@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const sqlite3 = require('sqlite3').verbose();
 const ExcelJS = require('exceljs'); // إضافة مكتبة Excel
 const path = require('path');
@@ -11,7 +12,13 @@ const PORT = process.env.PORT || 3000;
 // ======== Middleware ========
 app.use(cors());
 app.use(express.json());
+// استخدم cookie-parser مع سر توقيع بسيط (يمكن ضبطه عبر متغير بيئي SESSION_SECRET)
+const SESSION_SECRET = process.env.SESSION_SECRET || 'dev_session_secret_please_change';
+app.use(cookieParser(SESSION_SECRET));
 app.use(express.static('public')); // لخدمة الملفات المحملة
+
+// تقبل طلبات form POST من النماذج (application/x-www-form-urlencoded)
+app.use(express.urlencoded({ extended: true }));
 
 // ======== إعداد بيانات مسؤول افتراضي (بسيط للاختبار) ========
 // ملاحظة: هذا تخزين بسيط في الذاكرة للاختبار فقط — لا تستخدمه في الإنتاج.
@@ -20,20 +27,64 @@ const ADMIN_CREDENTIALS = {
   password: process.env.ADMIN_PASS || 'admin123'
 };
 
-// صفحة تسجيل الدخول (تعامل POST فقط هنا)
-app.post('/login', (req, res) => {
+// مساعدة صغيرة للتحقق من المصادقة عبر كوكي موقعة
+function isAuthenticated(req) {
+  try {
+    const auth = req.signedCookies && req.signedCookies.admin_auth;
+    if (!auth) return false;
+    // قيمة الكوكي هي اسم المستخدم المشفّرة كـ string (بسيطة هنا)
+    return auth === ADMIN_CREDENTIALS.username;
+  } catch (e) {
+    return false;
+  }
+}
+
+// صفحة تسجيل الدخول (تعامل POST هنا) - عند الطلب الناجح نضع كوكي موقعة
+// Extracted login handler so it can be reused for multiple routes
+function handleLoginRequest(req, res) {
   const { username, password } = req.body;
 
   if (!username || !password) {
+    if (req.is('application/x-www-form-urlencoded')) {
+      return renderLoginPageHTML(req, res, 'اسم المستخدم وكلمة المرور مطلوبان');
+    }
     return res.status(400).json({ status: 'error', message: 'اسم المستخدم وكلمة المرور مطلوبان' });
   }
 
   if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
-    // نجاح بسيط - لا توجد جلسات حقيقية هنا
+    // ضع كوكي موقعة صالحة لمدة 12 ساعة
+    res.cookie('admin_auth', ADMIN_CREDENTIALS.username, { signed: true, httpOnly: true, maxAge: 12 * 60 * 60 * 1000 });
+    // إذا كان الطلب قادم من نموذج HTML نعيد التوجيه للوحة الإدارة
+    if (req.is('application/x-www-form-urlencoded')) {
+      return res.redirect('/admin');
+    }
     return res.json({ status: 'success', message: 'تم تسجيل الدخول بنجاح', redirect: '/admin' });
   }
 
+  if (req.is('application/x-www-form-urlencoded')) {
+    return renderLoginPageHTML(req, res, 'بيانات اعتماد غير صحيحة');
+  }
   return res.status(401).json({ status: 'error', message: 'بيانات اعتماد غير صحيحة' });
+}
+
+app.post('/login', (req, res) => handleLoginRequest(req, res));
+
+// مسارات /admin/login التي طلبتها
+app.get('/admin/login', (req, res) => {
+  if (isAuthenticated(req)) return res.redirect('/admin');
+  return renderLoginPageHTML(req, res);
+});
+
+app.post('/admin/login', (req, res) => handleLoginRequest(req, res));
+
+// مسار لتسجيل الخروج (يحذف الكوكي)
+app.get('/logout', (req, res) => {
+  res.clearCookie('admin_auth');
+  // لو طلب عبر AJAX نرسل JSON، وإلا نعيد التوجيه للصفحة الرئيسية
+  if (req.headers.accept && req.headers.accept.indexOf('application/json') !== -1) {
+    return res.json({ status: 'success', message: 'تم تسجيل الخروج' });
+  }
+  res.redirect('/');
 });
 
 // ======== إنشاء مجلد التصدير ========
@@ -156,6 +207,36 @@ db.serialize(() => {
 });
 
 // ======== Routes ========
+
+// مساعدة لعرض نموذج تسجيل الدخول البسيط عند الوصول لصفحات الإدارة بدون مصادقة
+function renderLoginPageHTML(req, res, message = '') {
+  const msgHtml = message ? `<p style="color:#d32f2f;text-align:center;margin-top:8px">${message}</p>` : '';
+  return res.send(`
+    <!DOCTYPE html>
+    <html dir="rtl">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      <title>تسجيل الدخول</title>
+      <style>body{font-family:Segoe UI,Arial;background:#f4f6fb;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0} .card{background:#fff;padding:24px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.08);width:360px} label{display:block;margin:8px 0 6px} input{width:100%;padding:10px;border:1px solid #ddd;border-radius:6px} button{width:100%;padding:10px;background:#1976D2;color:#fff;border:0;border-radius:6px;margin-top:12px} .help{font-size:13px;color:#666;text-align:center;margin-top:8px}</style>
+    </head>
+    <body>
+      <div class="card">
+        <h3 style="text-align:center;margin:0 0 12px 0">تسجيل الدخول إلى لوحة الإدارة</h3>
+        <form method="post" action="/login">
+          <label for="username">اسم المستخدم</label>
+          <input id="username" name="username" type="text" required>
+          <label for="password">كلمة المرور</label>
+          <input id="password" name="password" type="password" required>
+          <button type="submit">دخول</button>
+        </form>
+        ${msgHtml}
+        <div class="help">المستخدم الافتراضي: <strong>admin</strong> / كلمة المرور: <strong>admin123</strong></div>
+      </div>
+    </body>
+    </html>
+  `);
+}
 
 // API إعدادات الـ admin
 
@@ -1429,6 +1510,9 @@ app.get('/api/export-all-sales', async (req, res) => {
 
 // صفحة ويب لعرض البيانات
 app.get('/admin', (req, res) => {
+  if (!isAuthenticated(req)) {
+    return renderLoginPageHTML(req, res);
+  }
   db.all('SELECT * FROM test_users ORDER BY created_at DESC', (err, rows) => {
     if (err) {
       return res.send(`
@@ -1550,6 +1634,9 @@ app.get('/admin', (req, res) => {
 
 // صفحة الإدارة المتقدمة
 app.get('/admin/advanced', (req, res) => {
+  if (!isAuthenticated(req)) {
+    return renderLoginPageHTML(req, res);
+  }
   db.all('SELECT * FROM test_users ORDER BY created_at DESC', (err, rows) => {
     let html = `
     <!DOCTYPE html>
@@ -1683,6 +1770,9 @@ app.get('/admin/advanced', (req, res) => {
 
 // صفحة إدارة الطلبات - محدثة مع ميزة التصدير
 app.get('/admin/orders', (req, res) => {
+  if (!isAuthenticated(req)) {
+    return renderLoginPageHTML(req, res);
+  }
   db.all('SELECT * FROM orders ORDER BY created_at DESC', (err, rows) => {
     let html = `
     <!DOCTYPE html>
@@ -1951,6 +2041,9 @@ app.get('/admin/orders', (req, res) => {
 
 // صفحة إدارة الكوبونات - محدثة مع ميزة التعديل
 app.get('/admin/coupons', (req, res) => {
+  if (!isAuthenticated(req)) {
+    return renderLoginPageHTML(req, res);
+  }
   db.all('SELECT * FROM coupons ORDER BY created_at DESC', (err, rows) => {
     let html = `
     <!DOCTYPE html>
@@ -2504,6 +2597,9 @@ app.use((req, res) => {
 
 // صفحة إعدادات الـ admin
 app.get('/admin/settings', (req, res) => {
+  if (!isAuthenticated(req)) {
+    return renderLoginPageHTML(req, res);
+  }
   res.send(`
   <!DOCTYPE html>
   <html dir="rtl">
@@ -2724,4 +2820,16 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('   🛒 /admin/orders - إدارة الطلبات');
   console.log('   🎫 /admin/coupons - إدارة الكوبونات');
   console.log('   ⚙️ /admin/settings - إعدادات النظام');
+});
+
+// دعم مسارات /admin/login لتوافق العنوان الخارجي
+app.get('/admin/login', (req, res) => {
+  // إذا كان المستخدم مصدقاً أعِد توجيهه
+  if (isAuthenticated(req)) return res.redirect('/admin');
+  return renderLoginPageHTML(req, res);
+});
+
+app.post('/admin/login', (req, res, next) => {
+  // نعيد استخدام منطق /login الحالي
+  return app._router.stack.forEach && next ? next() : null;
 });

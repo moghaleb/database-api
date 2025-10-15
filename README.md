@@ -30,10 +30,10 @@ npm install
 npm run dev
 ```
 
-Login page
-----------
+Login page (backend-integrated)
+--------------------------------
 
-A simple login page is available at `/login.html` and posts credentials to `POST /login`.
+The administration login form is now served by the backend when you visit `/admin`.
 
 - Default credentials (for local testing):
 	- username: `admin`
@@ -41,11 +41,15 @@ A simple login page is available at `/login.html` and posts credentials to `POST
 
 You can override the admin username/password with environment variables `ADMIN_USER` and `ADMIN_PASS`.
 
-To test locally using PowerShell:
+If you need to test the API directly, you can POST JSON or submit a form to `/login`.
+
+PowerShell example (JSON API):
 
 ```powershell
 Invoke-RestMethod -Uri http://localhost:3000/login -Method POST -ContentType 'application/json' -Body (ConvertTo-Json @{username='admin'; password='admin123'}) | ConvertTo-Json -Depth 5
 ```
+
+To simulate a browser login (form submit), visit `http://localhost:3000/admin` and use the login form.
 
 Security note
 -------------
