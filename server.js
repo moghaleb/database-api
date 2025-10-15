@@ -5,17 +5,32 @@ const ExcelJS = require('exceljs'); // إضافة مكتبة Excel
 const path = require('path');
 const fs = require('fs');
 
+// Load environment variables from .env in development
+require('dotenv').config();
+
 const app = express();
 const PORT = process.env.PORT || 10000;
+
+// Validate required env vars in production
+const requiredInProd = ['ADMIN_PASSWORD', 'API_TOKEN', 'SESSION_SECRET'];
+if ((process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'prod') ) {
+  const missing = requiredInProd.filter(k => !process.env[k]);
+  if (missing.length > 0) {
+    console.error(`Missing required environment variables for production: ${missing.join(', ')}`);
+    console.error('Aborting startup. Set these variables in your environment or in your hosting provider settings.');
+    process.exit(1);
+  }
+}
 
 // ======== Middleware ========
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public')); // لخدمة الملفات المحملة
 
-// متغيرات المصادقة
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
-const API_TOKEN = process.env.API_TOKEN || 'api_token_12345';
+// متغيرات المصادقة — اقرأها من متغيرات البيئة
+// في بيئة الإنتاج ضع قيمًا حقيقية في متغيرات البيئة (أو في خدمة النشر مثل Render)
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123'; // ضع قيمة قوية في PROD
+const API_TOKEN = process.env.API_TOKEN || 'api_token_12345'; // ضع قيمة قوية في PROD
 
 // Middleware للتحقق من المصادقة لصفحات الـ admin
 function checkAdminAuth(req, res, next) {
@@ -26,27 +41,33 @@ function checkAdminAuth(req, res, next) {
   
   // التحقق من وجود كوكي المصادقة
   const authCookie = req.cookies.auth_token;
-  if (authCookie === API_TOKEN) {
-    req.session.authenticated = true;
-    return next();
-  }
-  
-  // إذا لم يتم المصادقة، إعادة توجيه إلى صفحة تسجيل الدخول
-  res.redirect('/admin-login');
+  // Determine current token (DB overrides env)
+  db.get("SELECT setting_value FROM admin_settings WHERE setting_key = 'api_token'", (err, row) => {
+    const currentToken = row && row.setting_value ? row.setting_value : API_TOKEN;
+    if (authCookie === currentToken) {
+      req.session.authenticated = true;
+      return next();
+    }
+    // إذا لم يتم المصادقة، إعادة توجيه إلى صفحة تسجيل الدخول
+    return res.redirect('/admin-login');
+  });
 }
 
 // Middleware للتحقق من المصادقة لـ API
 function checkApiAuth(req, res, next) {
   const authHeader = req.headers['authorization'];
-  
-  if (!authHeader || authHeader !== `Bearer ${API_TOKEN}`) {
-    return res.status(401).json({
-      status: 'error',
-      message: 'غير مصرح بالوصول إلى هذا الـ API'
-    });
-  }
-  
-  next();
+  // Check current token from DB first
+  db.get("SELECT setting_value FROM admin_settings WHERE setting_key = 'api_token'", (err, row) => {
+    const currentToken = row && row.setting_value ? row.setting_value : API_TOKEN;
+    if (!authHeader || authHeader !== `Bearer ${currentToken}`) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'غير مصرح بالوصول إلى هذا الـ API'
+      });
+    }
+
+    next();
+  });
 }
 
 // إضافة دعم للجلسات والكوكيز
@@ -55,7 +76,7 @@ const cookieParser = require('cookie-parser');
 
 app.use(cookieParser());
 app.use(session({
-  secret: 'your-secret-key',
+  secret: process.env.SESSION_SECRET || 'your-secret-key',
   resave: false,
   saveUninitialized: true,
   cookie: { secure: false } // في بيئة الإنتاج، يجب أن يكون true مع HTTPS
@@ -1562,6 +1583,30 @@ app.post('/api/admin-login', (req, res) => {
       message: 'كلمة المرور غير صحيحة'
     });
   }
+});
+
+// API لتغيير توكن الـ API بواسطة الـ admin (يُخزّن في جدول admin_settings)
+app.post('/api/admin/change-token', (req, res) => {
+  const { password, new_token } = req.body;
+
+  if (!password || !new_token) {
+    return res.status(400).json({ status: 'error', message: 'كلمة المرور والتوكن الجديد مطلوبان' });
+  }
+
+  if (password !== ADMIN_PASSWORD) {
+    return res.status(401).json({ status: 'error', message: 'كلمة المرور غير صحيحة' });
+  }
+
+  db.run(`INSERT OR REPLACE INTO admin_settings (setting_key, setting_value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)`,
+    ['api_token', String(new_token)], function(err) {
+      if (err) {
+        console.error('❌ خطأ في تحديث توكن الـ API:', err);
+        return res.status(500).json({ status: 'error', message: err.message });
+      }
+
+      res.json({ status: 'success', message: '✅ تم تحديث توكن الـ API بنجاح', token: new_token });
+    }
+  );
 });
 
 // API لتسجيل الخروج
