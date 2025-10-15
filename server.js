@@ -1,3 +1,4 @@
+
 const express = require('express');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
@@ -47,13 +48,116 @@ app.get('/', (req, res) => {
 });
 
 // اختبار الاتصال الأساسي
-app.get('/api/test', (req, res) => {
-  res.json({
-    status: 'success',
-    message: '✅ تم الاتصال بالخادم بنجاح!',
-    server: 'Render.com',
-    environment: 'Production',
-    timestamp: new Date().toISOString()
+// صفحة الإدارة المتقدمة
+app.get('/admin/advanced', (req, res) => {
+  db.all('SELECT * FROM test_users ORDER BY created_at DESC', (err, rows) => {
+    let html = `
+    <!DOCTYPE html>
+    <html dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <title>الإدارة المتقدمة - نظام الاختبار</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f0f2f5; }
+            .container { max-width: 1400px; margin: 0 auto; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 15px; margin-bottom: 30px; text-align: center; }
+            .controls { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; gap: 10px; flex-wrap: wrap; }
+            .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; text-decoration: none; display: inline-block; }
+            .btn-primary { background: #2196F3; color: white; }
+            .btn-danger { background: #f44336; color: white; }
+            .btn-success { background: #4CAF50; color: white; }
+            .table-container { background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { padding: 12px 15px; text-align: right; border-bottom: 1px solid #ddd; }
+            th { background: #f8f9fa; font-weight: bold; color: #333; }
+            tr:hover { background: #f5f5f5; }
+            .badge { background: #2196F3; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>🛠️ لوحة التحكم - نظام الاختبار</h1>
+                <p>إدارة وعرض جميع البيانات من تطبيق الجوال</p>
+            </div>
+            
+            <div class="controls">
+                <a href="/admin" class="btn btn-primary">📊 العرض البسيط</a>
+                <a href="/api/all-data" class="btn btn-success">📋 JSON البيانات</a>
+                <a href="/api/db-test" class="btn btn-primary">🧪 اختبار الاتصال</a>
+                <button onclick="clearData()" class="btn btn-danger">🗑️ مسح جميع البيانات</button>
+                <span style="margin-left: auto; color: #666;">عدد السجلات: <strong>${rows.length}</strong></span>
+            </div>
+            
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>الاسم</th>
+                            <th>البريد الإلكتروني</th>
+                            <th>الهاتف</th>
+                            <th>الرسالة</th>
+                            <th>تاريخ الإدخال</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+    `;
+
+    if (rows.length === 0) {
+      html += `
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 40px; color: #666;">
+                                📭 لا توجد بيانات حتى الآن
+                            </td>
+                        </tr>
+      `;
+    } else {
+      rows.forEach(user => {
+        html += `
+                        <tr>
+                            <td><span class="badge">${user.id}</span></td>
+                            <td><strong>${user.name || 'غير محدد'}</strong></td>
+                            <td>${user.email || 'غير محدد'}</td>
+                            <td>${user.phone || 'غير محدد'}</td>
+                            <td>${user.message || 'لا توجد رسالة'}</td>
+                            <td style="font-size: 12px; color: #666;">${user.created_at}</td>
+                        </tr>
+        `;
+      });
+    }
+
+    html += `
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <script>
+            function clearData() {
+                if (confirm('⚠️ هل أنت متأكد من مسح جميع البيانات؟ لا يمكن التراجع عن هذا الإجراء!')) {
+                    fetch('/api/clear-data', { method: 'DELETE' })
+                        .then(response => response.json())
+                        .then(data => {
+                            alert(data.message);
+                            location.reload();
+                        })
+                        .catch(error => {
+                            alert('❌ حدث خطأ: ' + error);
+                        });
+                }
+            }
+            
+            // تحديث تلقائي كل 10 ثواني
+            setInterval(() => {
+                location.reload();
+            }, 10000);
+        </script>
+    </body>
+    </html>
+    `;
+
+    res.send(html);
   });
 });
 

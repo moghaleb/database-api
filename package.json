@@ -1,7 +1,7 @@
 {
   "name": "database-api",
   "version": "1.0.0",
-  "description": "API for Flutter connection tester",
+  "description": "API for Flutter connection tester with Arabic support and web interface",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -14,5 +14,13 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "keywords": [
+    "flutter",
+    "api",
+    "sqlite",
+    "arabic",
+    "render",
+    "web-interface"
+  ]
 }
