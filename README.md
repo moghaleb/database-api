@@ -30,6 +30,23 @@ npm install
 npm run dev
 ```
 
+Login page
+----------
+
+A simple login page is available at `/login.html` and posts credentials to `POST /login`.
+
+- Default credentials (for local testing):
+	- username: `admin`
+	- password: `admin123`
+
+You can override the admin username/password with environment variables `ADMIN_USER` and `ADMIN_PASS`.
+
+To test locally using PowerShell:
+
+```powershell
+Invoke-RestMethod -Uri http://localhost:3000/login -Method POST -ContentType 'application/json' -Body (ConvertTo-Json @{username='admin'; password='admin123'}) | ConvertTo-Json -Depth 5
+```
+
 Security note
 -------------
 Never commit real API tokens, passwords, or session secrets to source control. Use environment variables or your cloud provider's secret store.

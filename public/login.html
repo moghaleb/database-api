@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>تسجيل الدخول</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f6fb; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; }
+        .card { background: white; padding: 28px; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.08); width: 360px; }
+        h2 { margin: 0 0 18px 0; text-align:center; }
+        label { display:block; margin-bottom:6px; font-weight:600; }
+        input[type="text"], input[type="password"] { width:100%; padding:10px 12px; margin-bottom:12px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; }
+        button { width:100%; padding:10px 12px; background:#4CAF50; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600; }
+        .message { margin-top:12px; text-align:center; color:#d32f2f; }
+        .help { margin-top:8px; font-size:13px; color:#666; text-align:center; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>تسجيل الدخول</h2>
+        <div>
+            <label for="username">اسم المستخدم</label>
+            <input id="username" type="text" placeholder="اسم المستخدم">
+
+            <label for="password">كلمة المرور</label>
+            <input id="password" type="password" placeholder="كلمة المرور">
+
+            <button id="loginBtn">دخول</button>
+
+            <div class="message" id="message"></div>
+            <div class="help">المستخدم الافتراضي: <strong>admin</strong> / كلمة المرور: <strong>admin123</strong></div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('loginBtn').addEventListener('click', async () => {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const msg = document.getElementById('message');
+            msg.style.color = '#d32f2f';
+            msg.textContent = '';
+
+            if (!username || !password) {
+                msg.textContent = 'الرجاء إدخال اسم المستخدم وكلمة المرور';
+                return;
+            }
+
+            try {
+                const res = await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await res.json();
+
+                if (res.ok && data.status === 'success') {
+                    msg.style.color = '#2e7d32';
+                    msg.textContent = 'تم تسجيل الدخول. جارٍ التحويل...';
+                    setTimeout(() => { window.location.href = data.redirect || '/admin'; }, 700);
+                } else {
+                    msg.textContent = data.message || 'فشل تسجيل الدخول';
+                }
+            } catch (err) {
+                msg.textContent = 'خطأ في الاتصال بالخادم';
+            }
+        });
+    </script>
+</body>
+</html>

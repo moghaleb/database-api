@@ -6,12 +6,35 @@ const path = require('path');
 const fs = require('fs');
 
 const app = express();
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 
 // ======== Middleware ========
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public')); // لخدمة الملفات المحملة
+
+// ======== إعداد بيانات مسؤول افتراضي (بسيط للاختبار) ========
+// ملاحظة: هذا تخزين بسيط في الذاكرة للاختبار فقط — لا تستخدمه في الإنتاج.
+const ADMIN_CREDENTIALS = {
+  username: process.env.ADMIN_USER || 'admin',
+  password: process.env.ADMIN_PASS || 'admin123'
+};
+
+// صفحة تسجيل الدخول (تعامل POST فقط هنا)
+app.post('/login', (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ status: 'error', message: 'اسم المستخدم وكلمة المرور مطلوبان' });
+  }
+
+  if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
+    // نجاح بسيط - لا توجد جلسات حقيقية هنا
+    return res.json({ status: 'success', message: 'تم تسجيل الدخول بنجاح', redirect: '/admin' });
+  }
+
+  return res.status(401).json({ status: 'error', message: 'بيانات اعتماد غير صحيحة' });
+});
 
 // ======== إنشاء مجلد التصدير ========
 const exportsDir = path.join(__dirname, 'exports');
