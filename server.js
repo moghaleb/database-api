@@ -39,6 +39,22 @@ function isAuthenticated(req) {
   }
 }
 
+// تحقق ما إذا كان الطلب قادمًا من بيئة محلية (localhost/127.0.0.1/::1)
+function isLocalRequest(req) {
+  try {
+    const hostHeader = (req.headers && req.headers.host) ? req.headers.host : '';
+    const forwarded = req.headers && (req.headers['x-forwarded-for'] || req.headers['x-forwarded-host']);
+    const ip = (req.ip || '').toString();
+
+    if (hostHeader.includes('localhost') || hostHeader.startsWith('127.')) return true;
+    if (forwarded && forwarded.toString().includes('127.0.0.1')) return true;
+    if (ip === '::1' || ip === '127.0.0.1' || ip.startsWith('::ffff:127.0.0.1')) return true;
+    return false;
+  } catch (e) {
+    return false;
+  }
+}
+
 // صفحة تسجيل الدخول (تعامل POST هنا) - عند الطلب الناجح نضع كوكي موقعة
 // Extracted login handler so it can be reused for multiple routes
 function handleLoginRequest(req, res) {
@@ -1508,11 +1524,25 @@ app.get('/api/export-all-sales', async (req, res) => {
 
 // ======== صفحات الإدارة ========
 
+// حماية مركزية لصفحات الإدارة: أي مسار يبدأ بـ /admin يتطلب تسجيل دخول
+app.use('/admin', (req, res, next) => {
+  // اسماء المسارات المسموح الوصول لها بدون مصادقة
+  const publicAdminPaths = ['/admin/login', '/admin/logout'];
+  if (publicAdminPaths.includes(req.path) || publicAdminPaths.includes(req.originalUrl)) return next();
+
+  if (!isAuthenticated(req)) {
+    // إذا كان الطلب من AJAX نعيد JSON بخطأ، وإلا نوجه لنموذج تسجيل الدخول
+    if (req.xhr || (req.headers.accept && req.headers.accept.indexOf('application/json') !== -1)) {
+      return res.status(401).json({ status: 'error', message: 'مطلوب تسجيل الدخول' });
+    }
+    return res.redirect('/admin/login');
+  }
+
+  next();
+});
+
 // صفحة ويب لعرض البيانات
 app.get('/admin', (req, res) => {
-  if (!isAuthenticated(req)) {
-    return renderLoginPageHTML(req, res);
-  }
   db.all('SELECT * FROM test_users ORDER BY created_at DESC', (err, rows) => {
     if (err) {
       return res.send(`
@@ -1634,8 +1664,10 @@ app.get('/admin', (req, res) => {
 
 // صفحة الإدارة المتقدمة
 app.get('/admin/advanced', (req, res) => {
-  if (!isAuthenticated(req)) {
-    return renderLoginPageHTML(req, res);
+  // إذا كان الوصول من localhost نمنع الفتح مباشرة
+  if (isLocalRequest(req)) {
+    // إذا أردت سلوكًا مختلفًا للطلبات المحلية أخبرني — الآن نسمح بعد المصادقة أيضاً
+    // لم تعد هناك ردود خاصة، ستتم حماية الصفحة بواسطة الميدلوير العام.
   }
   db.all('SELECT * FROM test_users ORDER BY created_at DESC', (err, rows) => {
     let html = `
@@ -1770,9 +1802,6 @@ app.get('/admin/advanced', (req, res) => {
 
 // صفحة إدارة الطلبات - محدثة مع ميزة التصدير
 app.get('/admin/orders', (req, res) => {
-  if (!isAuthenticated(req)) {
-    return renderLoginPageHTML(req, res);
-  }
   db.all('SELECT * FROM orders ORDER BY created_at DESC', (err, rows) => {
     let html = `
     <!DOCTYPE html>
@@ -2041,9 +2070,6 @@ app.get('/admin/orders', (req, res) => {
 
 // صفحة إدارة الكوبونات - محدثة مع ميزة التعديل
 app.get('/admin/coupons', (req, res) => {
-  if (!isAuthenticated(req)) {
-    return renderLoginPageHTML(req, res);
-  }
   db.all('SELECT * FROM coupons ORDER BY created_at DESC', (err, rows) => {
     let html = `
     <!DOCTYPE html>
@@ -2597,9 +2623,6 @@ app.use((req, res) => {
 
 // صفحة إعدادات الـ admin
 app.get('/admin/settings', (req, res) => {
-  if (!isAuthenticated(req)) {
-    return renderLoginPageHTML(req, res);
-  }
   res.send(`
   <!DOCTYPE html>
   <html dir="rtl">
