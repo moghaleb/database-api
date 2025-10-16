@@ -1571,7 +1571,7 @@ app.get('/admin', (req, res) => {
         <style>
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
             .container { max-width: 1200px; margin: 0 auto; }
-            .header { background: rgba(255, 255, 255, 0.95); color: #333; padding: 30px; border-radius: 15px; margin-bottom: 20px; text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.1); }
+            .header { background: rgba(255, 255, 255, 0.95); color: #333; padding: 30px; border-radius: 15px; margin-bottom: 20px; text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.1); position: relative; }
             .stats { background: rgba(255, 255, 255, 0.95); padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
             .user-card { background: rgba(255, 255, 255, 0.95); padding: 20px; margin-bottom: 15px; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-right: 4px solid #667eea; transition: transform 0.2s; }
             .user-card:hover { transform: translateY(-2px); }
@@ -1581,13 +1581,14 @@ app.get('/admin', (req, res) => {
             .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
             .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
             .nav-btn:hover { background: #667eea; color: white; transform: translateY(-2px); }
-            .logout-btn { background: #f44336; color: white; }
-            .logout-btn:hover { background: #d32f2f; }
+            .logout-btn { position: absolute; left: 20px; top: 20px; background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
+            .logout-btn:hover { background: #d32f2f; transform: translateY(-2px); }
         </style>
     </head>
     <body>
         <div class="container">
             <div class="header">
+                <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
                 <h1 style="margin: 0; color: #333;">📊 بيانات المستخدمين - نظام الاختبار</h1>
                 <p style="margin: 10px 0 0 0; color: #666;">جميع البيانات المرسلة من تطبيق الجوال</p>
             </div>
@@ -1600,7 +1601,6 @@ app.get('/admin', (req, res) => {
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/api/all-data" class="nav-btn">📋 JSON البيانات</a>
                 <a href="/api/test" class="nav-btn">🧪 اختبار الاتصال</a>
-                <a href="/logout" class="nav-btn logout-btn">🚪 تسجيل الخروج</a>
             </div>
             
             <div class="stats">
@@ -1668,11 +1668,6 @@ app.get('/admin', (req, res) => {
 
 // صفحة الإدارة المتقدمة
 app.get('/admin/advanced', (req, res) => {
-  // إذا كان الوصول من localhost نمنع الفتح مباشرة
-  if (isLocalRequest(req)) {
-    // إذا أردت سلوكًا مختلفًا للطلبات المحلية أخبرني — الآن نسمح بعد المصادقة أيضاً
-    // لم تعد هناك ردود خاصة، ستتم حماية الصفحة بواسطة الميدلوير العام.
-  }
   db.all('SELECT * FROM test_users ORDER BY created_at DESC', (err, rows) => {
     let html = `
     <!DOCTYPE html>
@@ -1684,7 +1679,7 @@ app.get('/admin/advanced', (req, res) => {
         <style>
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
             .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.1); }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.1); position: relative; }
             .controls { background: white; padding: 25px; border-radius: 15px; margin-bottom: 25px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
             .btn { padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
             .btn-primary { background: #2196F3; color: white; }
@@ -1695,8 +1690,8 @@ app.get('/admin/advanced', (req, res) => {
             .btn-success:hover { background: #388E3C; transform: translateY(-2px); }
             .btn-secondary { background: #6c757d; color: white; }
             .btn-secondary:hover { background: #545b62; transform: translateY(-2px); }
-            .btn-logout { background: #f44336; color: white; }
-            .btn-logout:hover { background: #d32f2f; transform: translateY(-2px); }
+            .logout-btn { position: absolute; left: 20px; top: 20px; background: #f44336; color: white; padding: 12px 24px; border: none; border-radius: 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
+            .logout-btn:hover { background: #d32f2f; transform: translateY(-2px); }
             .table-container { background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.1); margin-bottom: 30px; }
             table { width: 100%; border-collapse: collapse; }
             th, td { padding: 16px 20px; text-align: right; border-bottom: 1px solid #e0e0e0; }
@@ -1710,6 +1705,7 @@ app.get('/admin/advanced', (req, res) => {
     <body>
         <div class="container">
             <div class="header">
+                <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
                 <h1 style="margin: 0; font-size: 2.5rem;">🛠️ لوحة التحكم - نظام الاختبار</h1>
                 <p style="margin: 10px 0 0 0; font-size: 1.1rem; opacity: 0.9;">إدارة وعرض جميع البيانات من تطبيق الجوال</p>
             </div>
@@ -1723,7 +1719,6 @@ app.get('/admin/advanced', (req, res) => {
                 <a href="/api/orders" class="btn btn-primary">📦 JSON الطلبات</a>
                 <a href="/" class="btn btn-secondary">🏠 الرئيسية</a>
                 <button onclick="clearAllData()" class="btn btn-danger">🗑️ مسح جميع البيانات</button>
-                <a href="/logout" class="btn btn-logout">🚪 تسجيل الخروج</a>
                 <div style="margin-left: auto; display: flex; align-items: center; gap: 15px;">
                     <div class="stats-card">
                         <strong>عدد السجلات:</strong> <span style="color: #2196F3; font-weight: bold;">${rows.length}</span>
@@ -1807,7 +1802,7 @@ app.get('/admin/advanced', (req, res) => {
   });
 });
 
-// صفحة إدارة الطلبات - محدثة مع ميزة التصدير
+// صفحة إدارة الطلبات
 app.get('/admin/orders', (req, res) => {
   db.all('SELECT * FROM orders ORDER BY created_at DESC', (err, rows) => {
     let html = `
@@ -1820,7 +1815,7 @@ app.get('/admin/orders', (req, res) => {
         <style>
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
             .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; }
+            .header { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; position: relative; }
             .order-card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-right: 4px solid #ff6b6b; }
             .order-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
             .order-number { background: #ff6b6b; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; }
@@ -1835,8 +1830,8 @@ app.get('/admin/orders', (req, res) => {
             .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
             .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
             .nav-btn:hover { background: #ff6b6b; color: white; transform: translateY(-2px); }
-            .logout-btn { background: #f44336; color: white; }
-            .logout-btn:hover { background: #d32f2f; }
+            .logout-btn { position: absolute; left: 20px; top: 20px; background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
+            .logout-btn:hover { background: #d32f2f; transform: translateY(-2px); }
             .empty-state { text-align: center; padding: 60px; color: #666; background: white; border-radius: 15px; }
             .customer-info { background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
             .export-section { background: white; padding: 25px; border-radius: 15px; margin-bottom: 30px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
@@ -1859,6 +1854,7 @@ app.get('/admin/orders', (req, res) => {
     <body>
         <div class="container">
             <div class="header">
+                <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
                 <h1 style="margin: 0;">🛒 إدارة الطلبات - نظام المتجر</h1>
                 <p style="margin: 10px 0 0 0; opacity: 0.9;">جميع الطلبات المرسلة من تطبيق الجوال</p>
             </div>
@@ -1869,7 +1865,6 @@ app.get('/admin/orders', (req, res) => {
                 <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
-                <a href="/logout" class="nav-btn logout-btn">🚪 تسجيل الخروج</a>
             </div>
 
             <!-- قسم تصدير المبيعات -->
@@ -2078,7 +2073,7 @@ app.get('/admin/orders', (req, res) => {
   });
 });
 
-// صفحة إدارة الكوبونات - محدثة مع ميزة التعديل
+// صفحة إدارة الكوبونات
 app.get('/admin/coupons', (req, res) => {
   db.all('SELECT * FROM coupons ORDER BY created_at DESC', (err, rows) => {
     let html = `
@@ -2091,7 +2086,7 @@ app.get('/admin/coupons', (req, res) => {
         <style>
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
             .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; }
+            .header { background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; position: relative; }
             .coupon-card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-right: 4px solid #4CAF50; transition: all 0.3s; }
             .coupon-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
             .coupon-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
@@ -2105,8 +2100,8 @@ app.get('/admin/coupons', (req, res) => {
             .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
             .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
             .nav-btn:hover { background: #4CAF50; color: white; transform: translateY(-2px); }
-            .logout-btn { background: #f44336; color: white; }
-            .logout-btn:hover { background: #d32f2f; }
+            .logout-btn { position: absolute; left: 20px; top: 20px; background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
+            .logout-btn:hover { background: #d32f2f; transform: translateY(-2px); }
             .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
             .btn-primary { background: #2196F3; color: white; }
             .btn-primary:hover { background: #1976D2; transform: translateY(-2px); }
@@ -2134,6 +2129,7 @@ app.get('/admin/coupons', (req, res) => {
     <body>
         <div class="container">
             <div class="header">
+                <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
                 <h1 style="margin: 0;">🎫 إدارة الكوبونات - نظام المتجر</h1>
                 <p style="margin: 10px 0 0 0; opacity: 0.9;">إنشاء وتعديل وحذف كوبونات الخصم مع تحديد الصلاحية</p>
             </div>
@@ -2144,7 +2140,6 @@ app.get('/admin/coupons', (req, res) => {
                 <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
-                <a href="/logout" class="nav-btn logout-btn">🚪 تسجيل الخروج</a>
                 <button onclick="showAddModal()" class="btn btn-success">+ إضافة كوبون جديد</button>
             </div>
 
@@ -2628,12 +2623,12 @@ app.get('/admin/settings', (req, res) => {
       <style>
           body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
           .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; }
+          .header { background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; position: relative; }
           .nav { display: flex; gap: 10px; margin-bottom: 30px; flex-wrap: wrap; }
           .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
           .nav-btn:hover { background: #4CAF50; color: white; transform: translateY(-2px); }
-          .logout-btn { background: #f44336; color: white; }
-          .logout-btn:hover { background: #d32f2f; }
+          .logout-btn { position: absolute; left: 20px; top: 20px; background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
+          .logout-btn:hover { background: #d32f2f; transform: translateY(-2px); }
           .settings-card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); margin-bottom: 30px; }
           .setting-item { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid #eee; }
           .setting-item:last-child { border-bottom: none; }
@@ -2663,6 +2658,7 @@ app.get('/admin/settings', (req, res) => {
   <body>
       <div class="container">
           <div class="header">
+              <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
               <h1 style="margin: 0;">⚙️ إعدادات النظام</h1>
               <p style="margin: 10px 0 0 0; opacity: 0.9;">تخصيص إعدادات لوحة التحكم والمتجر</p>
           </div>
@@ -2673,7 +2669,6 @@ app.get('/admin/settings', (req, res) => {
               <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
               <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
               <a href="/" class="nav-btn">🏠 الرئيسية</a>
-              <a href="/logout" class="nav-btn logout-btn">🚪 تسجيل الخروج</a>
           </div>
 
           <div class="settings-card">
