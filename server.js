@@ -23,6 +23,289 @@ const ADMIN_CREDENTIALS = {
   password: process.env.ADMIN_PASS || 'admin123'
 };
 
+// ======== إنشاء مجلدات البيانات ========
+const dataDir = path.join(__dirname, 'data');
+const exportsDir = path.join(__dirname, 'exports');
+
+if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+    console.log('✅ تم إنشاء مجلد البيانات');
+}
+
+if (!fs.existsSync(exportsDir)) {
+    fs.mkdirSync(exportsDir, { recursive: true });
+    console.log('✅ تم إنشاء مجلد التصدير');
+}
+
+// ======== Database Configuration - قاعدة بيانات دائمة ========
+const dbPath = path.join(dataDir, 'database.db');
+const db = new sqlite3.Database(dbPath, (err) => {
+  if (err) {
+    console.error('❌ خطأ في الاتصال بقاعدة البيانات:', err.message);
+  } else {
+    console.log('✅ تم الاتصال بقاعدة البيانات الدائمة:', dbPath);
+  }
+});
+
+// تفعيل المفاتيح الخارجية وتهيئة الجداول
+db.serialize(() => {
+  // تفعيل دعم المفاتيح الخارجية
+  db.run('PRAGMA foreign_keys = ON');
+  
+  // تفعيل الوضع الآمن
+  db.run('PRAGMA journal_mode = WAL');
+  db.run('PRAGMA synchronous = NORMAL');
+  
+  // ======== تهيئة الجداول ========
+  
+  // جدول المستخدمين للاختبار
+  db.run(`CREATE TABLE IF NOT EXISTS test_users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    phone TEXT,
+    message TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`, (err) => {
+    if (err) {
+      console.error('❌ خطأ في إنشاء جدول المستخدمين:', err);
+    } else {
+      console.log('✅ جدول المستخدمين جاهز');
+    }
+  });
+
+  // جدول الكوبونات الموحد
+  db.run(`CREATE TABLE IF NOT EXISTS coupons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE NOT NULL,
+    description TEXT,
+    discount_type TEXT NOT NULL CHECK (discount_type IN ('percentage', 'fixed')),
+    discount_value REAL NOT NULL,
+    min_order_amount REAL DEFAULT 0,
+    max_discount_amount REAL,
+    max_uses INTEGER DEFAULT -1,
+    used_count INTEGER DEFAULT 0,
+    valid_from DATETIME DEFAULT CURRENT_TIMESTAMP,
+    valid_until DATETIME,
+    is_active BOOLEAN DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`, (err) => {
+    if (err) {
+      console.error('❌ خطأ في إنشاء جدول الكوبونات:', err);
+    } else {
+      console.log('✅ جدول الكوبونات جاهز');
+      
+      // إضافة كوبونات افتراضية محسنة (فقط إذا لم تكن موجودة)
+      db.get('SELECT COUNT(*) as count FROM coupons', (err, row) => {
+        if (err) {
+          console.error('❌ خطأ في التحقق من الكوبونات:', err);
+          return;
+        }
+        
+        if (row.count === 0) {
+          db.run(`INSERT INTO coupons 
+            (code, description, discount_type, discount_value, min_order_amount, max_discount_amount, max_uses, valid_until) 
+            VALUES 
+            ('WELCOME10', 'خصم ترحيبي 10%', 'percentage', 10, 50, 25, 100, datetime('now', '+30 days')),
+            ('SAVE20', 'خصم ثابت 20 ريال', 'fixed', 20, 100, NULL, 50, datetime('now', '+30 days')),
+            ('SUMMER25', 'خصم صيفي 25%', 'percentage', 25, 200, 50, 25, datetime('now', '+15 days'))
+          `, function(err) {
+            if (err) {
+              console.error('❌ خطأ في إضافة الكوبونات الافتراضية:', err);
+            } else {
+              console.log('✅ تم إضافة الكوبونات الافتراضية');
+            }
+          });
+        }
+      });
+    }
+  });
+
+  // جدول الطلبات
+  db.run(`CREATE TABLE IF NOT EXISTS orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_number TEXT UNIQUE NOT NULL,
+    cart_items TEXT NOT NULL,
+    total_amount REAL NOT NULL,
+    discount_amount REAL DEFAULT 0,
+    coupon_code TEXT,
+    order_date DATETIME NOT NULL,
+    order_status TEXT DEFAULT 'pending',
+    customer_name TEXT NOT NULL,
+    customer_phone TEXT,
+    customer_email TEXT,
+    payment_method TEXT DEFAULT 'online',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`, (err) => {
+    if (err) {
+      console.error('❌ خطأ في إنشاء جدول الطلبات:', err);
+    } else {
+      console.log('✅ جدول الطلبات جاهز');
+    }
+  });
+
+  // جدول إعدادات الـ admin
+  db.run(`CREATE TABLE IF NOT EXISTS admin_settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    setting_key TEXT UNIQUE NOT NULL,
+    setting_value TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`, (err) => {
+    if (err) {
+      console.error('❌ خطأ في إنشاء جدول الإعدادات:', err);
+    } else {
+      console.log('✅ جدول الإعدادات جاهز');
+      
+      // إضافة إعدادات افتراضية (فقط إذا لم تكن موجودة)
+      db.get('SELECT COUNT(*) as count FROM admin_settings', (err, row) => {
+        if (err) return;
+        
+        if (row.count === 0) {
+          db.run(`
+            INSERT INTO admin_settings (setting_key, setting_value)
+            VALUES
+            ('theme', 'light'),
+            ('items_per_page', '10'),
+            ('auto_refresh', 'true'),
+            ('refresh_interval', '30'),
+            ('store_name', 'متجرنا الإلكتروني'),
+            ('store_description', 'أفضل متجر للتسوق الإلكتروني')
+          `, function(err) {
+            if (err) {
+              console.error('❌ خطأ في إضافة الإعدادات الافتراضية:', err);
+            } else {
+              console.log('✅ تم إضافة الإعدادات الافتراضية');
+            }
+          });
+        }
+      });
+    }
+  });
+
+  // جدول نسخ احتياطي للبيانات
+  db.run(`CREATE TABLE IF NOT EXISTS data_backups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    backup_type TEXT NOT NULL,
+    record_count INTEGER NOT NULL,
+    backup_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    file_path TEXT
+  )`, (err) => {
+    if (err) {
+      console.error('❌ خطأ في إنشاء جدول النسخ الاحتياطي:', err);
+    } else {
+      console.log('✅ جدول النسخ الاحتياطي جاهز');
+    }
+  });
+});
+
+// ======== وظائف النسخ الاحتياطي ========
+
+// وظيفة لإنشاء نسخة احتياطية
+function createBackup(backupType) {
+  return new Promise((resolve, reject) => {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupFile = path.join(exportsDir, `backup-${backupType}-${timestamp}.json`);
+    
+    const backupData = {
+      timestamp: new Date().toISOString(),
+      type: backupType,
+      data: {}
+    };
+
+    // جلب البيانات حسب النوع
+    let query = '';
+    switch(backupType) {
+      case 'orders':
+        query = 'SELECT * FROM orders';
+        break;
+      case 'coupons':
+        query = 'SELECT * FROM coupons';
+        break;
+      case 'users':
+        query = 'SELECT * FROM test_users';
+        break;
+      case 'full':
+        // سنجمع البيانات من جميع الجداول
+        const tables = ['test_users', 'coupons', 'orders', 'admin_settings'];
+        let completed = 0;
+        const allData = {};
+        
+        tables.forEach(table => {
+          db.all(`SELECT * FROM ${table}`, (err, rows) => {
+            if (err) {
+              console.error(`❌ خطأ في جلب بيانات ${table}:`, err);
+            } else {
+              allData[table] = rows;
+            }
+            
+            completed++;
+            if (completed === tables.length) {
+              backupData.data = allData;
+              
+              // حفظ الملف
+              fs.writeFile(backupFile, JSON.stringify(backupData, null, 2), (err) => {
+                if (err) {
+                  reject(err);
+                  return;
+                }
+
+                // تسجيل النسخة الاحتياطية في قاعدة البيانات
+                const totalRecords = Object.values(allData).reduce((sum, rows) => sum + rows.length, 0);
+                db.run(
+                  'INSERT INTO data_backups (backup_type, record_count, file_path) VALUES (?, ?, ?)',
+                  [backupType, totalRecords, backupFile],
+                  function(err) {
+                    if (err) {
+                      console.error('❌ خطأ في تسجيل النسخة الاحتياطية:', err);
+                    } else {
+                      console.log(`✅ تم إنشاء نسخة احتياطية (${backupType}): ${totalRecords} سجل`);
+                    }
+                    resolve({ file: backupFile, count: totalRecords });
+                  }
+                );
+              });
+            }
+          });
+        });
+        return;
+
+      default:
+        query = `SELECT * FROM ${backupType}`;
+    }
+
+    db.all(query, [], (err, rows) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      backupData.data = rows;
+      
+      // حفظ الملف
+      fs.writeFile(backupFile, JSON.stringify(backupData, null, 2), (err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        // تسجيل النسخة الاحتياطية في قاعدة البيانات
+        db.run(
+          'INSERT INTO data_backups (backup_type, record_count, file_path) VALUES (?, ?, ?)',
+          [backupType, rows.length, backupFile],
+          function(err) {
+            if (err) {
+              console.error('❌ خطأ في تسجيل النسخة الاحتياطية:', err);
+            } else {
+              console.log(`✅ تم إنشاء نسخة احتياطية (${backupType}): ${rows.length} سجل`);
+            }
+            resolve({ file: backupFile, count: rows.length });
+          }
+        );
+      });
+    });
+  });
+}
+
 // مساعدة للتحقق من المصادقة
 function isAuthenticated(req) {
   try {
@@ -49,7 +332,9 @@ app.use((req, res, next) => {
     '/api/coupons/:id',
     '/login',
     '/admin/login',
-    '/logout'
+    '/logout',
+    '/api/backups',
+    '/api/download-export'
   ];
 
   const isPublicPath = publicPaths.some(path => {
@@ -75,96 +360,6 @@ app.use((req, res, next) => {
   }
 
   next();
-});
-
-// ======== إنشاء مجلد التصدير ========
-const exportsDir = path.join(__dirname, 'exports');
-if (!fs.existsSync(exportsDir)) {
-    fs.mkdirSync(exportsDir, { recursive: true });
-    console.log('✅ تم إنشاء مجلد التصدير');
-}
-
-// ======== Database Configuration ========
-const db = new sqlite3.Database(':memory:');
-
-// ======== تهيئة الجداول ========
-db.serialize(() => {
-  // جدول المستخدمين للاختبار
-  db.run(`CREATE TABLE IF NOT EXISTS test_users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL,
-    phone TEXT,
-    message TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
-
-  // جدول الطلبات
-  db.run(`CREATE TABLE IF NOT EXISTS orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    order_number TEXT UNIQUE,
-    cart_items TEXT NOT NULL,
-    total_amount REAL NOT NULL,
-    discount_amount REAL DEFAULT 0,
-    coupon_code TEXT,
-    order_date DATETIME NOT NULL,
-    order_status TEXT DEFAULT 'pending',
-    customer_name TEXT,
-    customer_phone TEXT,
-    customer_email TEXT,
-    payment_method TEXT DEFAULT 'online',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
-
-  // جدول الكوبونات الموحد
-  db.run(`CREATE TABLE IF NOT EXISTS coupons (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    code TEXT UNIQUE NOT NULL,
-    description TEXT,
-    discount_type TEXT NOT NULL CHECK (discount_type IN ('percentage', 'fixed')),
-    discount_value REAL NOT NULL,
-    min_order_amount REAL DEFAULT 0,
-    max_discount_amount REAL,
-    max_uses INTEGER DEFAULT -1,
-    used_count INTEGER DEFAULT 0,
-    valid_from DATETIME DEFAULT CURRENT_TIMESTAMP,
-    valid_until DATETIME,
-    is_active BOOLEAN DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`, (err) => {
-    if (err) {
-      console.error('❌ خطأ في إنشاء جدول الكوبونات:', err);
-    } else {
-      console.log('✅ تم إنشاء/تحديث جدول الكوبونات بنجاح');
-      
-      // إضافة كوبونات افتراضية محسنة
-      db.run(`INSERT OR IGNORE INTO coupons 
-        (code, description, discount_type, discount_value, min_order_amount, max_discount_amount, max_uses, valid_until) 
-        VALUES 
-        ('WELCOME10', 'خصم ترحيبي 10%', 'percentage', 10, 50, 25, 100, datetime('now', '+30 days')),
-        ('SAVE20', 'خصم ثابت 20 ريال', 'fixed', 20, 100, NULL, 50, datetime('now', '+30 days')),
-        ('SUMMER25', 'خصم صيفي 25%', 'percentage', 25, 200, 50, 25, datetime('now', '+15 days'))
-      `);
-    }
-  });
-
-  // جدول إعدادات الـ admin
-  db.run(`CREATE TABLE IF NOT EXISTS admin_settings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    setting_key TEXT UNIQUE NOT NULL,
-    setting_value TEXT,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`, () => {
-    // إضافة إعدادات افتراضية
-    db.run(`
-      INSERT OR IGNORE INTO admin_settings (setting_key, setting_value)
-      VALUES
-      ('theme', 'light'),
-      ('items_per_page', '10'),
-      ('auto_refresh', 'true'),
-      ('refresh_interval', '30')
-    `);
-  });
 });
 
 // ======== Routes ========
@@ -282,7 +477,7 @@ app.get('/', (req, res) => {
     status: 'success',
     message: '🚀 نظام اختبار الاتصال يعمل بنجاح!',
     timestamp: new Date().toISOString(),
-    database: 'SQLite - سريعة وموثوقة',
+    database: 'SQLite - قاعدة بيانات دائمة',
     endpoints: [
       'GET /api/test - اختبار الاتصال',
       'GET /api/db-test - اختبار قاعدة البيانات', 
@@ -300,8 +495,9 @@ app.get('/', (req, res) => {
       'DELETE /api/coupons/:id - حذف كوبون',
       'GET /api/admin-settings - جلب إعدادات الـ admin',
       'PUT /api/admin-settings/:key - تحديث إعداد',
-      'GET /api/export-sales - تصدير المبيعات إلى Excel',
-      'GET /api/export-all-sales - تصدير سريع للمبيعات',
+      'POST /api/backup - إنشاء نسخة احتياطية',
+      'GET /api/backups - عرض النسخ الاحتياطية',
+      'GET /api/export-data - تصدير البيانات إلى Excel',
       'GET /admin - صفحة عرض البيانات',
       'GET /admin/advanced - لوحة التحكم',
       'GET /admin/orders - إدارة الطلبات',
@@ -318,7 +514,8 @@ app.get('/api/test', (req, res) => {
     server: 'Render.com',
     environment: 'Production',
     timestamp: new Date().toISOString(),
-    arabic_support: 'نظام يدعم اللغة العربية'
+    arabic_support: 'نظام يدعم اللغة العربية',
+    database_type: 'دائمة (ملف)'
   });
 });
 
@@ -335,7 +532,7 @@ app.get('/api/db-test', (req, res) => {
       message: '✅ تم الاتصال بقاعدة البيانات بنجاح!',
       test_value: row.test_value,
       server_time: row.server_time,
-      database: 'SQLite - سريعة وموثوقة',
+      database: 'SQLite - قاعدة بيانات دائمة',
       arabic_message: 'نظام يدعم اللغة العربية بشكل كامل'
     });
   });
@@ -947,7 +1144,7 @@ app.post('/api/process-payment', (req, res) => {
           items_count: cart_items.length,
           customer_name: customer_name,
           timestamp: new Date().toISOString(),
-          admin_url: `https://database-api-kvxr.onrender.com/admin/orders`
+          admin_url: `/admin/orders`
         });
       }
     );
@@ -986,6 +1183,167 @@ app.put('/api/orders/:id/status', (req, res) => {
     }
 
     res.json({ status: 'success', message: 'تم تحديث حالة الطلب بنجاح', updated_id: id, new_status: status });
+  });
+});
+
+// ======== APIs النسخ الاحتياطي ========
+
+// API لإنشاء نسخة احتياطية
+app.post('/api/backup', (req, res) => {
+  const { type = 'full' } = req.body;
+  
+  createBackup(type)
+    .then(result => {
+      res.json({
+        status: 'success',
+        message: `تم إنشاء نسخة احتياطية بنجاح`,
+        backup: result
+      });
+    })
+    .catch(error => {
+      console.error('❌ خطأ في إنشاء النسخة الاحتياطية:', error);
+      res.status(500).json({
+        status: 'error',
+        message: 'فشل في إنشاء النسخة الاحتياطية'
+      });
+    });
+});
+
+// API لجلب قائمة النسخ الاحتياطية
+app.get('/api/backups', (req, res) => {
+  db.all('SELECT * FROM data_backups ORDER BY backup_date DESC', (err, rows) => {
+    if (err) {
+      console.error('❌ خطأ في جلب النسخ الاحتياطية:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+
+    res.json({
+      status: 'success',
+      backups: rows,
+      count: rows.length
+    });
+  });
+});
+
+// API لتصدير البيانات إلى Excel
+app.get('/api/export-data', (req, res) => {
+  const { type } = req.query;
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `export-${type || 'all'}-${timestamp}.xlsx`;
+  const filepath = path.join(exportsDir, filename);
+
+  const workbook = new ExcelJS.Workbook();
+  
+  // تصدير الطلبات
+  if (!type || type === 'orders') {
+    const ordersSheet = workbook.addWorksheet('الطلبات');
+    ordersSheet.columns = [
+      { header: 'رقم الطلب', key: 'order_number', width: 20 },
+      { header: 'اسم العميل', key: 'customer_name', width: 20 },
+      { header: 'المبلغ الإجمالي', key: 'total_amount', width: 15 },
+      { header: 'الخصم', key: 'discount_amount', width: 15 },
+      { header: 'الحالة', key: 'order_status', width: 15 },
+      { header: 'تاريخ الطلب', key: 'order_date', width: 20 }
+    ];
+
+    db.all('SELECT * FROM orders ORDER BY created_at DESC', (err, orders) => {
+      if (!err && orders) {
+        orders.forEach(order => {
+          ordersSheet.addRow({
+            order_number: order.order_number,
+            customer_name: order.customer_name,
+            total_amount: order.total_amount,
+            discount_amount: order.discount_amount,
+            order_status: order.order_status,
+            order_date: order.order_date
+          });
+        });
+      }
+    });
+  }
+
+  // تصدير الكوبونات
+  if (!type || type === 'coupons') {
+    const couponsSheet = workbook.addWorksheet('الكوبونات');
+    couponsSheet.columns = [
+      { header: 'كود الكوبون', key: 'code', width: 15 },
+      { header: 'الوصف', key: 'description', width: 25 },
+      { header: 'نوع الخصم', key: 'discount_type', width: 15 },
+      { header: 'قيمة الخصم', key: 'discount_value', width: 15 },
+      { header: 'تم الاستخدام', key: 'used_count', width: 15 },
+      { header: 'الحالة', key: 'is_active', width: 10 }
+    ];
+
+    db.all('SELECT * FROM coupons ORDER BY created_at DESC', (err, coupons) => {
+      if (!err && coupons) {
+        coupons.forEach(coupon => {
+          couponsSheet.addRow({
+            code: coupon.code,
+            description: coupon.description,
+            discount_type: coupon.discount_type,
+            discount_value: coupon.discount_value,
+            used_count: coupon.used_count,
+            is_active: coupon.is_active ? 'نشط' : 'غير نشط'
+          });
+        });
+      }
+
+      // حفظ الملف وإرسال الاستجابة
+      workbook.xlsx.writeFile(filepath)
+        .then(() => {
+          res.json({
+            status: 'success',
+            message: 'تم تصدير البيانات بنجاح',
+            download_url: `/api/download-export?file=${filename}`
+          });
+        })
+        .catch(error => {
+          console.error('❌ خطأ في تصدير البيانات:', error);
+          res.status(500).json({
+            status: 'error',
+            message: 'فشل في تصدير البيانات'
+          });
+        });
+    });
+  });
+});
+
+// API لتحميل الملفات المصدرة
+app.get('/api/download-export', (req, res) => {
+  const { file } = req.query;
+  const filepath = path.join(exportsDir, file);
+  
+  if (fs.existsSync(filepath)) {
+    res.download(filepath);
+  } else {
+    res.status(404).json({
+      status: 'error',
+      message: 'الملف غير موجود'
+    });
+  }
+});
+
+// API مسح جميع البيانات
+app.delete('/api/clear-all-data', (req, res) => {
+  db.serialize(() => {
+    db.run('DELETE FROM test_users', function(err) {
+      if (err) {
+        console.error('❌ خطأ في مسح بيانات المستخدمين:', err);
+        return res.status(500).json({ status: 'error', message: err.message });
+      }
+
+      db.run('DELETE FROM orders', function(err) {
+        if (err) {
+          console.error('❌ خطأ في مسح الطلبات:', err);
+          return res.status(500).json({ status: 'error', message: err.message });
+        }
+
+        res.json({ status: 'success', message: '✅ تم مسح جميع البيانات بنجاح', users_deleted: this.changes });
+      });
+    });
   });
 });
 
@@ -1128,6 +1486,7 @@ app.get('/admin/advanced', (req, res) => {
                 <a href="/api/orders" class="btn btn-primary">📦 JSON الطلبات</a>
                 <a href="/" class="btn btn-secondary">🏠 الرئيسية</a>
                 <button onclick="clearAllData()" class="btn btn-danger">🗑️ مسح جميع البيانات</button>
+                <button onclick="createBackup()" class="btn btn-warning">💾 نسخة احتياطية</button>
                 <div style="margin-left: auto; display: flex; align-items: center; gap: 15px;">
                     <div class="stats-card"><strong>عدد السجلات:</strong> <span style="color: #2196F3; font-weight: bold;">${rows.length}</span></div>
                     <div class="stats-card"><strong>الحالة:</strong> <span style="color: #4CAF50; font-weight: bold;">✅ نشط</span></div>
@@ -1168,6 +1527,20 @@ app.get('/admin/advanced', (req, res) => {
                         .catch(error => { alert('❌ حدث خطأ: ' + error); });
                 }
             }
+            
+            function createBackup() {
+                fetch('/api/backup', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({type: 'full'}) })
+                    .then(response => response.json())
+                    .then(data => { 
+                        if (data.status === 'success') {
+                            alert('✅ ' + data.message + ' - تم إنشاء: ' + data.backup.count + ' سجل');
+                        } else {
+                            alert('❌ ' + data.message);
+                        }
+                    })
+                    .catch(error => { alert('❌ حدث خطأ: ' + error); });
+            }
+            
             setInterval(() => location.reload(), 10000);
         </script>
     </body></html>`;
@@ -1818,27 +2191,6 @@ app.get('/admin/coupons', (req, res) => {
   });
 });
 
-// API مسح جميع البيانات
-app.delete('/api/clear-all-data', (req, res) => {
-  db.serialize(() => {
-    db.run('DELETE FROM test_users', function(err) {
-      if (err) {
-        console.error('❌ خطأ في مسح بيانات المستخدمين:', err);
-        return res.status(500).json({ status: 'error', message: err.message });
-      }
-
-      db.run('DELETE FROM orders', function(err) {
-        if (err) {
-          console.error('❌ خطأ في مسح الطلبات:', err);
-          return res.status(500).json({ status: 'error', message: err.message });
-        }
-
-        res.json({ status: 'success', message: '✅ تم مسح جميع البيانات بنجاح', users_deleted: this.changes });
-      });
-    });
-  });
-});
-
 // معالجة الأخطاء
 app.use((err, req, res, next) => {
   console.error('❌ خطأ غير متوقع:', err);
@@ -1850,12 +2202,42 @@ app.use((req, res) => {
   res.status(404).json({ status: 'error', message: 'الصفحة غير موجودة', requested_url: req.url });
 });
 
-// بدء الخادم
+// بدء الخادم مع تحسينات
 app.listen(PORT, '0.0.0.0', () => {
   console.log('🚀 الخادم يعمل على المنفذ', PORT);
   console.log('🔗 رابط التطبيق: https://database-api-kvxr.onrender.com');
-  console.log('📊 قاعدة البيانات: SQLite (في الذاكرة)');
+  console.log('📊 قاعدة البيانات: SQLite (دائمة في الملف)');
+  console.log('💾 مسار قاعدة البيانات:', dbPath);
   console.log('✅ جاهز لاستقبال طلبات Flutter');
   console.log('🎯 يدعم اللغة العربية بشكل كامل');
   console.log('🎫 نظام الكوبونات: مفعل ومتكامل مع التعديل');
+  console.log('💾 نظام النسخ الاحتياطي: مفعل');
+  
+  // إنشاء نسخة احتياطية أولية عند التشغيل
+  setTimeout(() => {
+    createBackup('full').then(() => {
+      console.log('✅ تم إنشاء نسخة احتياطية أولية');
+    }).catch(err => {
+      console.error('❌ فشل في إنشاء النسخة الاحتياطية الأولية:', err);
+    });
+  }, 5000);
+});
+
+// معالجة إغلاق التطبيق بشكل آمن
+process.on('SIGINT', () => {
+  console.log('🔄 إنشاء نسخة احتياطية قبل الإغلاق...');
+  createBackup('full').then(() => {
+    console.log('✅ تم إنشاء نسخة احتياطية نهائية');
+    db.close((err) => {
+      if (err) {
+        console.error('❌ خطأ في إغلاق قاعدة البيانات:', err.message);
+      } else {
+        console.log('✅ تم إغلاق قاعدة البيانات');
+      }
+      process.exit(0);
+    });
+  }).catch(err => {
+    console.error('❌ فشل في إنشاء النسخة الاحتياطية:', err);
+    process.exit(1);
+  });
 });
