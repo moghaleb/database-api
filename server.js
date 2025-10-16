@@ -1236,7 +1236,31 @@ app.get('/api/export-data', (req, res) => {
   const filepath = path.join(exportsDir, filename);
 
   const workbook = new ExcelJS.Workbook();
-  
+  let operationsCompleted = 0;
+  const totalOperations = (!type || type === 'orders' ? 1 : 0) + (!type || type === 'coupons' ? 1 : 0);
+
+  const checkCompletion = () => {
+    operationsCompleted++;
+    if (operationsCompleted === totalOperations) {
+      // حفظ الملف وإرسال الاستجابة
+      workbook.xlsx.writeFile(filepath)
+        .then(() => {
+          res.json({
+            status: 'success',
+            message: 'تم تصدير البيانات بنجاح',
+            download_url: `/api/download-export?file=${filename}`
+          });
+        })
+        .catch(error => {
+          console.error('❌ خطأ في تصدير البيانات:', error);
+          res.status(500).json({
+            status: 'error',
+            message: 'فشل في تصدير البيانات'
+          });
+        });
+    }
+  };
+
   // تصدير الطلبات
   if (!type || type === 'orders') {
     const ordersSheet = workbook.addWorksheet('الطلبات');
@@ -1262,6 +1286,7 @@ app.get('/api/export-data', (req, res) => {
           });
         });
       }
+      checkCompletion();
     });
   }
 
@@ -1290,25 +1315,9 @@ app.get('/api/export-data', (req, res) => {
           });
         });
       }
-
-      // حفظ الملف وإرسال الاستجابة
-      workbook.xlsx.writeFile(filepath)
-        .then(() => {
-          res.json({
-            status: 'success',
-            message: 'تم تصدير البيانات بنجاح',
-            download_url: `/api/download-export?file=${filename}`
-          });
-        })
-        .catch(error => {
-          console.error('❌ خطأ في تصدير البيانات:', error);
-          res.status(500).json({
-            status: 'error',
-            message: 'فشل في تصدير البيانات'
-          });
-        });
+      checkCompletion();
     });
-  });
+  }
 });
 
 // API لتحميل الملفات المصدرة
