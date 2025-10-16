@@ -590,7 +590,7 @@ app.get('/api/all-data', (req, res) => {
 
 // ======== نظام الكوبونات الموحد ========
 
-// API التحقق من الكوبون - نظام موحد
+// API التحقق من الكوبون - نظام موحد (تم التصحيح)
 app.post('/api/validate-coupon', (req, res) => {
   const { coupon_code, order_amount } = req.body;
   console.log('🎫 التحقق من الكوبون:', { coupon_code, order_amount });
