@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const sqlite3 = require('sqlite3').verbose();
-const ExcelJS = require('exceljs');
+const ExcelJS = require('exceljs'); // إضافة مكتبة Excel
 const path = require('path');
 const fs = require('fs');
 
@@ -12,27 +12,51 @@ const PORT = process.env.PORT || 3000;
 // ======== Middleware ========
 app.use(cors());
 app.use(express.json());
+// استخدم cookie-parser مع سر توقيع بسيط (يمكن ضبطه عبر متغير بيئي SESSION_SECRET)
 const SESSION_SECRET = process.env.SESSION_SECRET || 'dev_session_secret_please_change';
 app.use(cookieParser(SESSION_SECRET));
-app.use(express.static('public'));
+app.use(express.static('public')); // لخدمة الملفات المحملة
+
+// تقبل طلبات form POST من النماذج (application/x-www-form-urlencoded)
 app.use(express.urlencoded({ extended: true }));
 
-// ======== إعداد بيانات مسؤول افتراضي ========
+// ======== إعداد بيانات مسؤول افتراضي (بسيط للاختبار) ========
+// ملاحظة: هذا تخزين بسيط في الذاكرة للاختبار فقط — لا تستخدمه في الإنتاج.
 const ADMIN_CREDENTIALS = {
   username: process.env.ADMIN_USER || 'admin',
   password: process.env.ADMIN_PASS || 'admin123'
 };
 
+// مساعدة صغيرة للتحقق من المصادقة عبر كوكي موقعة
 function isAuthenticated(req) {
   try {
     const auth = req.signedCookies && req.signedCookies.admin_auth;
     if (!auth) return false;
+    // قيمة الكوكي هي اسم المستخدم المشفّرة كـ string (بسيطة هنا)
     return auth === ADMIN_CREDENTIALS.username;
   } catch (e) {
     return false;
   }
 }
 
+// تحقق ما إذا كان الطلب قادمًا من بيئة محلية (localhost/127.0.0.1/::1)
+function isLocalRequest(req) {
+  try {
+    const hostHeader = (req.headers && req.headers.host) ? req.headers.host : '';
+    const forwarded = req.headers && (req.headers['x-forwarded-for'] || req.headers['x-forwarded-host']);
+    const ip = (req.ip || '').toString();
+
+    if (hostHeader.includes('localhost') || hostHeader.startsWith('127.')) return true;
+    if (forwarded && forwarded.toString().includes('127.0.0.1')) return true;
+    if (ip === '::1' || ip === '127.0.0.1' || ip.startsWith('::ffff:127.0.0.1')) return true;
+    return false;
+  } catch (e) {
+    return false;
+  }
+}
+
+// صفحة تسجيل الدخول (تعامل POST هنا) - عند الطلب الناجح نضع كوكي موقعة
+// Extracted login handler so it can be reused for multiple routes
 function handleLoginRequest(req, res) {
   const { username, password } = req.body;
 
@@ -44,7 +68,9 @@ function handleLoginRequest(req, res) {
   }
 
   if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
+    // ضع كوكي موقعة صالحة لمدة 12 ساعة
     res.cookie('admin_auth', ADMIN_CREDENTIALS.username, { signed: true, httpOnly: true, maxAge: 12 * 60 * 60 * 1000 });
+    // إذا كان الطلب قادم من نموذج HTML نعيد التوجيه للوحة الإدارة
     if (req.is('application/x-www-form-urlencoded')) {
       return res.redirect('/admin');
     }
@@ -58,14 +84,19 @@ function handleLoginRequest(req, res) {
 }
 
 app.post('/login', (req, res) => handleLoginRequest(req, res));
+
+// مسارات /admin/login التي طلبتها
 app.get('/admin/login', (req, res) => {
   if (isAuthenticated(req)) return res.redirect('/admin');
   return renderLoginPageHTML(req, res);
 });
+
 app.post('/admin/login', (req, res) => handleLoginRequest(req, res));
 
+// مسار لتسجيل الخروج (يحذف الكوكي)
 app.get('/logout', (req, res) => {
   res.clearCookie('admin_auth');
+  // لو طلب عبر AJAX نرسل JSON، وإلا نعيد التوجيه للصفحة الرئيسية
   if (req.headers.accept && req.headers.accept.indexOf('application/json') !== -1) {
     return res.json({ status: 'success', message: 'تم تسجيل الخروج' });
   }
@@ -162,17 +193,22 @@ db.serialize(() => {
     }
   });
 
-  // جدول القسائم الشرائية
+  // جدول القسائم الشرائية (Gift Cards) - الجديد
   db.run(`CREATE TABLE IF NOT EXISTS gift_cards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     card_number TEXT UNIQUE NOT NULL,
     pin_code TEXT NOT NULL,
     initial_amount REAL NOT NULL,
-    balance REAL NOT NULL,
+    current_balance REAL NOT NULL,
+    used_amount REAL DEFAULT 0,
     is_active INTEGER DEFAULT 1,
-    expires_at DATETIME,
-    used_count INTEGER DEFAULT 0,
+    valid_from DATETIME DEFAULT CURRENT_TIMESTAMP,
+    valid_until DATETIME,
     max_uses INTEGER DEFAULT 1,
+    used_count INTEGER DEFAULT 0,
+    customer_name TEXT,
+    customer_phone TEXT,
+    notes TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`, (err) => {
     if (err) {
@@ -182,11 +218,11 @@ db.serialize(() => {
 
       // إضافة بعض القسائم الافتراضية للاختبار
       db.run(`
-        INSERT OR IGNORE INTO gift_cards (card_number, pin_code, initial_amount, balance, expires_at, max_uses) 
+        INSERT OR IGNORE INTO gift_cards (card_number, pin_code, initial_amount, current_balance, valid_until, customer_name, notes) 
         VALUES 
-        ('1234567890123456', '1234', 100.0, 100.0, datetime('now', '+365 days'), 1),
-        ('9876543210987654', '5678', 50.0, 50.0, datetime('now', '+180 days'), 1),
-        ('1111222233334444', '9999', 200.0, 200.0, datetime('now', '+90 days'), 1)
+        ('GC-1001-2024', '1234', 100.0, 100.0, datetime('now', '+90 days'), 'عميل تجريبي', 'قسيمة ترحيبية'),
+        ('GC-1002-2024', '5678', 50.0, 50.0, datetime('now', '+60 days'), 'عميل متميز', 'قسيمة عيد الميلاد'),
+        ('GC-1003-2024', '9999', 200.0, 200.0, datetime('now', '+180 days'), 'شركة XYZ', 'قسيمة شركات')
       `, (err) => {
         if (err) {
           console.error('❌ خطأ في إضافة القسائم الافتراضية:', err);
@@ -230,6 +266,7 @@ db.serialize(() => {
 
 // ======== Routes ========
 
+// مساعدة لعرض نموذج تسجيل الدخول البسيط عند الوصول لصفحات الإدارة بدون مصادقة
 function renderLoginPageHTML(req, res, message = '') {
   const msgHtml = message ? `<p style="color:#d32f2f;text-align:center;margin-top:8px">${message}</p>` : '';
   return res.send(`
@@ -259,22 +296,9 @@ function renderLoginPageHTML(req, res, message = '') {
   `);
 }
 
-// حماية مركزية لصفحات الإدارة
-app.use('/admin', (req, res, next) => {
-  const publicAdminPaths = ['/admin/login', '/admin/logout'];
-  if (publicAdminPaths.includes(req.path) || publicAdminPaths.includes(req.originalUrl)) return next();
-
-  if (!isAuthenticated(req)) {
-    if (req.xhr || (req.headers.accept && req.headers.accept.indexOf('application/json') !== -1)) {
-      return res.status(401).json({ status: 'error', message: 'مطلوب تسجيل الدخول' });
-    }
-    return res.redirect('/admin/login');
-  }
-
-  next();
-});
-
 // API إعدادات الـ admin
+
+// جلب جميع الإعدادات
 app.get('/api/admin-settings', (req, res) => {
   db.all('SELECT * FROM admin_settings ORDER BY setting_key', (err, rows) => {
     if (err) {
@@ -285,6 +309,7 @@ app.get('/api/admin-settings', (req, res) => {
       });
     }
 
+    // تحويل الإعدادات إلى كائن
     const settings = {};
     rows.forEach(row => {
       settings[row.setting_key] = row.setting_value;
@@ -299,6 +324,7 @@ app.get('/api/admin-settings', (req, res) => {
   });
 });
 
+// تحديث إعداد
 app.put('/api/admin-settings/:key', (req, res) => {
   const { key } = req.params;
   const { value } = req.body;
@@ -349,15 +375,26 @@ app.get('/', (req, res) => {
       'GET /api/orders - جلب جميع الطلبات',
       'PUT /api/orders/:id/status - تحديث حالة الطلب',
       'GET /api/validate-coupon - التحقق من الكوبون',
-      'POST /api/validate-gift-card - التحقق من القسيمة الشرائية',
       'GET /api/coupons - جلب جميع الكوبونات',
+      'GET /api/coupons/:id - جلب كوبون محدد',
+      'POST /api/coupons - إنشاء كوبون جديد',
+      'PUT /api/coupons/:id - تعديل كوبون',
+      'DELETE /api/coupons/:id - حذف كوبون',
+      'POST /api/validate-gift-card - التحقق من القسيمة الشرائية',
       'GET /api/gift-cards - جلب جميع القسائم',
+      'GET /api/gift-cards/:id - جلب قسيمة محددة',
+      'POST /api/gift-cards - إنشاء قسيمة جديدة',
+      'PUT /api/gift-cards/:id - تعديل قسيمة',
+      'DELETE /api/gift-cards/:id - حذف قسيمة',
       'GET /api/admin-settings - جلب إعدادات الـ admin',
+      'PUT /api/admin-settings/:key - تحديث إعداد',
       'GET /api/export-sales - تصدير المبيعات إلى Excel',
+      'GET /api/export-all-sales - تصدير سريع للمبيعات',
       'GET /admin - صفحة عرض البيانات',
       'GET /admin/advanced - لوحة التحكم',
       'GET /admin/orders - إدارة الطلبات',
       'GET /admin/coupons - إدارة الكوبونات',
+      'GET /admin/gift-cards - إدارة القسائم الشرائية',
       'GET /logout - تسجيل الخروج'
     ]
   });
@@ -403,6 +440,7 @@ app.post('/api/save-data', (req, res) => {
 
   console.log('📨 بيانات مستلمة:', { name, email, phone, message });
 
+  // التحقق من البيانات المطلوبة
   if (!name || !email) {
     return res.status(400).json({
       status: 'error',
@@ -441,7 +479,7 @@ app.post('/api/save-data', (req, res) => {
   );
 });
 
-// عرض جميع البيانات المحفوظة
+// عرض جميع البيانات المحفوظة (JSON)
 app.get('/api/all-data', (req, res) => {
   db.all('SELECT * FROM test_users ORDER BY created_at DESC', (err, rows) => {
     if (err) {
@@ -462,7 +500,7 @@ app.get('/api/all-data', (req, res) => {
   });
 });
 
-// API التحقق من الكوبون
+// API جديد لتحقق سريع من الكوبون مع الحساب
 app.get('/api/validate-coupon', (req, res) => {
   const { code, order_amount } = req.query;
 
@@ -492,6 +530,7 @@ app.get('/api/validate-coupon', (req, res) => {
         });
       }
 
+      // التحقق من صلاحية الكوبون
       const now = new Date();
       const validFrom = new Date(coupon.valid_from);
       const validUntil = new Date(coupon.valid_until);
@@ -510,6 +549,7 @@ app.get('/api/validate-coupon', (req, res) => {
         });
       }
 
+      // التحقق من الحد الأقصى للاستخدام
       if (coupon.max_uses > 0 && coupon.used_count >= coupon.max_uses) {
         return res.status(400).json({
           status: 'error',
@@ -517,6 +557,7 @@ app.get('/api/validate-coupon', (req, res) => {
         });
       }
 
+      // التحقق من الحد الأدنى لقيمة الطلب
       const orderAmount = parseFloat(order_amount);
       if (orderAmount < coupon.min_order_amount) {
         return res.status(400).json({
@@ -525,6 +566,7 @@ app.get('/api/validate-coupon', (req, res) => {
         });
       }
 
+      // حساب قيمة الخصم
       let discountAmount = 0;
       if (coupon.discount_type === 'percentage') {
         discountAmount = (orderAmount * coupon.discount_value) / 100;
@@ -532,6 +574,7 @@ app.get('/api/validate-coupon', (req, res) => {
         discountAmount = coupon.discount_value;
       }
 
+      // التأكد من أن الخصم لا يتجاوز قيمة الطلب
       if (discountAmount > orderAmount) {
         discountAmount = orderAmount;
       }
@@ -562,7 +605,9 @@ app.get('/api/validate-coupon', (req, res) => {
   );
 });
 
-// API التحقق من القسيمة الشرائية
+// ======== واجهات القسائم الشرائية (Gift Cards) ========
+
+// API التحقق من صحة القسيمة الشرائية
 app.post('/api/validate-gift-card', (req, res) => {
   const { card_number, pin_code, order_amount } = req.body;
 
@@ -592,33 +637,44 @@ app.post('/api/validate-gift-card', (req, res) => {
         });
       }
 
+      // التحقق من صلاحية القسيمة
       const now = new Date();
-      const expiresAt = new Date(giftCard.expires_at);
+      const validUntil = new Date(giftCard.valid_until);
 
-      if (now > expiresAt) {
+      if (now > validUntil) {
         return res.status(400).json({
           status: 'error',
           message: 'هذه القسيمة منتهية الصلاحية'
         });
       }
 
+      // التحقق من الحد الأقصى للاستخدام
       if (giftCard.max_uses > 0 && giftCard.used_count >= giftCard.max_uses) {
         return res.status(400).json({
           status: 'error',
-          message: 'تم استخدام هذه القسيمة بالفعل'
+          message: 'تم الوصول إلى الحد الأقصى لاستخدام هذه القسيمة'
         });
       }
 
-      if (giftCard.balance <= 0) {
+      // التحقق من الرصيد المتاح
+      if (giftCard.current_balance <= 0) {
         return res.status(400).json({
           status: 'error',
-          message: 'لا يوجد رصيد كافي في القسيمة'
+          message: 'لا يوجد رصيد متاح في هذه القسيمة'
         });
       }
 
-      const orderAmount = parseFloat(order_amount);
-      let usedAmount = Math.min(giftCard.balance, orderAmount);
-      const finalAmount = orderAmount - usedAmount;
+      // حساب المبلغ المستخدم من القسيمة
+      let usedAmount = 0;
+      if (order_amount) {
+        const orderAmount = parseFloat(order_amount);
+        usedAmount = Math.min(giftCard.current_balance, orderAmount);
+      } else {
+        usedAmount = giftCard.current_balance;
+      }
+
+      const finalAmount = order_amount ? (parseFloat(order_amount) - usedAmount) : 0;
+      const remainingBalance = giftCard.current_balance - usedAmount;
 
       res.json({
         status: 'success',
@@ -628,12 +684,14 @@ app.post('/api/validate-gift-card', (req, res) => {
           id: giftCard.id,
           card_number: giftCard.card_number,
           initial_amount: giftCard.initial_amount,
-          balance: giftCard.balance,
+          current_balance: giftCard.current_balance,
           used_amount: usedAmount,
-          expires_at: giftCard.expires_at
+          remaining_balance: remainingBalance,
+          valid_until: giftCard.valid_until,
+          customer_name: giftCard.customer_name
         },
         calculation: {
-          original_amount: orderAmount,
+          original_amount: order_amount ? parseFloat(order_amount) : 0,
           gift_card_amount: usedAmount,
           final_amount: finalAmount
         }
@@ -642,7 +700,261 @@ app.post('/api/validate-gift-card', (req, res) => {
   );
 });
 
-// API معالجة الدفع
+// API جلب جميع القسائم الشرائية
+app.get('/api/gift-cards', (req, res) => {
+  db.all('SELECT * FROM gift_cards ORDER BY created_at DESC', (err, rows) => {
+    if (err) {
+      console.error('❌ خطأ في جلب القسائم:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+
+    res.json({
+      status: 'success',
+      gift_cards: rows,
+      count: rows.length,
+      message: `تم العثور على ${rows.length} قسيمة`
+    });
+  });
+});
+
+// API جلب قسيمة محددة
+app.get('/api/gift-cards/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.get('SELECT * FROM gift_cards WHERE id = ?', [id], (err, giftCard) => {
+    if (err) {
+      console.error('❌ خطأ في جلب بيانات القسيمة:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+
+    if (!giftCard) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'القسيمة غير موجودة'
+      });
+    }
+
+    res.json({
+      status: 'success',
+      gift_card: giftCard,
+      message: 'تم جلب بيانات القسيمة بنجاح'
+    });
+  });
+});
+
+// API إنشاء قسيمة جديدة
+app.post('/api/gift-cards', (req, res) => {
+  const {
+    card_number,
+    pin_code,
+    initial_amount,
+    valid_until,
+    customer_name,
+    customer_phone,
+    notes,
+    max_uses,
+    is_active
+  } = req.body;
+
+  // التحقق من الحقول المطلوبة
+  if (!card_number || !pin_code || !initial_amount) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'رقم القسيمة والرمز السري والمبلغ الابتدائي مطلوبة'
+    });
+  }
+
+  // التحقق من أن رقم القسيمة غير مكرر
+  db.get('SELECT id FROM gift_cards WHERE card_number = ?', [card_number], (err, existingCard) => {
+    if (err) {
+      console.error('❌ خطأ في التحقق من رقم القسيمة:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: 'فشل في التحقق من رقم القسيمة: ' + err.message
+      });
+    }
+
+    if (existingCard) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'رقم القسيمة مستخدم مسبقاً'
+      });
+    }
+
+    // تعيين تاريخ الصلاحية الافتراضي (90 يوم)
+    const defaultValidUntil = new Date();
+    defaultValidUntil.setDate(defaultValidUntil.getDate() + 90);
+
+    db.run(
+      `INSERT INTO gift_cards (
+        card_number, pin_code, initial_amount, current_balance, valid_until,
+        customer_name, customer_phone, notes, max_uses, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        card_number,
+        pin_code,
+        parseFloat(initial_amount),
+        parseFloat(initial_amount), // الرصيد الحالي يساوي المبلغ الابتدائي
+        valid_until || defaultValidUntil.toISOString(),
+        customer_name || '',
+        customer_phone || '',
+        notes || '',
+        max_uses || 1,
+        is_active !== undefined ? is_active : 1
+      ],
+      function(err) {
+        if (err) {
+          console.error('❌ خطأ في إنشاء القسيمة:', err);
+          return res.status(500).json({
+            status: 'error',
+            message: 'فشل في إنشاء القسيمة: ' + err.message
+          });
+        }
+
+        console.log('✅ تم إنشاء قسيمة جديدة:', { id: this.lastID, card_number });
+
+        res.json({
+          status: 'success',
+          message: 'تم إنشاء القسيمة بنجاح',
+          gift_card_id: this.lastID,
+          card_number: card_number
+        });
+      }
+    );
+  });
+});
+
+// API تحديث قسيمة
+app.put('/api/gift-cards/:id', (req, res) => {
+  const { id } = req.params;
+  const {
+    card_number,
+    pin_code,
+    initial_amount,
+    current_balance,
+    valid_until,
+    customer_name,
+    customer_phone,
+    notes,
+    max_uses,
+    used_count,
+    is_active
+  } = req.body;
+
+  // التحقق من أن رقم القسيمة غير مكرر (باستثناء القسيمة الحالية)
+  const checkCardQuery = 'SELECT id FROM gift_cards WHERE card_number = ? AND id != ?';
+  
+  db.get(checkCardQuery, [card_number, id], (err, existingCard) => {
+    if (err) {
+      console.error('❌ خطأ في التحقق من رقم القسيمة:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: 'فشل في التحقق من رقم القسيمة: ' + err.message
+      });
+    }
+
+    if (existingCard) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'رقم القسيمة مستخدم مسبقاً'
+      });
+    }
+
+    // تحديث البيانات
+    db.run(
+      `UPDATE gift_cards SET
+        card_number = COALESCE(?, card_number),
+        pin_code = COALESCE(?, pin_code),
+        initial_amount = COALESCE(?, initial_amount),
+        current_balance = COALESCE(?, current_balance),
+        valid_until = COALESCE(?, valid_until),
+        customer_name = COALESCE(?, customer_name),
+        customer_phone = COALESCE(?, customer_phone),
+        notes = COALESCE(?, notes),
+        max_uses = COALESCE(?, max_uses),
+        used_count = COALESCE(?, used_count),
+        is_active = COALESCE(?, is_active)
+      WHERE id = ?`,
+      [
+        card_number,
+        pin_code,
+        initial_amount ? parseFloat(initial_amount) : null,
+        current_balance ? parseFloat(current_balance) : null,
+        valid_until,
+        customer_name,
+        customer_phone,
+        notes,
+        max_uses,
+        used_count,
+        is_active,
+        id
+      ],
+      function(err) {
+        if (err) {
+          console.error('❌ خطأ في تحديث القسيمة:', err);
+          return res.status(500).json({
+            status: 'error',
+            message: 'فشل في تحديث القسيمة: ' + err.message
+          });
+        }
+
+        if (this.changes === 0) {
+          return res.status(404).json({
+            status: 'error',
+            message: 'القسيمة غير موجودة'
+          });
+        }
+
+        console.log('✅ تم تحديث القسيمة:', { id, card_number, is_active });
+
+        res.json({
+          status: 'success',
+          message: 'تم تحديث القسيمة بنجاح',
+          updated_id: id,
+          changes: this.changes
+        });
+      }
+    );
+  });
+});
+
+// API حذف قسيمة
+app.delete('/api/gift-cards/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.run('DELETE FROM gift_cards WHERE id = ?', [id], function(err) {
+    if (err) {
+      console.error('❌ خطأ في حذف القسيمة:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+
+    if (this.changes === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'القسيمة غير موجودة'
+      });
+    }
+
+    console.log('✅ تم حذف القسيمة:', { id });
+
+    res.json({
+      status: 'success',
+      message: 'تم حذف القسيمة بنجاح',
+      deleted_id: id
+    });
+  });
+});
+
+// API معالجة الدفع - محدث ليدعم القسائم الشرائية
 app.post('/api/process-payment', (req, res) => {
   const { 
     cart_items, 
@@ -655,7 +967,7 @@ app.post('/api/process-payment', (req, res) => {
     payment_method,
     coupon_code,
     gift_card_number,
-    gift_card_amount
+    gift_card_pin
   } = req.body;
 
   console.log('💰 طلب دفع جديد:', { 
@@ -666,6 +978,7 @@ app.post('/api/process-payment', (req, res) => {
     gift_card: gift_card_number || 'لا يوجد'
   });
 
+  // التحقق من البيانات
   if (!cart_items || cart_items.length === 0) {
     return res.status(400).json({
       status: 'error',
@@ -673,12 +986,14 @@ app.post('/api/process-payment', (req, res) => {
     });
   }
 
+  // متغيرات الخصم والقسيمة
   let discountAmount = 0;
   let giftCardAmount = 0;
   let finalAmount = parseFloat(total_amount);
   let appliedCoupon = null;
   let appliedGiftCard = null;
 
+  // التحقق من الكوبون إذا كان موجوداً
   const processCoupon = () => {
     return new Promise((resolve, reject) => {
       if (coupon_code) {
@@ -692,19 +1007,24 @@ app.post('/api/process-payment', (req, res) => {
             }
 
             if (coupon) {
+              // التحقق من صلاحية الكوبون
               const now = new Date();
               const validFrom = new Date(coupon.valid_from);
               const validUntil = new Date(coupon.valid_until);
 
               if (now >= validFrom && now <= validUntil) {
+                // التحقق من الحد الأقصى للاستخدام
                 if (coupon.max_uses === -1 || coupon.used_count < coupon.max_uses) {
+                  // التحقق من الحد الأدنى للطلب
                   if (finalAmount >= coupon.min_order_amount) {
+                    // حساب قيمة الخصم
                     if (coupon.discount_type === 'percentage') {
                       discountAmount = (finalAmount * coupon.discount_value) / 100;
                     } else {
                       discountAmount = coupon.discount_value;
                     }
 
+                    // التأكد من أن الخصم لا يتجاوز قيمة الطلب
                     if (discountAmount > finalAmount) {
                       discountAmount = finalAmount;
                     }
@@ -712,6 +1032,7 @@ app.post('/api/process-payment', (req, res) => {
                     finalAmount = finalAmount - discountAmount;
                     appliedCoupon = coupon;
 
+                    // زيادة عداد استخدامات الكوبون
                     db.run(
                       'UPDATE coupons SET used_count = used_count + 1 WHERE id = ?',
                       [coupon.id]
@@ -722,8 +1043,14 @@ app.post('/api/process-payment', (req, res) => {
                       discount: discountAmount,
                       final: finalAmount
                     });
+                  } else {
+                    console.log('❌ قيمة الطلب أقل من الحد الأدنى للكوبون');
                   }
+                } else {
+                  console.log('❌ تم الوصول للحد الأقصى لاستخدام الكوبون');
                 }
+              } else {
+                console.log('❌ الكوبون خارج الفترة الزمنية');
               }
             }
             resolve();
@@ -735,12 +1062,13 @@ app.post('/api/process-payment', (req, res) => {
     });
   };
 
+  // التحقق من القسيمة الشرائية إذا كانت موجودة
   const processGiftCard = () => {
     return new Promise((resolve, reject) => {
-      if (gift_card_number && gift_card_amount) {
+      if (gift_card_number && gift_card_pin) {
         db.get(
-          'SELECT * FROM gift_cards WHERE card_number = ? AND is_active = 1',
-          [gift_card_number],
+          'SELECT * FROM gift_cards WHERE card_number = ? AND pin_code = ? AND is_active = 1',
+          [gift_card_number, gift_card_pin],
           (err, giftCard) => {
             if (err) {
               reject(err);
@@ -748,21 +1076,44 @@ app.post('/api/process-payment', (req, res) => {
             }
 
             if (giftCard) {
-              giftCardAmount = parseFloat(gift_card_amount);
-              appliedGiftCard = giftCard;
-              finalAmount = finalAmount - giftCardAmount;
+              // التحقق من صلاحية القسيمة
+              const now = new Date();
+              const validUntil = new Date(giftCard.valid_until);
 
-              const newBalance = giftCard.balance - giftCardAmount;
-              db.run(
-                'UPDATE gift_cards SET balance = ?, used_count = used_count + 1 WHERE id = ?',
-                [newBalance, giftCard.id]
-              );
+              if (now <= validUntil) {
+                // التحقق من الحد الأقصى للاستخدام
+                if (giftCard.max_uses === -1 || giftCard.used_count < giftCard.max_uses) {
+                  // التحقق من الرصيد المتاح
+                  if (giftCard.current_balance > 0) {
+                    // حساب المبلغ المستخدم من القسيمة
+                    giftCardAmount = Math.min(giftCard.current_balance, finalAmount);
+                    finalAmount = finalAmount - giftCardAmount;
+                    appliedGiftCard = giftCard;
 
-              console.log('✅ تم استخدام القسيمة:', {
-                card: giftCard.card_number,
-                used: giftCardAmount,
-                new_balance: newBalance
-              });
+                    // تحديث رصيد القسيمة وعداد الاستخدام
+                    const newBalance = giftCard.current_balance - giftCardAmount;
+                    const newUsedCount = giftCard.used_count + 1;
+
+                    db.run(
+                      'UPDATE gift_cards SET current_balance = ?, used_count = ?, used_amount = used_amount + ? WHERE id = ?',
+                      [newBalance, newUsedCount, giftCardAmount, giftCard.id]
+                    );
+
+                    console.log('✅ تم استخدام القسيمة:', {
+                      card_number: giftCard.card_number,
+                      used_amount: giftCardAmount,
+                      remaining_balance: newBalance,
+                      final: finalAmount
+                    });
+                  } else {
+                    console.log('❌ لا يوجد رصيد متاح في القسيمة');
+                  }
+                } else {
+                  console.log('❌ تم الوصول للحد الأقصى لاستخدام القسيمة');
+                }
+              } else {
+                console.log('❌ القسيمة منتهية الصلاحية');
+              }
             }
             resolve();
           }
@@ -773,9 +1124,10 @@ app.post('/api/process-payment', (req, res) => {
     });
   };
 
-  processCoupon()
-    .then(() => processGiftCard())
+  // معالجة الطلب بعد التحقق من الكوبون والقسيمة
+  Promise.all([processCoupon(), processGiftCard()])
     .then(() => {
+      // إنشاء رقم طلب فريد
       const orderNumber = 'ORD-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
 
       db.run(
@@ -787,11 +1139,11 @@ app.post('/api/process-payment', (req, res) => {
         [
           orderNumber,
           JSON.stringify(cart_items),
-          total_amount,
-          discountAmount,
+          total_amount, // المبلغ الأصلي
+          discountAmount, // قيمة الخصم
           appliedCoupon ? appliedCoupon.code : null,
           appliedGiftCard ? appliedGiftCard.card_number : null,
-          giftCardAmount,
+          giftCardAmount, // المبلغ المستخدم من القسيمة
           order_date,
           order_status || 'pending',
           customer_name || 'عميل',
@@ -814,7 +1166,9 @@ app.post('/api/process-payment', (req, res) => {
             original_total: total_amount,
             discount: discountAmount,
             gift_card: giftCardAmount,
-            final_total: finalAmount
+            final_total: finalAmount,
+            coupon: appliedCoupon ? appliedCoupon.code : 'لا يوجد',
+            gift_card: appliedGiftCard ? appliedGiftCard.card_number : 'لا يوجد'
           });
           
           res.json({
@@ -828,6 +1182,17 @@ app.post('/api/process-payment', (req, res) => {
             final_amount: finalAmount,
             coupon_code: appliedCoupon ? appliedCoupon.code : null,
             gift_card_number: appliedGiftCard ? appliedGiftCard.card_number : null,
+            coupon_details: appliedCoupon ? {
+              code: appliedCoupon.code,
+              description: appliedCoupon.description,
+              discount_type: appliedCoupon.discount_type,
+              discount_value: appliedCoupon.discount_value
+            } : null,
+            gift_card_details: appliedGiftCard ? {
+              card_number: appliedGiftCard.card_number,
+              initial_amount: appliedGiftCard.initial_amount,
+              remaining_balance: appliedGiftCard.current_balance - giftCardAmount
+            } : null,
             items_count: cart_items.length,
             customer_name: customer_name,
             timestamp: new Date().toISOString(),
@@ -856,6 +1221,7 @@ app.get('/api/orders', (req, res) => {
       });
     }
 
+    // تحويل JSON المخزن إلى كائن
     const orders = rows.map(order => ({
       ...order,
       cart_items: JSON.parse(order.cart_items)
@@ -897,6 +1263,8 @@ app.put('/api/orders/:id/status', (req, res) => {
   );
 });
 
+// ======== واجهات برمجية للكوبونات ========
+
 // API جلب جميع الكوبونات
 app.get('/api/coupons', (req, res) => {
   db.all('SELECT * FROM coupons ORDER BY created_at DESC', (err, rows) => {
@@ -917,25 +1285,233 @@ app.get('/api/coupons', (req, res) => {
   });
 });
 
-// API جلب جميع القسائم الشرائية
-app.get('/api/gift-cards', (req, res) => {
-  db.all('SELECT * FROM gift_cards ORDER BY created_at DESC', (err, rows) => {
+// API جلب بيانات كوبون محدد
+app.get('/api/coupons/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.get('SELECT * FROM coupons WHERE id = ?', [id], (err, coupon) => {
     if (err) {
-      console.error('❌ خطأ في جلب القسائم الشرائية:', err);
+      console.error('❌ خطأ في جلب بيانات الكوبون:', err);
       return res.status(500).json({
         status: 'error',
         message: err.message
       });
     }
 
+    if (!coupon) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'الكوبون غير موجود'
+      });
+    }
+
     res.json({
       status: 'success',
-      gift_cards: rows,
-      count: rows.length,
-      message: `تم العثور على ${rows.length} قسيمة`
+      coupon: coupon,
+      message: 'تم جلب بيانات الكوبون بنجاح'
     });
   });
 });
+
+// API إنشاء كوبون جديد
+app.post('/api/coupons', (req, res) => {
+  const {
+    code,
+    description,
+    discount_type,
+    discount_value,
+    min_order_amount,
+    max_uses,
+    valid_from,
+    valid_until,
+    is_active
+  } = req.body;
+
+  // التحقق من الحقول المطلوبة
+  if (!code || !discount_type || discount_value === undefined) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'الكود ونوع الخصم وقيمة الخصم مطلوبة'
+    });
+  }
+
+  // التحقق من أن الكود غير مكرر
+  db.get('SELECT id FROM coupons WHERE code = ?', [code], (err, existingCoupon) => {
+    if (err) {
+      console.error('❌ خطأ في التحقق من الكود:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: 'فشل في التحقق من الكود: ' + err.message
+      });
+    }
+
+    if (existingCoupon) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'كود الكوبون مستخدم مسبقاً'
+      });
+    }
+
+    db.run(
+      `INSERT INTO coupons (
+        code, description, discount_type, discount_value, min_order_amount,
+        max_uses, valid_from, valid_until, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        code,
+        description || '',
+        discount_type,
+        discount_value,
+        min_order_amount || 0,
+        max_uses || -1,
+        valid_from || new Date().toISOString(),
+        valid_until || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 يوم افتراضي
+        is_active !== undefined ? is_active : 1
+      ],
+      function(err) {
+        if (err) {
+          console.error('❌ خطأ في إنشاء الكوبون:', err);
+          return res.status(500).json({
+            status: 'error',
+            message: 'فشل في إنشاء الكوبون: ' + err.message
+          });
+        }
+
+        console.log('✅ تم إنشاء كوبون جديد:', { id: this.lastID, code });
+
+        res.json({
+          status: 'success',
+          message: 'تم إنشاء الكوبون بنجاح',
+          coupon_id: this.lastID,
+          code: code
+        });
+      }
+    );
+  });
+});
+
+// API تحديث كوبون - محدث
+app.put('/api/coupons/:id', (req, res) => {
+  const { id } = req.params;
+  const {
+    code,
+    description,
+    discount_type,
+    discount_value,
+    min_order_amount,
+    max_uses,
+    valid_from,
+    valid_until,
+    is_active,
+    used_count
+  } = req.body;
+
+  // التحقق من أن الكود غير مكرر (باستثناء الكوبون الحالي)
+  const checkCodeQuery = 'SELECT id FROM coupons WHERE code = ? AND id != ?';
+  
+  db.get(checkCodeQuery, [code, id], (err, existingCoupon) => {
+    if (err) {
+      console.error('❌ خطأ في التحقق من الكود:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: 'فشل في التحقق من الكود: ' + err.message
+      });
+    }
+
+    if (existingCoupon) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'كود الكوبون مستخدم مسبقاً'
+      });
+    }
+
+    // تحديث البيانات
+    db.run(
+      `UPDATE coupons SET
+        code = COALESCE(?, code),
+        description = COALESCE(?, description),
+        discount_type = COALESCE(?, discount_type),
+        discount_value = COALESCE(?, discount_value),
+        min_order_amount = COALESCE(?, min_order_amount),
+        max_uses = COALESCE(?, max_uses),
+        valid_from = COALESCE(?, valid_from),
+        valid_until = COALESCE(?, valid_until),
+        is_active = COALESCE(?, is_active),
+        used_count = COALESCE(?, used_count)
+      WHERE id = ?`,
+      [
+        code,
+        description,
+        discount_type,
+        discount_value,
+        min_order_amount,
+        max_uses,
+        valid_from,
+        valid_until,
+        is_active,
+        used_count,
+        id
+      ],
+      function(err) {
+        if (err) {
+          console.error('❌ خطأ في تحديث الكوبون:', err);
+          return res.status(500).json({
+            status: 'error',
+            message: 'فشل في تحديث الكوبون: ' + err.message
+          });
+        }
+
+        if (this.changes === 0) {
+          return res.status(404).json({
+            status: 'error',
+            message: 'الكوبون غير موجود'
+          });
+        }
+
+        console.log('✅ تم تحديث الكوبون:', { id, code, is_active });
+
+        res.json({
+          status: 'success',
+          message: 'تم تحديث الكوبون بنجاح',
+          updated_id: id,
+          changes: this.changes
+        });
+      }
+    );
+  });
+});
+
+// API حذف كوبون
+app.delete('/api/coupons/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.run('DELETE FROM coupons WHERE id = ?', [id], function(err) {
+    if (err) {
+      console.error('❌ خطأ في حذف الكوبون:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+
+    if (this.changes === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'الكوبون غير موجود'
+      });
+    }
+
+    console.log('✅ تم حذف الكوبون:', { id });
+
+    res.json({
+      status: 'success',
+      message: 'تم حذف الكوبون بنجاح',
+      deleted_id: id
+    });
+  });
+});
+
+// ======== واجهات تصدير المبيعات ========
 
 // دوال مساعدة للتصدير
 function getOrderStatusText(status) {
@@ -974,6 +1550,7 @@ app.get('/api/export-sales', async (req, res) => {
             order_status 
         });
 
+        // بناء استعلام SQL بناءً على الفلاتر
         let sqlQuery = `
             SELECT o.*,
                    json_extract(o.cart_items, '$') as cart_items_json
@@ -983,6 +1560,7 @@ app.get('/api/export-sales', async (req, res) => {
         const conditions = [];
         const params = [];
 
+        // إضافة الفلاتر إذا كانت موجودة
         if (start_date && end_date) {
             conditions.push('o.order_date BETWEEN ? AND ?');
             params.push(start_date, end_date);
@@ -1010,6 +1588,7 @@ app.get('/api/export-sales', async (req, res) => {
 
         sqlQuery += ' ORDER BY o.created_at DESC';
 
+        // جلب البيانات من قاعدة البيانات
         const orders = await new Promise((resolve, reject) => {
             db.all(sqlQuery, params, (err, rows) => {
                 if (err) {
@@ -1017,6 +1596,7 @@ app.get('/api/export-sales', async (req, res) => {
                     return;
                 }
                 
+                // تحويل بيانات السلة من JSON
                 const processedOrders = rows.map(order => ({
                     ...order,
                     cart_items: JSON.parse(order.cart_items_json)
@@ -1033,12 +1613,15 @@ app.get('/api/export-sales', async (req, res) => {
             });
         }
 
+        // إنشاء ملف Excel جديد
         const workbook = new ExcelJS.Workbook();
         workbook.creator = 'نظام المبيعات';
         workbook.created = new Date();
 
+        // ======== ورقة الملخص ========
         const summarySheet = workbook.addWorksheet('ملخص المبيعات');
         
+        // تنسيق العنوان
         summarySheet.mergeCells('A1:H1');
         const titleCell = summarySheet.getCell('A1');
         titleCell.value = 'تقرير المبيعات - نظام المتجر';
@@ -1050,6 +1633,7 @@ app.get('/api/export-sales', async (req, res) => {
         };
         titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
+        // معلومات الفترة
         summarySheet.mergeCells('A2:H2');
         const periodCell = summarySheet.getCell('A2');
         const periodText = start_date && end_date 
@@ -1059,6 +1643,7 @@ app.get('/api/export-sales', async (req, res) => {
         periodCell.font = { bold: true, size: 12 };
         periodCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
+        // إحصائيات المبيعات
         const totalSales = orders.reduce((sum, order) => sum + parseFloat(order.total_amount), 0);
         const totalDiscounts = orders.reduce((sum, order) => sum + parseFloat(order.discount_amount), 0);
         const totalGiftCards = orders.reduce((sum, order) => sum + parseFloat(order.gift_card_amount), 0);
@@ -1077,8 +1662,10 @@ app.get('/api/export-sales', async (req, res) => {
         summarySheet.addRow(['الطلبات المكتملة', completedOrders, '', '', '', '', '', '']);
         summarySheet.addRow(['الطلبات قيد الانتظار', pendingOrders, '', '', '', '', '', '']);
 
+        // ======== ورقة التفاصيل ========
         const detailsSheet = workbook.addWorksheet('تفاصيل الطلبات');
 
+        // عناوين الأعمدة
         detailsSheet.columns = [
             { header: 'رقم الطلب', key: 'order_number', width: 15 },
             { header: 'تاريخ الطلب', key: 'order_date', width: 20 },
@@ -1089,14 +1676,15 @@ app.get('/api/export-sales', async (req, res) => {
             { header: 'طريقة الدفع', key: 'payment_method', width: 15 },
             { header: 'إجمالي الطلب', key: 'total_amount', width: 15 },
             { header: 'قيمة الخصم', key: 'discount_amount', width: 15 },
-            { header: 'قسيمة', key: 'gift_card_amount', width: 15 },
+            { header: 'قسيمة شرائية', key: 'gift_card_amount', width: 15 },
             { header: 'الصافي', key: 'net_amount', width: 15 },
             { header: 'كود الخصم', key: 'coupon_code', width: 15 },
-            { header: 'قسيمة', key: 'gift_card_number', width: 15 },
+            { header: 'رقم القسيمة', key: 'gift_card_number', width: 15 },
             { header: 'عدد المنتجات', key: 'items_count', width: 15 },
             { header: 'المنتجات', key: 'products', width: 40 }
         ];
 
+        // تنسيق رأس الجدول
         const headerRow = detailsSheet.getRow(1);
         headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
         headerRow.fill = {
@@ -1106,6 +1694,7 @@ app.get('/api/export-sales', async (req, res) => {
         };
         headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
 
+        // إضافة البيانات
         orders.forEach(order => {
             const netAmount = parseFloat(order.total_amount) - parseFloat(order.discount_amount) - parseFloat(order.gift_card_amount);
             const productsText = order.cart_items.map(item => 
@@ -1131,23 +1720,93 @@ app.get('/api/export-sales', async (req, res) => {
             });
         });
 
+        // تنسيق الأرقام
         detailsSheet.eachRow((row, rowNumber) => {
             if (rowNumber > 1) {
                 row.alignment = { horizontal: 'right', vertical: 'middle' };
             }
         });
 
+        // ======== ورقة تحليل المنتجات ========
+        const productsSheet = workbook.addWorksheet('تحليل المنتجات');
+
+        // تحليل مبيعات المنتجات
+        const productAnalysis = {};
+        orders.forEach(order => {
+            order.cart_items.forEach(item => {
+                const productName = item.name || 'منتج غير معروف';
+                const quantity = item.quantity || 1;
+                const price = parseFloat(item.price) || 0;
+                const total = quantity * price;
+
+                if (!productAnalysis[productName]) {
+                    productAnalysis[productName] = {
+                        quantity: 0,
+                        totalSales: 0,
+                        ordersCount: 0
+                    };
+                }
+
+                productAnalysis[productName].quantity += quantity;
+                productAnalysis[productName].totalSales += total;
+                productAnalysis[productName].ordersCount += 1;
+            });
+        });
+
+        // عناوين أعمدة تحليل المنتجات
+        productsSheet.columns = [
+            { header: 'اسم المنتج', key: 'product_name', width: 30 },
+            { header: 'الكمية المباعة', key: 'quantity', width: 15 },
+            { header: 'إجمالي المبيعات', key: 'total_sales', width: 20 },
+            { header: 'عدد الطلبات', key: 'orders_count', width: 15 },
+            { header: 'متوسط السعر', key: 'avg_price', width: 15 }
+        ];
+
+        // تنسيق رأس الجدول
+        const productsHeader = productsSheet.getRow(1);
+        productsHeader.font = { bold: true, color: { argb: 'FFFFFF' } };
+        productsHeader.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF9800' }
+        };
+        productsHeader.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // إضافة بيانات تحليل المنتجات
+        Object.entries(productAnalysis).forEach(([productName, data]) => {
+            const avgPrice = data.totalSales / data.quantity;
+            
+            productsSheet.addRow({
+                product_name: productName,
+                quantity: data.quantity,
+                total_sales: `${data.totalSales.toFixed(2)} ر.س`,
+                orders_count: data.ordersCount,
+                avg_price: `${avgPrice.toFixed(2)} ر.س`
+            });
+        });
+
+        // تنسيق أوراق العمل
+        [summarySheet, detailsSheet, productsSheet].forEach(sheet => {
+            sheet.eachRow((row, rowNumber) => {
+                row.alignment = { horizontal: 'right', vertical: 'middle' };
+            });
+        });
+
+        // إنشاء اسم للملف
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const filename = `sales-report-${timestamp}.xlsx`;
         const filepath = path.join(exportsDir, filename);
 
+        // حفظ الملف
         await workbook.xlsx.writeFile(filepath);
 
         console.log('✅ تم تصدير المبيعات إلى Excel:', {
             filename,
-            orders_count: orders.length
+            orders_count: orders.length,
+            file_size: `${(fs.statSync(filepath).size / 1024 / 1024).toFixed(2)} MB`
         });
 
+        // إرسال الملف للعميل
         res.download(filepath, filename, (err) => {
             if (err) {
                 console.error('❌ خطأ في إرسال الملف:', err);
@@ -1157,6 +1816,7 @@ app.get('/api/export-sales', async (req, res) => {
                 });
             }
 
+            // حذف الملف بعد التنزيل (اختياري)
             setTimeout(() => {
                 fs.unlink(filepath, (unlinkErr) => {
                     if (unlinkErr) {
@@ -1165,7 +1825,7 @@ app.get('/api/export-sales', async (req, res) => {
                         console.log('✅ تم حذف الملف المؤقت:', filename);
                     }
                 });
-            }, 30000);
+            }, 30000); // حذف بعد 30 ثانية
         });
 
     } catch (error) {
@@ -1208,6 +1868,7 @@ app.get('/api/export-all-sales', async (req, res) => {
             });
         }
 
+        // إنشاء ملف Excel مبسط
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('المبيعات');
 
@@ -1223,6 +1884,7 @@ app.get('/api/export-all-sales', async (req, res) => {
             { header: 'الحالة', key: 'order_status', width: 15 }
         ];
 
+        // تنسيق الرأس
         const headerRow = worksheet.getRow(1);
         headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
         headerRow.fill = {
@@ -1231,6 +1893,7 @@ app.get('/api/export-all-sales', async (req, res) => {
             fgColor: { argb: '4CAF50' }
         };
 
+        // إضافة البيانات
         orders.forEach(order => {
             const netAmount = parseFloat(order.total_amount) - parseFloat(order.discount_amount) - parseFloat(order.gift_card_amount);
             
@@ -1247,6 +1910,7 @@ app.get('/api/export-all-sales', async (req, res) => {
             });
         });
 
+        // تنسيق جميع الصفوف
         worksheet.eachRow((row, rowNumber) => {
             row.alignment = { horizontal: 'right', vertical: 'middle' };
         });
@@ -1269,6 +1933,23 @@ app.get('/api/export-all-sales', async (req, res) => {
 });
 
 // ======== صفحات الإدارة ========
+
+// حماية مركزية لصفحات الإدارة: أي مسار يبدأ بـ /admin يتطلب تسجيل دخول
+app.use('/admin', (req, res, next) => {
+  // اسماء المسارات المسموح الوصول لها بدون مصادقة
+  const publicAdminPaths = ['/admin/login', '/admin/logout'];
+  if (publicAdminPaths.includes(req.path) || publicAdminPaths.includes(req.originalUrl)) return next();
+
+  if (!isAuthenticated(req)) {
+    // إذا كان الطلب من AJAX نعيد JSON بخطأ، وإلا نوجه لنموذج تسجيل الدخول
+    if (req.xhr || (req.headers.accept && req.headers.accept.indexOf('application/json') !== -1)) {
+      return res.status(401).json({ status: 'error', message: 'مطلوب تسجيل الدخول' });
+    }
+    return res.redirect('/admin/login');
+  }
+
+  next();
+});
 
 // صفحة ويب لعرض البيانات
 app.get('/admin', (req, res) => {
@@ -1326,6 +2007,7 @@ app.get('/admin', (req, res) => {
                 <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
                 <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
                 <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
+                <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/api/all-data" class="nav-btn">📋 JSON البيانات</a>
                 <a href="/api/test" class="nav-btn">🧪 اختبار الاتصال</a>
@@ -1381,6 +2063,7 @@ app.get('/admin', (req, res) => {
         </div>
         
         <script>
+            // تحديث تلقائي كل 15 ثانية
             setTimeout(() => {
                 location.reload();
             }, 15000);
@@ -1441,6 +2124,7 @@ app.get('/admin/advanced', (req, res) => {
                 <a href="/admin" class="btn btn-secondary">📊 العرض البسيط</a>
                 <a href="/admin/orders" class="btn btn-success">🛒 إدارة الطلبات</a>
                 <a href="/admin/coupons" class="btn btn-info">🎫 إدارة الكوبونات</a>
+                <a href="/admin/gift-cards" class="btn btn-info">💳 إدارة القسائم</a>
                 <a href="/admin/settings" class="btn btn-info">⚙️ إعدادات النظام</a>
                 <a href="/api/all-data" class="btn btn-success">📋 JSON البيانات</a>
                 <a href="/api/orders" class="btn btn-primary">📦 JSON الطلبات</a>
@@ -1516,6 +2200,7 @@ app.get('/admin/advanced', (req, res) => {
                 }
             }
             
+            // تحديث تلقائي كل 10 ثواني
             setInterval(() => {
                 location.reload();
             }, 10000);
@@ -1531,38 +2216,6 @@ app.get('/admin/advanced', (req, res) => {
 // صفحة إدارة الطلبات
 app.get('/admin/orders', (req, res) => {
   db.all('SELECT * FROM orders ORDER BY created_at DESC', (err, rows) => {
-    if (err) {
-      let html = `
-      <!DOCTYPE html>
-      <html dir="rtl">
-      <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>خطأ - إدارة الطلبات</title>
-          <style>
-              body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background: #f0f2f5; min-height: 100vh; }
-              .error-container { background: white; padding: 40px; border-radius: 15px; text-align: center; box-shadow: 0 4px 16px rgba(0,0,0,0.1); margin: 50px auto; max-width: 600px; }
-              .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; justify-content: center; }
-              .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
-              .nav-btn:hover { background: #ff6b6b; color: white; transform: translateY(-2px); }
-          </style>
-      </head>
-      <body>
-          <div class="nav">
-              <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
-              <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
-              <a href="/" class="nav-btn">🏠 الرئيسية</a>
-          </div>
-          <div class="error-container">
-              <h1 style="color: #f44336;">❌ خطأ في جلب البيانات</h1>
-              <p>${err.message}</p>
-          </div>
-      </body>
-      </html>
-      `;
-      return res.send(html);
-    }
-
     let html = `
     <!DOCTYPE html>
     <html dir="rtl">
@@ -1621,6 +2274,7 @@ app.get('/admin/orders', (req, res) => {
                 <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
                 <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
                 <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
+                <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
             </div>
@@ -1698,14 +2352,7 @@ app.get('/admin/orders', (req, res) => {
       `;
     } else {
       rows.forEach(order => {
-        let items;
-        try {
-          items = JSON.parse(order.cart_items);
-        } catch (e) {
-          items = [];
-          console.error('❌ خطأ في تحليل عناصر الطلب:', e);
-        }
-        
+        const items = JSON.parse(order.cart_items);
         const statusClass = `status-${order.order_status}`;
         const statusText = {
           'pending': 'قيد الانتظار',
@@ -1732,7 +2379,7 @@ app.get('/admin/orders', (req, res) => {
                     البريد: ${order.customer_email || 'غير محدد'}<br>
                     طريقة الدفع: ${order.payment_method === 'online' ? 'دفع إلكتروني' : 'الدفع عند الاستلام'}
                     ${order.coupon_code ? `<br>كود الخصم: <strong>${order.coupon_code}</strong> (خصم: ${order.discount_amount} ر.س)` : ''}
-                    ${order.gift_card_number ? `<br>القسيمة: <strong>${order.gift_card_number}</strong> (مستخدم: ${order.gift_card_amount} ر.س)` : ''}
+                    ${order.gift_card_number ? `<br>رقم القسيمة: <strong>${order.gift_card_number}</strong> (مستخدم: ${order.gift_card_amount} ر.س)` : ''}
                 </div>
                 
                 <div class="order-details">
@@ -1783,6 +2430,7 @@ app.get('/admin/orders', (req, res) => {
         </div>
 
         <script>
+            // تصدير المبيعات مع الفلاتر
             function exportSales() {
                 const formData = new FormData(document.getElementById('exportForm'));
                 const params = new URLSearchParams();
@@ -1796,10 +2444,12 @@ app.get('/admin/orders', (req, res) => {
                 window.open('/api/export-sales?' + params.toString(), '_blank');
             }
 
+            // تصدير سريع لجميع المبيعات
             function exportAllSales() {
                 window.open('/api/export-all-sales', '_blank');
             }
 
+            // مسح الفلاتر
             function resetExportForm() {
                 document.getElementById('exportForm').reset();
             }
@@ -1826,6 +2476,7 @@ app.get('/admin/orders', (req, res) => {
                 });
             }
             
+            // تحديث تلقائي كل 10 ثواني
             setInterval(() => {
                 location.reload();
             }, 10000);
@@ -1852,15 +2503,43 @@ app.get('/admin/coupons', (req, res) => {
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
             .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
             .header { background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; position: relative; }
-            .coupon-card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-right: 4px solid #4CAF50; }
+            .coupon-card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-right: 4px solid #4CAF50; transition: all 0.3s; }
+            .coupon-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
             .coupon-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
             .coupon-code { background: #4CAF50; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 16px; }
+            .coupon-status { padding: 6px 12px; border-radius: 15px; font-size: 14px; font-weight: bold; }
+            .status-active { background: #d1ecf1; color: #0c5460; }
+            .status-inactive { background: #f8d7da; color: #721c24; }
+            .status-expired { background: #fff3cd; color: #856404; }
+            .coupon-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
+            .detail-item { background: #f8f9fa; padding: 12px; border-radius: 8px; border-left: 3px solid #4CAF50; }
             .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
             .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
             .nav-btn:hover { background: #4CAF50; color: white; transform: translateY(-2px); }
             .logout-btn { position: absolute; left: 20px; top: 20px; background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
             .logout-btn:hover { background: #d32f2f; transform: translateY(-2px); }
+            .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
+            .btn-primary { background: #2196F3; color: white; }
+            .btn-primary:hover { background: #1976D2; transform: translateY(-2px); }
+            .btn-danger { background: #f44336; color: white; }
+            .btn-danger:hover { background: #d32f2f; transform: translateY(-2px); }
+            .btn-success { background: #4CAF50; color: white; }
+            .btn-success:hover { background: #388E3C; transform: translateY(-2px); }
+            .btn-warning { background: #ff9800; color: white; }
+            .btn-warning:hover { background: #f57c00; transform: translateY(-2px); }
             .empty-state { text-align: center; padding: 60px; color: #666; background: white; border-radius: 15px; }
+            .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1000; }
+            .modal-content { background-color: white; margin: 5% auto; padding: 30px; border-radius: 15px; width: 80%; max-width: 600px; max-height: 80vh; overflow-y: auto; }
+            .form-group { margin-bottom: 15px; }
+            .form-control { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
+            .form-label { display: block; margin-bottom: 5px; font-weight: 600; color: #333; }
+            .form-help { font-size: 12px; color: #666; margin-top: 4px; }
+            .close { float: left; font-size: 28px; font-weight: bold; cursor: pointer; color: #666; }
+            .close:hover { color: #000; }
+            .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+            .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+            .stat-number { font-size: 24px; font-weight: bold; color: #4CAF50; }
+            .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
         </style>
     </head>
     <body>
@@ -1868,15 +2547,36 @@ app.get('/admin/coupons', (req, res) => {
             <div class="header">
                 <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
                 <h1 style="margin: 0;">🎫 إدارة الكوبونات - نظام المتجر</h1>
-                <p style="margin: 10px 0 0 0; opacity: 0.9;">إنشاء وتعديل وحذف كوبونات الخصم</p>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">إنشاء وتعديل وحذف كوبونات الخصم مع تحديد الصلاحية</p>
             </div>
 
             <div class="nav">
                 <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
                 <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
                 <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
+                <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
+                <button onclick="showAddModal()" class="btn btn-success">+ إضافة كوبون جديد</button>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">${rows.length}</div>
+                    <div class="stat-label">إجمالي الكوبونات</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${rows.filter(c => c.is_active && new Date(c.valid_until) > new Date()).length}</div>
+                    <div class="stat-label">كوبونات نشطة</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${rows.filter(c => !c.is_active).length}</div>
+                    <div class="stat-label">كوبونات غير نشطة</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${rows.filter(c => new Date(c.valid_until) < new Date()).length}</div>
+                    <div class="stat-label">كوبونات منتهية</div>
+                </div>
             </div>
     `;
 
@@ -1884,21 +2584,84 @@ app.get('/admin/coupons', (req, res) => {
       html += `
             <div class="empty-state">
                 <h3 style="color: #666; margin-bottom: 10px;">📭 لا توجد كوبونات حتى الآن</h3>
-                <p style="color: #999;">سيتم إنشاء كوبونات افتراضية تلقائياً</p>
+                <p style="color: #999;">انقر على زر "إضافة كوبون جديد" لإنشاء أول كوبون</p>
             </div>
       `;
     } else {
       rows.forEach(coupon => {
+        const now = new Date();
+        const validUntil = new Date(coupon.valid_until);
+        const validFrom = new Date(coupon.valid_from);
+        
+        let statusClass = 'status-inactive';
+        let statusText = 'غير نشط';
+        
+        if (coupon.is_active) {
+          if (now > validUntil) {
+            statusClass = 'status-expired';
+            statusText = 'منتهي';
+          } else if (now < validFrom) {
+            statusClass = 'status-inactive';
+            statusText = 'لم يبدأ';
+          } else {
+            statusClass = 'status-active';
+            statusText = 'نشط';
+          }
+        }
+
+        const discountTypeText = coupon.discount_type === 'percentage' ? 'نسبة مئوية' : 'ثابت';
+        const daysLeft = Math.ceil((validUntil - now) / (1000 * 60 * 60 * 24));
+        const daysLeftText = daysLeft > 0 ? `${daysLeft} يوم` : 'منتهي';
+
         html += `
             <div class="coupon-card">
                 <div class="coupon-header">
-                    <span class="coupon-code">${coupon.code}</span>
-                    <span style="color: #666;">${coupon.description || 'لا يوجد وصف'}</span>
+                    <div>
+                        <span class="coupon-code">${coupon.code}</span>
+                        <span class="coupon-status ${statusClass}" style="margin-right: 10px;">${statusText}</span>
+                        ${now > validUntil ? '<span style="color: #dc3545; font-size: 12px;">⏰ منتهي</span>' : ''}
+                        ${now < validFrom ? '<span style="color: #ffc107; font-size: 12px;">⏳ لم يبدأ</span>' : ''}
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button onclick="editCoupon(${coupon.id})" class="btn btn-primary">✏️ تعديل</button>
+                        <button onclick="toggleCouponStatus(${coupon.id}, ${coupon.is_active ? 0 : 1})" class="btn ${coupon.is_active ? 'btn-warning' : 'btn-success'}">
+                            ${coupon.is_active ? '❌ إيقاف' : '✅ تفعيل'}
+                        </button>
+                        <button onclick="deleteCoupon(${coupon.id})" class="btn btn-danger">🗑️ حذف</button>
+                    </div>
                 </div>
-                <div style="color: #666;">
-                    الخصم: ${coupon.discount_value} ${coupon.discount_type === 'percentage' ? '%' : 'ريال'} | 
-                    الحالة: ${coupon.is_active ? 'نشط' : 'غير نشط'} |
-                    تم الاستخدام: ${coupon.used_count} مرة
+
+                <div class="coupon-details">
+                    <div class="detail-item">
+                        <strong>الوصف:</strong> ${coupon.description || 'لا يوجد وصف'}
+                    </div>
+                    <div class="detail-item">
+                        <strong>نوع الخصم:</strong> ${discountTypeText}
+                    </div>
+                    <div class="detail-item">
+                        <strong>قيمة الخصم:</strong> ${coupon.discount_value} ${coupon.discount_type === 'percentage' ? '%' : 'ريال'}
+                    </div>
+                    <div class="detail-item">
+                        <strong>الحد الأدنى للطلب:</strong> ${coupon.min_order_amount} ريال
+                    </div>
+                    <div class="detail-item">
+                        <strong>الحد الأقصى للاستخدام:</strong> ${coupon.max_uses === -1 ? 'غير محدود' : coupon.max_uses}
+                    </div>
+                    <div class="detail-item">
+                        <strong>تم استخدامه:</strong> ${coupon.used_count} مرة
+                    </div>
+                    <div class="detail-item">
+                        <strong>صالح من:</strong> ${validFrom.toLocaleDateString('ar-SA')} ${validFrom.toLocaleTimeString('ar-SA')}
+                    </div>
+                    <div class="detail-item">
+                        <strong>صالح حتى:</strong> ${validUntil.toLocaleDateString('ar-SA')} ${validUntil.toLocaleTimeString('ar-SA')}
+                    </div>
+                    <div class="detail-item">
+                        <strong>متبقي:</strong> <span style="color: ${daysLeft > 7 ? '#28a745' : daysLeft > 3 ? '#ffc107' : '#dc3545'}">${daysLeftText}</span>
+                    </div>
+                    <div class="detail-item">
+                        <strong>تاريخ الإنشاء:</strong> ${new Date(coupon.created_at).toLocaleDateString('ar-SA')}
+                    </div>
                 </div>
             </div>
         `;
@@ -1907,6 +2670,325 @@ app.get('/admin/coupons', (req, res) => {
 
     html += `
         </div>
+
+        <!-- نموذج إضافة كوبون -->
+        <div id="addCouponModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal('addCouponModal')">&times;</span>
+                <h2>🎫 إضافة كوبون جديد</h2>
+                <form id="addCouponForm">
+                    <div class="form-group">
+                        <label class="form-label">كود الكوبون *</label>
+                        <input type="text" name="code" class="form-control" required placeholder="مثال: WELCOME20">
+                        <div class="form-help">يجب أن يكون الكود فريداً وغير مكرر</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">وصف الكوبون</label>
+                        <input type="text" name="description" class="form-control" placeholder="مثال: خصم ترحيبي 20%">
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">نوع الخصم *</label>
+                            <select name="discount_type" class="form-control" required>
+                                <option value="percentage">نسبة مئوية (%)</option>
+                                <option value="fixed">قيمة ثابتة (ريال)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">قيمة الخصم *</label>
+                            <input type="number" name="discount_value" class="form-control" required min="0" step="0.01" placeholder="0.00">
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">الحد الأدنى للطلب (ريال)</label>
+                            <input type="number" name="min_order_amount" class="form-control" value="0" min="0" step="0.01">
+                            <div class="form-help">0 يعني لا يوجد حد أدنى</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">الحد الأقصى للاستخدام</label>
+                            <input type="number" name="max_uses" class="form-control" value="-1" min="-1">
+                            <div class="form-help">-1 يعني غير محدود</div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">تاريخ البدء *</label>
+                            <input type="datetime-local" name="valid_from" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">تاريخ الانتهاء *</label>
+                            <input type="datetime-local" name="valid_until" class="form-control" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="is_active" checked> 
+                            <span>تفعيل الكوبون مباشرة</span>
+                        </label>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-top: 20px;">
+                        <button type="submit" class="btn btn-success" style="flex: 1;">💾 حفظ الكوبون</button>
+                        <button type="button" onclick="closeModal('addCouponModal')" class="btn btn-secondary">إلغاء</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- نموذج تعديل كوبون -->
+        <div id="editCouponModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal('editCouponModal')">&times;</span>
+                <h2>✏️ تعديل الكوبون</h2>
+                <form id="editCouponForm">
+                    <input type="hidden" name="id" id="edit_coupon_id">
+                    
+                    <div class="form-group">
+                        <label class="form-label">كود الكوبون *</label>
+                        <input type="text" name="code" id="edit_code" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">وصف الكوبون</label>
+                        <input type="text" name="description" id="edit_description" class="form-control">
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">نوع الخصم *</label>
+                            <select name="discount_type" id="edit_discount_type" class="form-control" required>
+                                <option value="percentage">نسبة مئوية (%)</option>
+                                <option value="fixed">قيمة ثابتة (ريال)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">قيمة الخصم *</label>
+                            <input type="number" name="discount_value" id="edit_discount_value" class="form-control" required min="0" step="0.01">
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">الحد الأدنى للطلب (ريال)</label>
+                            <input type="number" name="min_order_amount" id="edit_min_order_amount" class="form-control" min="0" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">الحد الأقصى للاستخدام</label>
+                            <input type="number" name="max_uses" id="edit_max_uses" class="form-control" min="-1">
+                            <div class="form-help">-1 يعني غير محدود</div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">تاريخ البدء *</label>
+                            <input type="datetime-local" name="valid_from" id="edit_valid_from" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">تاريخ الانتهاء *</label>
+                            <input type="datetime-local" name="valid_until" id="edit_valid_until" class="form-control" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="is_active" id="edit_is_active"> 
+                            <span>الكوبون نشط</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">عدد مرات الاستخدام</label>
+                        <input type="number" name="used_count" id="edit_used_count" class="form-control" min="0">
+                        <div class="form-help">يمكنك تعديل عدد مرات الاستخدام يدوياً</div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-top: 20px;">
+                        <button type="submit" class="btn btn-success" style="flex: 1;">💾 حفظ التعديلات</button>
+                        <button type="button" onclick="closeModal('editCouponModal')" class="btn btn-secondary">إلغاء</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <script>
+            // إعداد التواريخ الافتراضية
+            document.addEventListener('DOMContentLoaded', function() {
+                const now = new Date();
+                const tomorrow = new Date(now);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                
+                // تعيين تاريخ البدء الافتراضي للكوبون الجديد
+                document.querySelector('#addCouponForm input[name="valid_from"]').value = 
+                    now.toISOString().slice(0, 16);
+                
+                // تعيين تاريخ الانتهاء الافتراضي (بعد 30 يوم)
+                const nextMonth = new Date(now);
+                nextMonth.setDate(nextMonth.getDate() + 30);
+                document.querySelector('#addCouponForm input[name="valid_until"]').value = 
+                    nextMonth.toISOString().slice(0, 16);
+            });
+
+            // إظهار وإخفاء النماذج
+            function showAddModal() {
+                document.getElementById('addCouponModal').style.display = 'block';
+            }
+
+            function closeModal(modalId) {
+                document.getElementById(modalId).style.display = 'none';
+            }
+
+            // إضافة كوبون جديد
+            document.getElementById('addCouponForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                const data = Object.fromEntries(formData.entries());
+                
+                // تحويل القيم الرقمية
+                data.discount_value = parseFloat(data.discount_value);
+                data.min_order_amount = parseFloat(data.min_order_amount);
+                data.max_uses = parseInt(data.max_uses);
+                data.is_active = data.is_active ? 1 : 0;
+
+                fetch('/api/coupons', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('✅ ' + data.message);
+                        closeModal('addCouponModal');
+                        location.reload();
+                    } else {
+                        alert('❌ ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('❌ حدث خطأ: ' + error);
+                });
+            });
+
+            // تعديل كوبون
+            async function editCoupon(id) {
+                try {
+                    const response = await fetch('/api/coupons/' + id);
+                    const data = await response.json();
+                    
+                    if (data.status === 'success') {
+                        const coupon = data.coupon;
+                        
+                        // تعبئة النموذج ببيانات الكوبون
+                        document.getElementById('edit_coupon_id').value = coupon.id;
+                        document.getElementById('edit_code').value = coupon.code;
+                        document.getElementById('edit_description').value = coupon.description || '';
+                        document.getElementById('edit_discount_type').value = coupon.discount_type;
+                        document.getElementById('edit_discount_value').value = coupon.discount_value;
+                        document.getElementById('edit_min_order_amount').value = coupon.min_order_amount;
+                        document.getElementById('edit_max_uses').value = coupon.max_uses;
+                        document.getElementById('edit_valid_from').value = coupon.valid_from.slice(0, 16);
+                        document.getElementById('edit_valid_until').value = coupon.valid_until.slice(0, 16);
+                        document.getElementById('edit_is_active').checked = coupon.is_active;
+                        document.getElementById('edit_used_count').value = coupon.used_count;
+                        
+                        document.getElementById('editCouponModal').style.display = 'block';
+                    } else {
+                        alert('❌ ' + data.message);
+                    }
+                } catch (error) {
+                    alert('❌ حدث خطأ في جلب بيانات الكوبون: ' + error);
+                }
+            }
+
+            // حفظ التعديلات
+            document.getElementById('editCouponForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                const data = Object.fromEntries(formData.entries());
+                const couponId = data.id;
+                
+                // تحويل القيم الرقمية
+                data.discount_value = parseFloat(data.discount_value);
+                data.min_order_amount = parseFloat(data.min_order_amount);
+                data.max_uses = parseInt(data.max_uses);
+                data.used_count = parseInt(data.used_count);
+                data.is_active = data.is_active ? 1 : 0;
+
+                fetch('/api/coupons/' + couponId, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('✅ ' + data.message);
+                        closeModal('editCouponModal');
+                        location.reload();
+                    } else {
+                        alert('❌ ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('❌ حدث خطأ: ' + error);
+                });
+            });
+
+            // تفعيل/إيقاف الكوبون
+            function toggleCouponStatus(id, newStatus) {
+                fetch('/api/coupons/' + id, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_active: newStatus })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('✅ ' + data.message);
+                        location.reload();
+                    } else {
+                        alert('❌ ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('❌ حدث خطأ: ' + error);
+                });
+            }
+
+            // حذف كوبون
+            function deleteCoupon(id) {
+                if (confirm('⚠️ هل أنت متأكد من حذف هذا الكوبون؟ لا يمكن التراجع عن هذا الإجراء!')) {
+                    fetch('/api/coupons/' + id, { method: 'DELETE' })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.status === 'success') {
+                                alert('✅ ' + data.message);
+                                location.reload();
+                            } else {
+                                alert('❌ ' + data.message);
+                            }
+                        })
+                        .catch(error => {
+                            alert('❌ حدث خطأ: ' + error);
+                        });
+                }
+            }
+
+            // إغلاق النماذج عند النقر خارجها
+            window.onclick = function(event) {
+                const modals = document.querySelectorAll('.modal');
+                modals.forEach(modal => {
+                    if (event.target === modal) {
+                        modal.style.display = 'none';
+                    }
+                });
+            }
+        </script>
     </body>
     </html>
     `;
@@ -1915,7 +2997,520 @@ app.get('/admin/coupons', (req, res) => {
   });
 });
 
-// صفحة إعدادات النظام
+// صفحة إدارة القسائم الشرائية (الجديدة)
+app.get('/admin/gift-cards', (req, res) => {
+  db.all('SELECT * FROM gift_cards ORDER BY created_at DESC', (err, rows) => {
+    let html = `
+    <!DOCTYPE html>
+    <html dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>إدارة القسائم الشرائية - نظام المتجر</title>
+        <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
+            .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #9C27B0 0%, #6A1B9A 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; position: relative; }
+            .gift-card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-right: 4px solid #9C27B0; transition: all 0.3s; }
+            .gift-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
+            .gift-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
+            .gift-card-number { background: #9C27B0; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 16px; }
+            .gift-card-status { padding: 6px 12px; border-radius: 15px; font-size: 14px; font-weight: bold; }
+            .status-active { background: #d1ecf1; color: #0c5460; }
+            .status-inactive { background: #f8d7da; color: #721c24; }
+            .status-expired { background: #fff3cd; color: #856404; }
+            .status-used { background: #e2e3e5; color: #383d41; }
+            .gift-card-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
+            .detail-item { background: #f8f9fa; padding: 12px; border-radius: 8px; border-left: 3px solid #9C27B0; }
+            .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+            .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
+            .nav-btn:hover { background: #9C27B0; color: white; transform: translateY(-2px); }
+            .logout-btn { position: absolute; left: 20px; top: 20px; background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
+            .logout-btn:hover { background: #d32f2f; transform: translateY(-2px); }
+            .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
+            .btn-primary { background: #2196F3; color: white; }
+            .btn-primary:hover { background: #1976D2; transform: translateY(-2px); }
+            .btn-danger { background: #f44336; color: white; }
+            .btn-danger:hover { background: #d32f2f; transform: translateY(-2px); }
+            .btn-success { background: #4CAF50; color: white; }
+            .btn-success:hover { background: #388E3C; transform: translateY(-2px); }
+            .btn-warning { background: #ff9800; color: white; }
+            .btn-warning:hover { background: #f57c00; transform: translateY(-2px); }
+            .empty-state { text-align: center; padding: 60px; color: #666; background: white; border-radius: 15px; }
+            .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1000; }
+            .modal-content { background-color: white; margin: 5% auto; padding: 30px; border-radius: 15px; width: 80%; max-width: 600px; max-height: 80vh; overflow-y: auto; }
+            .form-group { margin-bottom: 15px; }
+            .form-control { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
+            .form-label { display: block; margin-bottom: 5px; font-weight: 600; color: #333; }
+            .form-help { font-size: 12px; color: #666; margin-top: 4px; }
+            .close { float: left; font-size: 28px; font-weight: bold; cursor: pointer; color: #666; }
+            .close:hover { color: #000; }
+            .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+            .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+            .stat-number { font-size: 24px; font-weight: bold; color: #9C27B0; }
+            .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
+            .balance-bar { background: #e9ecef; border-radius: 10px; height: 10px; margin-top: 5px; overflow: hidden; }
+            .balance-fill { background: #4CAF50; height: 100%; border-radius: 10px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
+                <h1 style="margin: 0;">💳 إدارة القسائم الشرائية - نظام المتجر</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">إنشاء وتعديل وحذف القسائم الشرائية مع إدارة الرصيد والصلاحية</p>
+            </div>
+
+            <div class="nav">
+                <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
+                <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
+                <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
+                <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
+                <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
+                <a href="/" class="nav-btn">🏠 الرئيسية</a>
+                <button onclick="showAddModal()" class="btn btn-success">+ إضافة قسيمة جديدة</button>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">${rows.length}</div>
+                    <div class="stat-label">إجمالي القسائم</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${rows.filter(gc => gc.is_active && new Date(gc.valid_until) > new Date() && gc.current_balance > 0).length}</div>
+                    <div class="stat-label">قسائم نشطة</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${rows.reduce((sum, gc) => sum + parseFloat(gc.current_balance), 0).toFixed(2)} ر.س</div>
+                    <div class="stat-label">إجمالي الرصيد</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${rows.filter(gc => gc.current_balance <= 0).length}</div>
+                    <div class="stat-label">قسائم مستخدمة</div>
+                </div>
+            </div>
+    `;
+
+    if (rows.length === 0) {
+      html += `
+            <div class="empty-state">
+                <h3 style="color: #666; margin-bottom: 10px;">💳 لا توجد قسائم حتى الآن</h3>
+                <p style="color: #999;">انقر على زر "إضافة قسيمة جديدة" لإنشاء أول قسيمة</p>
+            </div>
+      `;
+    } else {
+      rows.forEach(giftCard => {
+        const now = new Date();
+        const validUntil = new Date(giftCard.valid_until);
+        
+        let statusClass = 'status-inactive';
+        let statusText = 'غير نشط';
+        
+        if (giftCard.is_active) {
+          if (now > validUntil) {
+            statusClass = 'status-expired';
+            statusText = 'منتهي';
+          } else if (giftCard.current_balance <= 0) {
+            statusClass = 'status-used';
+            statusText = 'مستخدم';
+          } else if (giftCard.used_count >= giftCard.max_uses && giftCard.max_uses > 0) {
+            statusClass = 'status-used';
+            statusText = 'مستخدم';
+          } else {
+            statusClass = 'status-active';
+            statusText = 'نشط';
+          }
+        }
+
+        const daysLeft = Math.ceil((validUntil - now) / (1000 * 60 * 60 * 24));
+        const daysLeftText = daysLeft > 0 ? `${daysLeft} يوم` : 'منتهي';
+        const usagePercentage = (giftCard.used_amount / giftCard.initial_amount) * 100;
+
+        html += `
+            <div class="gift-card">
+                <div class="gift-card-header">
+                    <div>
+                        <span class="gift-card-number">${giftCard.card_number}</span>
+                        <span class="gift-card-status ${statusClass}" style="margin-right: 10px;">${statusText}</span>
+                        ${now > validUntil ? '<span style="color: #dc3545; font-size: 12px;">⏰ منتهي</span>' : ''}
+                        ${giftCard.current_balance <= 0 ? '<span style="color: #6c757d; font-size: 12px;">💰 مستخدم</span>' : ''}
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button onclick="editGiftCard(${giftCard.id})" class="btn btn-primary">✏️ تعديل</button>
+                        <button onclick="toggleGiftCardStatus(${giftCard.id}, ${giftCard.is_active ? 0 : 1})" class="btn ${giftCard.is_active ? 'btn-warning' : 'btn-success'}">
+                            ${giftCard.is_active ? '❌ إيقاف' : '✅ تفعيل'}
+                        </button>
+                        <button onclick="deleteGiftCard(${giftCard.id})" class="btn btn-danger">🗑️ حذف</button>
+                    </div>
+                </div>
+
+                <div class="gift-card-details">
+                    <div class="detail-item">
+                        <strong>الرمز السري:</strong> ${giftCard.pin_code}
+                    </div>
+                    <div class="detail-item">
+                        <strong>المبلغ الابتدائي:</strong> ${giftCard.initial_amount} ر.س
+                    </div>
+                    <div class="detail-item">
+                        <strong>الرصيد الحالي:</strong> ${giftCard.current_balance} ر.س
+                        <div class="balance-bar">
+                            <div class="balance-fill" style="width: ${100 - usagePercentage}%"></div>
+                        </div>
+                    </div>
+                    <div class="detail-item">
+                        <strong>المبلغ المستخدم:</strong> ${giftCard.used_amount} ر.س
+                    </div>
+                    <div class="detail-item">
+                        <strong>الحد الأقصى للاستخدام:</strong> ${giftCard.max_uses === -1 ? 'غير محدود' : giftCard.max_uses}
+                    </div>
+                    <div class="detail-item">
+                        <strong>تم استخدامه:</strong> ${giftCard.used_count} مرة
+                    </div>
+                    <div class="detail-item">
+                        <strong>صالح حتى:</strong> ${validUntil.toLocaleDateString('ar-SA')} ${validUntil.toLocaleTimeString('ar-SA')}
+                    </div>
+                    <div class="detail-item">
+                        <strong>متبقي:</strong> <span style="color: ${daysLeft > 7 ? '#28a745' : daysLeft > 3 ? '#ffc107' : '#dc3545'}">${daysLeftText}</span>
+                    </div>
+                    <div class="detail-item">
+                        <strong>العميل:</strong> ${giftCard.customer_name || 'غير محدد'}
+                    </div>
+                    <div class="detail-item">
+                        <strong>هاتف العميل:</strong> ${giftCard.customer_phone || 'غير محدد'}
+                    </div>
+                    <div class="detail-item">
+                        <strong>ملاحظات:</strong> ${giftCard.notes || 'لا توجد ملاحظات'}
+                    </div>
+                    <div class="detail-item">
+                        <strong>تاريخ الإنشاء:</strong> ${new Date(giftCard.created_at).toLocaleDateString('ar-SA')}
+                    </div>
+                </div>
+            </div>
+        `;
+      });
+    }
+
+    html += `
+        </div>
+
+        <!-- نموذج إضافة قسيمة -->
+        <div id="addGiftCardModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal('addGiftCardModal')">&times;</span>
+                <h2>💳 إضافة قسيمة جديدة</h2>
+                <form id="addGiftCardForm">
+                    <div class="form-group">
+                        <label class="form-label">رقم القسيمة *</label>
+                        <input type="text" name="card_number" class="form-control" required placeholder="مثال: GC-1001-2024">
+                        <div class="form-help">يجب أن يكون الرقم فريداً وغير مكرر</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">الرمز السري *</label>
+                        <input type="text" name="pin_code" class="form-control" required placeholder="مثال: 1234">
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">المبلغ الابتدائي *</label>
+                            <input type="number" name="initial_amount" class="form-control" required min="0" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">الحد الأقصى للاستخدام</label>
+                            <input type="number" name="max_uses" class="form-control" value="1" min="1">
+                            <div class="form-help">1 يعني للاستخدام لمرة واحدة</div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">تاريخ الانتهاء *</label>
+                            <input type="datetime-local" name="valid_until" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">اسم العميل</label>
+                            <input type="text" name="customer_name" class="form-control" placeholder="اسم العميل (اختياري)">
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">هاتف العميل</label>
+                            <input type="text" name="customer_phone" class="form-control" placeholder="هاتف العميل (اختياري)">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">ملاحظات</label>
+                            <input type="text" name="notes" class="form-control" placeholder="ملاحظات إضافية (اختياري)">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="is_active" checked> 
+                            <span>تفعيل القسيمة مباشرة</span>
+                        </label>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-top: 20px;">
+                        <button type="submit" class="btn btn-success" style="flex: 1;">💾 حفظ القسيمة</button>
+                        <button type="button" onclick="closeModal('addGiftCardModal')" class="btn btn-secondary">إلغاء</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- نموذج تعديل قسيمة -->
+        <div id="editGiftCardModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal('editGiftCardModal')">&times;</span>
+                <h2>✏️ تعديل القسيمة</h2>
+                <form id="editGiftCardForm">
+                    <input type="hidden" name="id" id="edit_gift_card_id">
+                    
+                    <div class="form-group">
+                        <label class="form-label">رقم القسيمة *</label>
+                        <input type="text" name="card_number" id="edit_card_number" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">الرمز السري *</label>
+                        <input type="text" name="pin_code" id="edit_pin_code" class="form-control" required>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">المبلغ الابتدائي *</label>
+                            <input type="number" name="initial_amount" id="edit_initial_amount" class="form-control" required min="0" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">الرصيد الحالي *</label>
+                            <input type="number" name="current_balance" id="edit_current_balance" class="form-control" required min="0" step="0.01">
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">الحد الأقصى للاستخدام</label>
+                            <input type="number" name="max_uses" id="edit_max_uses" class="form-control" min="1">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">تاريخ الانتهاء *</label>
+                            <input type="datetime-local" name="valid_until" id="edit_valid_until" class="form-control" required>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">اسم العميل</label>
+                            <input type="text" name="customer_name" id="edit_customer_name" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">هاتف العميل</label>
+                            <input type="text" name="customer_phone" id="edit_customer_phone" class="form-control">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">ملاحظات</label>
+                        <input type="text" name="notes" id="edit_notes" class="form-control">
+                    </div>
+
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="is_active" id="edit_is_active"> 
+                            <span>القسيمة نشطة</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">عدد مرات الاستخدام</label>
+                        <input type="number" name="used_count" id="edit_used_count" class="form-control" min="0">
+                        <div class="form-help">يمكنك تعديل عدد مرات الاستخدام يدوياً</div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-top: 20px;">
+                        <button type="submit" class="btn btn-success" style="flex: 1;">💾 حفظ التعديلات</button>
+                        <button type="button" onclick="closeModal('editGiftCardModal')" class="btn btn-secondary">إلغاء</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <script>
+            // إعداد التواريخ الافتراضية
+            document.addEventListener('DOMContentLoaded', function() {
+                const now = new Date();
+                const nextMonth = new Date(now);
+                nextMonth.setDate(nextMonth.getDate() + 90); // 90 يوم افتراضي
+                
+                // تعيين تاريخ الانتهاء الافتراضي للقسيمة الجديدة
+                document.querySelector('#addGiftCardForm input[name="valid_until"]').value = 
+                    nextMonth.toISOString().slice(0, 16);
+            });
+
+            // إظهار وإخفاء النماذج
+            function showAddModal() {
+                document.getElementById('addGiftCardModal').style.display = 'block';
+            }
+
+            function closeModal(modalId) {
+                document.getElementById(modalId).style.display = 'none';
+            }
+
+            // إضافة قسيمة جديدة
+            document.getElementById('addGiftCardForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                const data = Object.fromEntries(formData.entries());
+                
+                // تحويل القيم الرقمية
+                data.initial_amount = parseFloat(data.initial_amount);
+                data.max_uses = parseInt(data.max_uses);
+                data.is_active = data.is_active ? 1 : 0;
+
+                fetch('/api/gift-cards', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('✅ ' + data.message);
+                        closeModal('addGiftCardModal');
+                        location.reload();
+                    } else {
+                        alert('❌ ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('❌ حدث خطأ: ' + error);
+                });
+            });
+
+            // تعديل قسيمة
+            async function editGiftCard(id) {
+                try {
+                    const response = await fetch('/api/gift-cards/' + id);
+                    const data = await response.json();
+                    
+                    if (data.status === 'success') {
+                        const giftCard = data.gift_card;
+                        
+                        // تعبئة النموذج ببيانات القسيمة
+                        document.getElementById('edit_gift_card_id').value = giftCard.id;
+                        document.getElementById('edit_card_number').value = giftCard.card_number;
+                        document.getElementById('edit_pin_code').value = giftCard.pin_code;
+                        document.getElementById('edit_initial_amount').value = giftCard.initial_amount;
+                        document.getElementById('edit_current_balance').value = giftCard.current_balance;
+                        document.getElementById('edit_max_uses').value = giftCard.max_uses;
+                        document.getElementById('edit_valid_until').value = giftCard.valid_until.slice(0, 16);
+                        document.getElementById('edit_customer_name').value = giftCard.customer_name || '';
+                        document.getElementById('edit_customer_phone').value = giftCard.customer_phone || '';
+                        document.getElementById('edit_notes').value = giftCard.notes || '';
+                        document.getElementById('edit_is_active').checked = giftCard.is_active;
+                        document.getElementById('edit_used_count').value = giftCard.used_count;
+                        
+                        document.getElementById('editGiftCardModal').style.display = 'block';
+                    } else {
+                        alert('❌ ' + data.message);
+                    }
+                } catch (error) {
+                    alert('❌ حدث خطأ في جلب بيانات القسيمة: ' + error);
+                }
+            }
+
+            // حفظ التعديلات
+            document.getElementById('editGiftCardForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                const data = Object.fromEntries(formData.entries());
+                const giftCardId = data.id;
+                
+                // تحويل القيم الرقمية
+                data.initial_amount = parseFloat(data.initial_amount);
+                data.current_balance = parseFloat(data.current_balance);
+                data.max_uses = parseInt(data.max_uses);
+                data.used_count = parseInt(data.used_count);
+                data.is_active = data.is_active ? 1 : 0;
+
+                fetch('/api/gift-cards/' + giftCardId, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('✅ ' + data.message);
+                        closeModal('editGiftCardModal');
+                        location.reload();
+                    } else {
+                        alert('❌ ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('❌ حدث خطأ: ' + error);
+                });
+            });
+
+            // تفعيل/إيقاف القسيمة
+            function toggleGiftCardStatus(id, newStatus) {
+                fetch('/api/gift-cards/' + id, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_active: newStatus })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('✅ ' + data.message);
+                        location.reload();
+                    } else {
+                        alert('❌ ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('❌ حدث خطأ: ' + error);
+                });
+            }
+
+            // حذف قسيمة
+            function deleteGiftCard(id) {
+                if (confirm('⚠️ هل أنت متأكد من حذف هذه القسيمة؟ لا يمكن التراجع عن هذا الإجراء!')) {
+                    fetch('/api/gift-cards/' + id, { method: 'DELETE' })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.status === 'success') {
+                                alert('✅ ' + data.message);
+                                location.reload();
+                            } else {
+                                alert('❌ ' + data.message);
+                            }
+                        })
+                        .catch(error => {
+                            alert('❌ حدث خطأ: ' + error);
+                        });
+                }
+            }
+
+            // إغلاق النماذج عند النقر خارجها
+            window.onclick = function(event) {
+                const modals = document.querySelectorAll('.modal');
+                modals.forEach(modal => {
+                    if (event.target === modal) {
+                        modal.style.display = 'none';
+                    }
+                });
+            }
+        </script>
+    </body>
+    </html>
+    `;
+
+    res.send(html);
+  });
+});
+
+// صفحة إعدادات الـ admin
 app.get('/admin/settings', (req, res) => {
   res.send(`
   <!DOCTYPE html>
@@ -1972,6 +3567,7 @@ app.get('/admin/settings', (req, res) => {
               <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
               <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
               <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
+              <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
               <a href="/" class="nav-btn">🏠 الرئيسية</a>
           </div>
 
@@ -2034,6 +3630,7 @@ app.get('/admin/settings', (req, res) => {
       <div id="toast" class="toast"></div>
 
       <script>
+          // جلب الإعدادات الحالية
           document.addEventListener('DOMContentLoaded', function() {
               fetch('/api/admin-settings')
                   .then(response => response.json())
@@ -2041,6 +3638,7 @@ app.get('/admin/settings', (req, res) => {
                       if (data.status === 'success') {
                           const settings = data.settings;
                           
+                          // تعيين قيم الإعدادات
                           document.getElementById('theme-setting').value = settings.theme || 'light';
                           document.getElementById('items-per-page-setting').value = settings.items_per_page || '10';
                           document.getElementById('auto-refresh-setting').checked = settings.auto_refresh === 'true';
@@ -2052,6 +3650,7 @@ app.get('/admin/settings', (req, res) => {
                   });
           });
 
+          // حفظ الإعدادات
           document.getElementById('save-settings-btn').addEventListener('click', function() {
               const settings = {
                   theme: document.getElementById('theme-setting').value,
@@ -2060,11 +3659,13 @@ app.get('/admin/settings', (req, res) => {
                   refresh_interval: document.getElementById('refresh-interval-setting').value
               };
 
+              // تعطيل الزر وإظهار التحميل
               const btn = this;
               const originalText = btn.innerHTML;
               btn.innerHTML = '<span class="loading"></span> جاري الحفظ...';
               btn.disabled = true;
 
+              // حفظ كل إعداد على حدة
               const promises = Object.entries(settings).map(([key, value]) => {
                   return fetch('/api/admin-settings/' + key, {
                       method: 'PUT',
@@ -2081,6 +3682,7 @@ app.get('/admin/settings', (req, res) => {
                       if (allSuccess) {
                           showToast('✅ تم حفظ الإعدادات بنجاح');
                           
+                          // تطبيق الثيم فوراً
                           if (settings.theme === 'dark') {
                               document.body.style.backgroundColor = '#222';
                               document.body.style.color = '#fff';
@@ -2096,11 +3698,13 @@ app.get('/admin/settings', (req, res) => {
                       showToast('❌ حدث خطأ: ' + error, 'error');
                   })
                   .finally(() => {
+                      // استعادة الزر
                       btn.innerHTML = originalText;
                       btn.disabled = false;
                   });
           });
 
+          // دالة عرض الإشعارات
           function showToast(message, type = 'success') {
               const toast = document.getElementById('toast');
               toast.textContent = message;
@@ -2173,7 +3777,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('📊 قاعدة البيانات: SQLite (في الذاكرة)');
   console.log('✅ جاهز لاستقبال طلبات Flutter');
   console.log('🎯 يدعم اللغة العربية بشكل كامل');
-  console.log('🎫 نظام الكوبونات: مفعل ومتكامل');
+  console.log('🎫 نظام الكوبونات: مفعل ومتكامل مع التعديل');
   console.log('💳 نظام القسائم الشرائية: مفعل ومتكامل');
   console.log('📈 نظام التصدير: مفعل (Excel)');
   console.log('🚪 نظام تسجيل الدخول والخروج: مفعل');
@@ -2182,6 +3786,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('   🛠️ /admin/advanced - لوحة التحكم');
   console.log('   🛒 /admin/orders - إدارة الطلبات');
   console.log('   🎫 /admin/coupons - إدارة الكوبونات');
+  console.log('   💳 /admin/gift-cards - إدارة القسائم');
   console.log('   ⚙️ /admin/settings - إعدادات النظام');
   console.log('   🚪 /logout - تسجيل الخروج');
 });
