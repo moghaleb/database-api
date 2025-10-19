@@ -139,8 +139,10 @@ db.serialize(() => {
     total_amount REAL NOT NULL,
     discount_amount REAL DEFAULT 0,
     coupon_code TEXT,
+    coupon_type TEXT,
     gift_card_number TEXT,
     gift_card_amount REAL DEFAULT 0,
+    gift_card_type TEXT,
     order_date DATETIME NOT NULL,
     order_status TEXT DEFAULT 'pending',
     customer_name TEXT,
@@ -1142,7 +1144,9 @@ app.post('/api/process-payment', (req, res) => {
           total_amount, // المبلغ الأصلي
           discountAmount, // قيمة الخصم
           appliedCoupon ? appliedCoupon.code : null,
+          appliedCoupon ? appliedCoupon.discount_type : null,
           appliedGiftCard ? appliedGiftCard.card_number : null,
+          appliedGiftCard ? 'gift_card' : null,
           giftCardAmount, // المبلغ المستخدم من القسيمة
           order_date,
           order_status || 'pending',
