@@ -1137,7 +1137,7 @@ app.post('/api/process-payment', (req, res) => {
           order_number, cart_items, total_amount, discount_amount, coupon_code,
           gift_card_number, gift_card_amount, order_date, order_status, 
           customer_name, customer_phone, customer_email, payment_method
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           orderNumber,
           JSON.stringify(cart_items),
