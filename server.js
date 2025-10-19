@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const sqlite3 = require('sqlite3').verbose();
-const ExcelJS = require('exceljs'); // إضافة مكتبة Excel
+const ExcelJS = require('exceljs');
 const path = require('path');
 const fs = require('fs');
 
@@ -12,34 +12,28 @@ const PORT = process.env.PORT || 3000;
 // ======== Middleware ========
 app.use(cors());
 app.use(express.json());
-// استخدم cookie-parser مع سر توقيع بسيط (يمكن ضبطه عبر متغير بيئي SESSION_SECRET)
 const SESSION_SECRET = process.env.SESSION_SECRET || 'dev_session_secret_please_change';
 app.use(cookieParser(SESSION_SECRET));
-app.use(express.static('public')); // لخدمة الملفات المحملة
-
-// تقبل طلبات form POST من النماذج (application/x-www-form-urlencoded)
+app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
 
-// ======== إعداد بيانات مسؤول افتراضي (بسيط للاختبار) ========
-// ملاحظة: هذا تخزين بسيط في الذاكرة للاختبار فقط — لا تستخدمه في الإنتاج.
+// ======== إعداد بيانات مسؤول افتراضي ========
 const ADMIN_CREDENTIALS = {
   username: process.env.ADMIN_USER || 'admin',
   password: process.env.ADMIN_PASS || 'admin123'
 };
 
-// مساعدة صغيرة للتحقق من المصادقة عبر كوكي موقعة
+// ======== دوال المصادقة ========
 function isAuthenticated(req) {
   try {
     const auth = req.signedCookies && req.signedCookies.admin_auth;
     if (!auth) return false;
-    // قيمة الكوكي هي اسم المستخدم المشفّرة كـ string (بسيطة هنا)
     return auth === ADMIN_CREDENTIALS.username;
   } catch (e) {
     return false;
   }
 }
 
-// تحقق ما إذا كان الطلب قادمًا من بيئة محلية (localhost/127.0.0.1/::1)
 function isLocalRequest(req) {
   try {
     const hostHeader = (req.headers && req.headers.host) ? req.headers.host : '';
@@ -54,54 +48,6 @@ function isLocalRequest(req) {
     return false;
   }
 }
-
-// صفحة تسجيل الدخول (تعامل POST هنا) - عند الطلب الناجح نضع كوكي موقعة
-// Extracted login handler so it can be reused for multiple routes
-function handleLoginRequest(req, res) {
-  const { username, password } = req.body;
-
-  if (!username || !password) {
-    if (req.is('application/x-www-form-urlencoded')) {
-      return renderLoginPageHTML(req, res, 'اسم المستخدم وكلمة المرور مطلوبان');
-    }
-    return res.status(400).json({ status: 'error', message: 'اسم المستخدم وكلمة المرور مطلوبان' });
-  }
-
-  if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
-    // ضع كوكي موقعة صالحة لمدة 12 ساعة
-    res.cookie('admin_auth', ADMIN_CREDENTIALS.username, { signed: true, httpOnly: true, maxAge: 12 * 60 * 60 * 1000 });
-    // إذا كان الطلب قادم من نموذج HTML نعيد التوجيه للوحة الإدارة
-    if (req.is('application/x-www-form-urlencoded')) {
-      return res.redirect('/admin');
-    }
-    return res.json({ status: 'success', message: 'تم تسجيل الدخول بنجاح', redirect: '/admin' });
-  }
-
-  if (req.is('application/x-www-form-urlencoded')) {
-    return renderLoginPageHTML(req, res, 'بيانات اعتماد غير صحيحة');
-  }
-  return res.status(401).json({ status: 'error', message: 'بيانات اعتماد غير صحيحة' });
-}
-
-app.post('/login', (req, res) => handleLoginRequest(req, res));
-
-// مسارات /admin/login التي طلبتها
-app.get('/admin/login', (req, res) => {
-  if (isAuthenticated(req)) return res.redirect('/admin');
-  return renderLoginPageHTML(req, res);
-});
-
-app.post('/admin/login', (req, res) => handleLoginRequest(req, res));
-
-// مسار لتسجيل الخروج (يحذف الكوكي)
-app.get('/logout', (req, res) => {
-  res.clearCookie('admin_auth');
-  // لو طلب عبر AJAX نرسل JSON، وإلا نعيد التوجيه للصفحة الرئيسية
-  if (req.headers.accept && req.headers.accept.indexOf('application/json') !== -1) {
-    return res.json({ status: 'success', message: 'تم تسجيل الخروج' });
-  }
-  res.redirect('/');
-});
 
 // ======== إنشاء مجلد التصدير ========
 const exportsDir = path.join(__dirname, 'exports');
@@ -141,8 +87,8 @@ db.serialize(() => {
     coupon_code TEXT,
     coupon_type TEXT,
     gift_card_number TEXT,
-    gift_card_amount REAL DEFAULT 0,
     gift_card_type TEXT,
+    gift_card_amount REAL DEFAULT 0,
     order_date DATETIME NOT NULL,
     order_status TEXT DEFAULT 'pending',
     customer_name TEXT,
@@ -195,7 +141,7 @@ db.serialize(() => {
     }
   });
 
-  // جدول القسائم الشرائية (Gift Cards) - الجديد
+  // جدول القسائم الشرائية
   db.run(`CREATE TABLE IF NOT EXISTS gift_cards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     card_number TEXT UNIQUE NOT NULL,
@@ -266,9 +212,31 @@ db.serialize(() => {
   });
 });
 
-// ======== Routes ========
+// ======== دوال تسجيل الدخول ========
+function handleLoginRequest(req, res) {
+  const { username, password } = req.body;
 
-// مساعدة لعرض نموذج تسجيل الدخول البسيط عند الوصول لصفحات الإدارة بدون مصادقة
+  if (!username || !password) {
+    if (req.is('application/x-www-form-urlencoded')) {
+      return renderLoginPageHTML(req, res, 'اسم المستخدم وكلمة المرور مطلوبان');
+    }
+    return res.status(400).json({ status: 'error', message: 'اسم المستخدم وكلمة المرور مطلوبان' });
+  }
+
+  if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
+    res.cookie('admin_auth', ADMIN_CREDENTIALS.username, { signed: true, httpOnly: true, maxAge: 12 * 60 * 60 * 1000 });
+    if (req.is('application/x-www-form-urlencoded')) {
+      return res.redirect('/admin');
+    }
+    return res.json({ status: 'success', message: 'تم تسجيل الدخول بنجاح', redirect: '/admin' });
+  }
+
+  if (req.is('application/x-www-form-urlencoded')) {
+    return renderLoginPageHTML(req, res, 'بيانات اعتماد غير صحيحة');
+  }
+  return res.status(401).json({ status: 'error', message: 'بيانات اعتماد غير صحيحة' });
+}
+
 function renderLoginPageHTML(req, res, message = '') {
   const msgHtml = message ? `<p style="color:#d32f2f;text-align:center;margin-top:8px">${message}</p>` : '';
   return res.send(`
@@ -298,9 +266,26 @@ function renderLoginPageHTML(req, res, message = '') {
   `);
 }
 
-// API إعدادات الـ admin
+// ======== Routes ========
 
-// جلب جميع الإعدادات
+// مسارات تسجيل الدخول
+app.post('/login', (req, res) => handleLoginRequest(req, res));
+app.get('/admin/login', (req, res) => {
+  if (isAuthenticated(req)) return res.redirect('/admin');
+  return renderLoginPageHTML(req, res);
+});
+app.post('/admin/login', (req, res) => handleLoginRequest(req, res));
+
+// مسار تسجيل الخروج
+app.get('/logout', (req, res) => {
+  res.clearCookie('admin_auth');
+  if (req.headers.accept && req.headers.accept.indexOf('application/json') !== -1) {
+    return res.json({ status: 'success', message: 'تم تسجيل الخروج' });
+  }
+  res.redirect('/');
+});
+
+// API إعدادات الـ admin
 app.get('/api/admin-settings', (req, res) => {
   db.all('SELECT * FROM admin_settings ORDER BY setting_key', (err, rows) => {
     if (err) {
@@ -311,7 +296,6 @@ app.get('/api/admin-settings', (req, res) => {
       });
     }
 
-    // تحويل الإعدادات إلى كائن
     const settings = {};
     rows.forEach(row => {
       settings[row.setting_key] = row.setting_value;
@@ -326,7 +310,6 @@ app.get('/api/admin-settings', (req, res) => {
   });
 });
 
-// تحديث إعداد
 app.put('/api/admin-settings/:key', (req, res) => {
   const { key } = req.params;
   const { value } = req.body;
@@ -442,7 +425,6 @@ app.post('/api/save-data', (req, res) => {
 
   console.log('📨 بيانات مستلمة:', { name, email, phone, message });
 
-  // التحقق من البيانات المطلوبة
   if (!name || !email) {
     return res.status(400).json({
       status: 'error',
@@ -481,7 +463,7 @@ app.post('/api/save-data', (req, res) => {
   );
 });
 
-// عرض جميع البيانات المحفوظة (JSON)
+// عرض جميع البيانات المحفوظة
 app.get('/api/all-data', (req, res) => {
   db.all('SELECT * FROM test_users ORDER BY created_at DESC', (err, rows) => {
     if (err) {
@@ -502,7 +484,7 @@ app.get('/api/all-data', (req, res) => {
   });
 });
 
-// API جديد لتحقق سريع من الكوبون مع الحساب
+// API التحقق من الكوبون
 app.get('/api/validate-coupon', (req, res) => {
   const { code, order_amount } = req.query;
 
@@ -607,9 +589,7 @@ app.get('/api/validate-coupon', (req, res) => {
   );
 });
 
-// ======== واجهات القسائم الشرائية (Gift Cards) ========
-
-// API التحقق من صحة القسيمة الشرائية
+// ======== واجهات القسائم الشرائية ========
 app.post('/api/validate-gift-card', (req, res) => {
   const { card_number, pin_code, order_amount } = req.body;
 
@@ -764,7 +744,6 @@ app.post('/api/gift-cards', (req, res) => {
     is_active
   } = req.body;
 
-  // التحقق من الحقول المطلوبة
   if (!card_number || !pin_code || !initial_amount) {
     return res.status(400).json({
       status: 'error',
@@ -772,7 +751,6 @@ app.post('/api/gift-cards', (req, res) => {
     });
   }
 
-  // التحقق من أن رقم القسيمة غير مكرر
   db.get('SELECT id FROM gift_cards WHERE card_number = ?', [card_number], (err, existingCard) => {
     if (err) {
       console.error('❌ خطأ في التحقق من رقم القسيمة:', err);
@@ -789,7 +767,6 @@ app.post('/api/gift-cards', (req, res) => {
       });
     }
 
-    // تعيين تاريخ الصلاحية الافتراضي (90 يوم)
     const defaultValidUntil = new Date();
     defaultValidUntil.setDate(defaultValidUntil.getDate() + 90);
 
@@ -802,7 +779,7 @@ app.post('/api/gift-cards', (req, res) => {
         card_number,
         pin_code,
         parseFloat(initial_amount),
-        parseFloat(initial_amount), // الرصيد الحالي يساوي المبلغ الابتدائي
+        parseFloat(initial_amount),
         valid_until || defaultValidUntil.toISOString(),
         customer_name || '',
         customer_phone || '',
@@ -849,7 +826,6 @@ app.put('/api/gift-cards/:id', (req, res) => {
     is_active
   } = req.body;
 
-  // التحقق من أن رقم القسيمة غير مكرر (باستثناء القسيمة الحالية)
   const checkCardQuery = 'SELECT id FROM gift_cards WHERE card_number = ? AND id != ?';
   
   db.get(checkCardQuery, [card_number, id], (err, existingCard) => {
@@ -868,7 +844,6 @@ app.put('/api/gift-cards/:id', (req, res) => {
       });
     }
 
-    // تحديث البيانات
     db.run(
       `UPDATE gift_cards SET
         card_number = COALESCE(?, card_number),
@@ -956,7 +931,7 @@ app.delete('/api/gift-cards/:id', (req, res) => {
   });
 });
 
-// API معالجة الدفع - محدث ليدعم القسائم الشرائية
+// ======== API معالجة الدفع - مصحح ========
 app.post('/api/process-payment', (req, res) => {
   const { 
     cart_items, 
@@ -974,7 +949,7 @@ app.post('/api/process-payment', (req, res) => {
 
   console.log('💰 طلب دفع جديد:', { 
     customer: customer_name,
-    items_count: cart_items.length, 
+    items_count: cart_items?.length || 0, 
     total_amount, 
     coupon_code: coupon_code || 'لا يوجد',
     gift_card: gift_card_number || 'لا يوجد'
@@ -1132,23 +1107,24 @@ app.post('/api/process-payment', (req, res) => {
       // إنشاء رقم طلب فريد
       const orderNumber = 'ORD-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
 
+      // 🔧 **الاستعلام المصحح - تطابق الأعمدة مع القيم**
       db.run(
         `INSERT INTO orders (
           order_number, cart_items, total_amount, discount_amount, coupon_code,
-          gift_card_number, gift_card_amount, order_date, order_status, 
-          customer_name, customer_phone, customer_email, payment_method
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          coupon_type, gift_card_number, gift_card_type, gift_card_amount, order_date, 
+          order_status, customer_name, customer_phone, customer_email, payment_method
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           orderNumber,
           JSON.stringify(cart_items),
-          total_amount, // المبلغ الأصلي
-          discountAmount, // قيمة الخصم
+          parseFloat(total_amount), // المبلغ الأصلي
+          parseFloat(discountAmount), // قيمة الخصم
           appliedCoupon ? appliedCoupon.code : null,
           appliedCoupon ? appliedCoupon.discount_type : null,
           appliedGiftCard ? appliedGiftCard.card_number : null,
           appliedGiftCard ? 'gift_card' : null,
-          giftCardAmount, // المبلغ المستخدم من القسيمة
-          order_date,
+          parseFloat(giftCardAmount), // المبلغ المستخدم من القسيمة
+          order_date || new Date().toISOString(),
           order_status || 'pending',
           customer_name || 'عميل',
           customer_phone || '',
@@ -1268,8 +1244,6 @@ app.put('/api/orders/:id/status', (req, res) => {
 });
 
 // ======== واجهات برمجية للكوبونات ========
-
-// API جلب جميع الكوبونات
 app.get('/api/coupons', (req, res) => {
   db.all('SELECT * FROM coupons ORDER BY created_at DESC', (err, rows) => {
     if (err) {
@@ -1289,7 +1263,6 @@ app.get('/api/coupons', (req, res) => {
   });
 });
 
-// API جلب بيانات كوبون محدد
 app.get('/api/coupons/:id', (req, res) => {
   const { id } = req.params;
 
@@ -1317,7 +1290,6 @@ app.get('/api/coupons/:id', (req, res) => {
   });
 });
 
-// API إنشاء كوبون جديد
 app.post('/api/coupons', (req, res) => {
   const {
     code,
@@ -1331,7 +1303,6 @@ app.post('/api/coupons', (req, res) => {
     is_active
   } = req.body;
 
-  // التحقق من الحقول المطلوبة
   if (!code || !discount_type || discount_value === undefined) {
     return res.status(400).json({
       status: 'error',
@@ -1339,7 +1310,6 @@ app.post('/api/coupons', (req, res) => {
     });
   }
 
-  // التحقق من أن الكود غير مكرر
   db.get('SELECT id FROM coupons WHERE code = ?', [code], (err, existingCoupon) => {
     if (err) {
       console.error('❌ خطأ في التحقق من الكود:', err);
@@ -1369,7 +1339,7 @@ app.post('/api/coupons', (req, res) => {
         min_order_amount || 0,
         max_uses || -1,
         valid_from || new Date().toISOString(),
-        valid_until || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 يوم افتراضي
+        valid_until || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         is_active !== undefined ? is_active : 1
       ],
       function(err) {
@@ -1394,7 +1364,6 @@ app.post('/api/coupons', (req, res) => {
   });
 });
 
-// API تحديث كوبون - محدث
 app.put('/api/coupons/:id', (req, res) => {
   const { id } = req.params;
   const {
@@ -1410,7 +1379,6 @@ app.put('/api/coupons/:id', (req, res) => {
     used_count
   } = req.body;
 
-  // التحقق من أن الكود غير مكرر (باستثناء الكوبون الحالي)
   const checkCodeQuery = 'SELECT id FROM coupons WHERE code = ? AND id != ?';
   
   db.get(checkCodeQuery, [code, id], (err, existingCoupon) => {
@@ -1429,7 +1397,6 @@ app.put('/api/coupons/:id', (req, res) => {
       });
     }
 
-    // تحديث البيانات
     db.run(
       `UPDATE coupons SET
         code = COALESCE(?, code),
@@ -1485,7 +1452,6 @@ app.put('/api/coupons/:id', (req, res) => {
   });
 });
 
-// API حذف كوبون
 app.delete('/api/coupons/:id', (req, res) => {
   const { id } = req.params;
 
@@ -1516,8 +1482,6 @@ app.delete('/api/coupons/:id', (req, res) => {
 });
 
 // ======== واجهات تصدير المبيعات ========
-
-// دوال مساعدة للتصدير
 function getOrderStatusText(status) {
     const statusMap = {
         'pending': 'قيد الانتظار',
@@ -1535,7 +1499,6 @@ function getPaymentMethodText(method) {
     return methodMap[method] || method;
 }
 
-// API تصدير المبيعات إلى Excel
 app.get('/api/export-sales', async (req, res) => {
     try {
         const { 
@@ -1554,7 +1517,6 @@ app.get('/api/export-sales', async (req, res) => {
             order_status 
         });
 
-        // بناء استعلام SQL بناءً على الفلاتر
         let sqlQuery = `
             SELECT o.*,
                    json_extract(o.cart_items, '$') as cart_items_json
@@ -1564,7 +1526,6 @@ app.get('/api/export-sales', async (req, res) => {
         const conditions = [];
         const params = [];
 
-        // إضافة الفلاتر إذا كانت موجودة
         if (start_date && end_date) {
             conditions.push('o.order_date BETWEEN ? AND ?');
             params.push(start_date, end_date);
@@ -1592,7 +1553,6 @@ app.get('/api/export-sales', async (req, res) => {
 
         sqlQuery += ' ORDER BY o.created_at DESC';
 
-        // جلب البيانات من قاعدة البيانات
         const orders = await new Promise((resolve, reject) => {
             db.all(sqlQuery, params, (err, rows) => {
                 if (err) {
@@ -1600,7 +1560,6 @@ app.get('/api/export-sales', async (req, res) => {
                     return;
                 }
                 
-                // تحويل بيانات السلة من JSON
                 const processedOrders = rows.map(order => ({
                     ...order,
                     cart_items: JSON.parse(order.cart_items_json)
@@ -1617,15 +1576,13 @@ app.get('/api/export-sales', async (req, res) => {
             });
         }
 
-        // إنشاء ملف Excel جديد
         const workbook = new ExcelJS.Workbook();
         workbook.creator = 'نظام المبيعات';
         workbook.created = new Date();
 
-        // ======== ورقة الملخص ========
+        // ورقة الملخص
         const summarySheet = workbook.addWorksheet('ملخص المبيعات');
         
-        // تنسيق العنوان
         summarySheet.mergeCells('A1:H1');
         const titleCell = summarySheet.getCell('A1');
         titleCell.value = 'تقرير المبيعات - نظام المتجر';
@@ -1637,7 +1594,6 @@ app.get('/api/export-sales', async (req, res) => {
         };
         titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
-        // معلومات الفترة
         summarySheet.mergeCells('A2:H2');
         const periodCell = summarySheet.getCell('A2');
         const periodText = start_date && end_date 
@@ -1647,7 +1603,6 @@ app.get('/api/export-sales', async (req, res) => {
         periodCell.font = { bold: true, size: 12 };
         periodCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
-        // إحصائيات المبيعات
         const totalSales = orders.reduce((sum, order) => sum + parseFloat(order.total_amount), 0);
         const totalDiscounts = orders.reduce((sum, order) => sum + parseFloat(order.discount_amount), 0);
         const totalGiftCards = orders.reduce((sum, order) => sum + parseFloat(order.gift_card_amount), 0);
@@ -1666,10 +1621,9 @@ app.get('/api/export-sales', async (req, res) => {
         summarySheet.addRow(['الطلبات المكتملة', completedOrders, '', '', '', '', '', '']);
         summarySheet.addRow(['الطلبات قيد الانتظار', pendingOrders, '', '', '', '', '', '']);
 
-        // ======== ورقة التفاصيل ========
+        // ورقة التفاصيل
         const detailsSheet = workbook.addWorksheet('تفاصيل الطلبات');
 
-        // عناوين الأعمدة
         detailsSheet.columns = [
             { header: 'رقم الطلب', key: 'order_number', width: 15 },
             { header: 'تاريخ الطلب', key: 'order_date', width: 20 },
@@ -1688,7 +1642,6 @@ app.get('/api/export-sales', async (req, res) => {
             { header: 'المنتجات', key: 'products', width: 40 }
         ];
 
-        // تنسيق رأس الجدول
         const headerRow = detailsSheet.getRow(1);
         headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
         headerRow.fill = {
@@ -1698,7 +1651,6 @@ app.get('/api/export-sales', async (req, res) => {
         };
         headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
 
-        // إضافة البيانات
         orders.forEach(order => {
             const netAmount = parseFloat(order.total_amount) - parseFloat(order.discount_amount) - parseFloat(order.gift_card_amount);
             const productsText = order.cart_items.map(item => 
@@ -1724,17 +1676,15 @@ app.get('/api/export-sales', async (req, res) => {
             });
         });
 
-        // تنسيق الأرقام
         detailsSheet.eachRow((row, rowNumber) => {
             if (rowNumber > 1) {
                 row.alignment = { horizontal: 'right', vertical: 'middle' };
             }
         });
 
-        // ======== ورقة تحليل المنتجات ========
+        // ورقة تحليل المنتجات
         const productsSheet = workbook.addWorksheet('تحليل المنتجات');
 
-        // تحليل مبيعات المنتجات
         const productAnalysis = {};
         orders.forEach(order => {
             order.cart_items.forEach(item => {
@@ -1757,7 +1707,6 @@ app.get('/api/export-sales', async (req, res) => {
             });
         });
 
-        // عناوين أعمدة تحليل المنتجات
         productsSheet.columns = [
             { header: 'اسم المنتج', key: 'product_name', width: 30 },
             { header: 'الكمية المباعة', key: 'quantity', width: 15 },
@@ -1766,7 +1715,6 @@ app.get('/api/export-sales', async (req, res) => {
             { header: 'متوسط السعر', key: 'avg_price', width: 15 }
         ];
 
-        // تنسيق رأس الجدول
         const productsHeader = productsSheet.getRow(1);
         productsHeader.font = { bold: true, color: { argb: 'FFFFFF' } };
         productsHeader.fill = {
@@ -1776,7 +1724,6 @@ app.get('/api/export-sales', async (req, res) => {
         };
         productsHeader.alignment = { horizontal: 'center', vertical: 'middle' };
 
-        // إضافة بيانات تحليل المنتجات
         Object.entries(productAnalysis).forEach(([productName, data]) => {
             const avgPrice = data.totalSales / data.quantity;
             
@@ -1789,19 +1736,16 @@ app.get('/api/export-sales', async (req, res) => {
             });
         });
 
-        // تنسيق أوراق العمل
         [summarySheet, detailsSheet, productsSheet].forEach(sheet => {
             sheet.eachRow((row, rowNumber) => {
                 row.alignment = { horizontal: 'right', vertical: 'middle' };
             });
         });
 
-        // إنشاء اسم للملف
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const filename = `sales-report-${timestamp}.xlsx`;
         const filepath = path.join(exportsDir, filename);
 
-        // حفظ الملف
         await workbook.xlsx.writeFile(filepath);
 
         console.log('✅ تم تصدير المبيعات إلى Excel:', {
@@ -1810,7 +1754,6 @@ app.get('/api/export-sales', async (req, res) => {
             file_size: `${(fs.statSync(filepath).size / 1024 / 1024).toFixed(2)} MB`
         });
 
-        // إرسال الملف للعميل
         res.download(filepath, filename, (err) => {
             if (err) {
                 console.error('❌ خطأ في إرسال الملف:', err);
@@ -1820,7 +1763,6 @@ app.get('/api/export-sales', async (req, res) => {
                 });
             }
 
-            // حذف الملف بعد التنزيل (اختياري)
             setTimeout(() => {
                 fs.unlink(filepath, (unlinkErr) => {
                     if (unlinkErr) {
@@ -1829,7 +1771,7 @@ app.get('/api/export-sales', async (req, res) => {
                         console.log('✅ تم حذف الملف المؤقت:', filename);
                     }
                 });
-            }, 30000); // حذف بعد 30 ثانية
+            }, 30000);
         });
 
     } catch (error) {
@@ -1841,7 +1783,6 @@ app.get('/api/export-sales', async (req, res) => {
     }
 });
 
-// API تصدير سريع لجميع المبيعات
 app.get('/api/export-all-sales', async (req, res) => {
     try {
         const orders = await new Promise((resolve, reject) => {
@@ -1872,7 +1813,6 @@ app.get('/api/export-all-sales', async (req, res) => {
             });
         }
 
-        // إنشاء ملف Excel مبسط
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('المبيعات');
 
@@ -1888,7 +1828,6 @@ app.get('/api/export-all-sales', async (req, res) => {
             { header: 'الحالة', key: 'order_status', width: 15 }
         ];
 
-        // تنسيق الرأس
         const headerRow = worksheet.getRow(1);
         headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
         headerRow.fill = {
@@ -1897,7 +1836,6 @@ app.get('/api/export-all-sales', async (req, res) => {
             fgColor: { argb: '4CAF50' }
         };
 
-        // إضافة البيانات
         orders.forEach(order => {
             const netAmount = parseFloat(order.total_amount) - parseFloat(order.discount_amount) - parseFloat(order.gift_card_amount);
             
@@ -1914,7 +1852,6 @@ app.get('/api/export-all-sales', async (req, res) => {
             });
         });
 
-        // تنسيق جميع الصفوف
         worksheet.eachRow((row, rowNumber) => {
             row.alignment = { horizontal: 'right', vertical: 'middle' };
         });
@@ -1937,15 +1874,11 @@ app.get('/api/export-all-sales', async (req, res) => {
 });
 
 // ======== صفحات الإدارة ========
-
-// حماية مركزية لصفحات الإدارة: أي مسار يبدأ بـ /admin يتطلب تسجيل دخول
 app.use('/admin', (req, res, next) => {
-  // اسماء المسارات المسموح الوصول لها بدون مصادقة
   const publicAdminPaths = ['/admin/login', '/admin/logout'];
   if (publicAdminPaths.includes(req.path) || publicAdminPaths.includes(req.originalUrl)) return next();
 
   if (!isAuthenticated(req)) {
-    // إذا كان الطلب من AJAX نعيد JSON بخطأ، وإلا نوجه لنموذج تسجيل الدخول
     if (req.xhr || (req.headers.accept && req.headers.accept.indexOf('application/json') !== -1)) {
       return res.status(401).json({ status: 'error', message: 'مطلوب تسجيل الدخول' });
     }
@@ -2067,7 +2000,6 @@ app.get('/admin', (req, res) => {
         </div>
         
         <script>
-            // تحديث تلقائي كل 15 ثانية
             setTimeout(() => {
                 location.reload();
             }, 15000);
@@ -2204,7 +2136,6 @@ app.get('/admin/advanced', (req, res) => {
                 }
             }
             
-            // تحديث تلقائي كل 10 ثواني
             setInterval(() => {
                 location.reload();
             }, 10000);
@@ -2434,7 +2365,6 @@ app.get('/admin/orders', (req, res) => {
         </div>
 
         <script>
-            // تصدير المبيعات مع الفلاتر
             function exportSales() {
                 const formData = new FormData(document.getElementById('exportForm'));
                 const params = new URLSearchParams();
@@ -2448,12 +2378,10 @@ app.get('/admin/orders', (req, res) => {
                 window.open('/api/export-sales?' + params.toString(), '_blank');
             }
 
-            // تصدير سريع لجميع المبيعات
             function exportAllSales() {
                 window.open('/api/export-all-sales', '_blank');
             }
 
-            // مسح الفلاتر
             function resetExportForm() {
                 document.getElementById('exportForm').reset();
             }
@@ -2480,7 +2408,6 @@ app.get('/admin/orders', (req, res) => {
                 });
             }
             
-            // تحديث تلقائي كل 10 ثواني
             setInterval(() => {
                 location.reload();
             }, 10000);
@@ -2820,24 +2747,20 @@ app.get('/admin/coupons', (req, res) => {
         </div>
 
         <script>
-            // إعداد التواريخ الافتراضية
             document.addEventListener('DOMContentLoaded', function() {
                 const now = new Date();
                 const tomorrow = new Date(now);
                 tomorrow.setDate(tomorrow.getDate() + 1);
                 
-                // تعيين تاريخ البدء الافتراضي للكوبون الجديد
                 document.querySelector('#addCouponForm input[name="valid_from"]').value = 
                     now.toISOString().slice(0, 16);
                 
-                // تعيين تاريخ الانتهاء الافتراضي (بعد 30 يوم)
                 const nextMonth = new Date(now);
                 nextMonth.setDate(nextMonth.getDate() + 30);
                 document.querySelector('#addCouponForm input[name="valid_until"]').value = 
                     nextMonth.toISOString().slice(0, 16);
             });
 
-            // إظهار وإخفاء النماذج
             function showAddModal() {
                 document.getElementById('addCouponModal').style.display = 'block';
             }
@@ -2846,13 +2769,11 @@ app.get('/admin/coupons', (req, res) => {
                 document.getElementById(modalId).style.display = 'none';
             }
 
-            // إضافة كوبون جديد
             document.getElementById('addCouponForm').addEventListener('submit', function(e) {
                 e.preventDefault();
                 const formData = new FormData(this);
                 const data = Object.fromEntries(formData.entries());
                 
-                // تحويل القيم الرقمية
                 data.discount_value = parseFloat(data.discount_value);
                 data.min_order_amount = parseFloat(data.min_order_amount);
                 data.max_uses = parseInt(data.max_uses);
@@ -2878,7 +2799,6 @@ app.get('/admin/coupons', (req, res) => {
                 });
             });
 
-            // تعديل كوبون
             async function editCoupon(id) {
                 try {
                     const response = await fetch('/api/coupons/' + id);
@@ -2887,7 +2807,6 @@ app.get('/admin/coupons', (req, res) => {
                     if (data.status === 'success') {
                         const coupon = data.coupon;
                         
-                        // تعبئة النموذج ببيانات الكوبون
                         document.getElementById('edit_coupon_id').value = coupon.id;
                         document.getElementById('edit_code').value = coupon.code;
                         document.getElementById('edit_description').value = coupon.description || '';
@@ -2909,14 +2828,12 @@ app.get('/admin/coupons', (req, res) => {
                 }
             }
 
-            // حفظ التعديلات
             document.getElementById('editCouponForm').addEventListener('submit', function(e) {
                 e.preventDefault();
                 const formData = new FormData(this);
                 const data = Object.fromEntries(formData.entries());
                 const couponId = data.id;
                 
-                // تحويل القيم الرقمية
                 data.discount_value = parseFloat(data.discount_value);
                 data.min_order_amount = parseFloat(data.min_order_amount);
                 data.max_uses = parseInt(data.max_uses);
@@ -2943,7 +2860,6 @@ app.get('/admin/coupons', (req, res) => {
                 });
             });
 
-            // تفعيل/إيقاف الكوبون
             function toggleCouponStatus(id, newStatus) {
                 fetch('/api/coupons/' + id, {
                     method: 'PUT',
@@ -2964,7 +2880,6 @@ app.get('/admin/coupons', (req, res) => {
                 });
             }
 
-            // حذف كوبون
             function deleteCoupon(id) {
                 if (confirm('⚠️ هل أنت متأكد من حذف هذا الكوبون؟ لا يمكن التراجع عن هذا الإجراء!')) {
                     fetch('/api/coupons/' + id, { method: 'DELETE' })
@@ -2983,7 +2898,6 @@ app.get('/admin/coupons', (req, res) => {
                 }
             }
 
-            // إغلاق النماذج عند النقر خارجها
             window.onclick = function(event) {
                 const modals = document.querySelectorAll('.modal');
                 modals.forEach(modal => {
@@ -3001,7 +2915,7 @@ app.get('/admin/coupons', (req, res) => {
   });
 });
 
-// صفحة إدارة القسائم الشرائية (الجديدة)
+// صفحة إدارة القسائم الشرائية
 app.get('/admin/gift-cards', (req, res) => {
   db.all('SELECT * FROM gift_cards ORDER BY created_at DESC', (err, rows) => {
     let html = `
@@ -3339,18 +3253,15 @@ app.get('/admin/gift-cards', (req, res) => {
         </div>
 
         <script>
-            // إعداد التواريخ الافتراضية
             document.addEventListener('DOMContentLoaded', function() {
                 const now = new Date();
                 const nextMonth = new Date(now);
-                nextMonth.setDate(nextMonth.getDate() + 90); // 90 يوم افتراضي
+                nextMonth.setDate(nextMonth.getDate() + 90);
                 
-                // تعيين تاريخ الانتهاء الافتراضي للقسيمة الجديدة
                 document.querySelector('#addGiftCardForm input[name="valid_until"]').value = 
                     nextMonth.toISOString().slice(0, 16);
             });
 
-            // إظهار وإخفاء النماذج
             function showAddModal() {
                 document.getElementById('addGiftCardModal').style.display = 'block';
             }
@@ -3359,13 +3270,11 @@ app.get('/admin/gift-cards', (req, res) => {
                 document.getElementById(modalId).style.display = 'none';
             }
 
-            // إضافة قسيمة جديدة
             document.getElementById('addGiftCardForm').addEventListener('submit', function(e) {
                 e.preventDefault();
                 const formData = new FormData(this);
                 const data = Object.fromEntries(formData.entries());
                 
-                // تحويل القيم الرقمية
                 data.initial_amount = parseFloat(data.initial_amount);
                 data.max_uses = parseInt(data.max_uses);
                 data.is_active = data.is_active ? 1 : 0;
@@ -3390,7 +3299,6 @@ app.get('/admin/gift-cards', (req, res) => {
                 });
             });
 
-            // تعديل قسيمة
             async function editGiftCard(id) {
                 try {
                     const response = await fetch('/api/gift-cards/' + id);
@@ -3399,7 +3307,6 @@ app.get('/admin/gift-cards', (req, res) => {
                     if (data.status === 'success') {
                         const giftCard = data.gift_card;
                         
-                        // تعبئة النموذج ببيانات القسيمة
                         document.getElementById('edit_gift_card_id').value = giftCard.id;
                         document.getElementById('edit_card_number').value = giftCard.card_number;
                         document.getElementById('edit_pin_code').value = giftCard.pin_code;
@@ -3422,14 +3329,12 @@ app.get('/admin/gift-cards', (req, res) => {
                 }
             }
 
-            // حفظ التعديلات
             document.getElementById('editGiftCardForm').addEventListener('submit', function(e) {
                 e.preventDefault();
                 const formData = new FormData(this);
                 const data = Object.fromEntries(formData.entries());
                 const giftCardId = data.id;
                 
-                // تحويل القيم الرقمية
                 data.initial_amount = parseFloat(data.initial_amount);
                 data.current_balance = parseFloat(data.current_balance);
                 data.max_uses = parseInt(data.max_uses);
@@ -3456,7 +3361,6 @@ app.get('/admin/gift-cards', (req, res) => {
                 });
             });
 
-            // تفعيل/إيقاف القسيمة
             function toggleGiftCardStatus(id, newStatus) {
                 fetch('/api/gift-cards/' + id, {
                     method: 'PUT',
@@ -3477,7 +3381,6 @@ app.get('/admin/gift-cards', (req, res) => {
                 });
             }
 
-            // حذف قسيمة
             function deleteGiftCard(id) {
                 if (confirm('⚠️ هل أنت متأكد من حذف هذه القسيمة؟ لا يمكن التراجع عن هذا الإجراء!')) {
                     fetch('/api/gift-cards/' + id, { method: 'DELETE' })
@@ -3496,7 +3399,6 @@ app.get('/admin/gift-cards', (req, res) => {
                 }
             }
 
-            // إغلاق النماذج عند النقر خارجها
             window.onclick = function(event) {
                 const modals = document.querySelectorAll('.modal');
                 modals.forEach(modal => {
@@ -3634,7 +3536,6 @@ app.get('/admin/settings', (req, res) => {
       <div id="toast" class="toast"></div>
 
       <script>
-          // جلب الإعدادات الحالية
           document.addEventListener('DOMContentLoaded', function() {
               fetch('/api/admin-settings')
                   .then(response => response.json())
@@ -3642,7 +3543,6 @@ app.get('/admin/settings', (req, res) => {
                       if (data.status === 'success') {
                           const settings = data.settings;
                           
-                          // تعيين قيم الإعدادات
                           document.getElementById('theme-setting').value = settings.theme || 'light';
                           document.getElementById('items-per-page-setting').value = settings.items_per_page || '10';
                           document.getElementById('auto-refresh-setting').checked = settings.auto_refresh === 'true';
@@ -3654,7 +3554,6 @@ app.get('/admin/settings', (req, res) => {
                   });
           });
 
-          // حفظ الإعدادات
           document.getElementById('save-settings-btn').addEventListener('click', function() {
               const settings = {
                   theme: document.getElementById('theme-setting').value,
@@ -3663,13 +3562,11 @@ app.get('/admin/settings', (req, res) => {
                   refresh_interval: document.getElementById('refresh-interval-setting').value
               };
 
-              // تعطيل الزر وإظهار التحميل
               const btn = this;
               const originalText = btn.innerHTML;
               btn.innerHTML = '<span class="loading"></span> جاري الحفظ...';
               btn.disabled = true;
 
-              // حفظ كل إعداد على حدة
               const promises = Object.entries(settings).map(([key, value]) => {
                   return fetch('/api/admin-settings/' + key, {
                       method: 'PUT',
@@ -3686,7 +3583,6 @@ app.get('/admin/settings', (req, res) => {
                       if (allSuccess) {
                           showToast('✅ تم حفظ الإعدادات بنجاح');
                           
-                          // تطبيق الثيم فوراً
                           if (settings.theme === 'dark') {
                               document.body.style.backgroundColor = '#222';
                               document.body.style.color = '#fff';
@@ -3702,13 +3598,11 @@ app.get('/admin/settings', (req, res) => {
                       showToast('❌ حدث خطأ: ' + error, 'error');
                   })
                   .finally(() => {
-                      // استعادة الزر
                       btn.innerHTML = originalText;
                       btn.disabled = false;
                   });
           });
 
-          // دالة عرض الإشعارات
           function showToast(message, type = 'success') {
               const toast = document.getElementById('toast');
               toast.textContent = message;
