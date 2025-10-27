@@ -2136,11 +2136,9 @@ app.get('/admin/advanced', (req, res) => {
                 }
             }
             
-            // تم إيقاف التحديث التلقائي للصفحة
-            // يمكن إضافة زر للتحديث اليدوي إذا لزم الأمر
-            // setInterval(() => {
-            //     location.reload();
-            // }, 10000);
+            setInterval(() => {
+                location.reload();
+            }, 10000);
         </script>
     </body>
     </html>
@@ -2410,11 +2408,9 @@ app.get('/admin/orders', (req, res) => {
                 });
             }
             
-            // تم إيقاف التحديث التلقائي للصفحة
-            // يمكن إضافة زر للتحديث اليدوي إذا لزم الأمر
-            // setInterval(() => {
-            //     location.reload();
-            // }, 10000);
+            setInterval(() => {
+                location.reload();
+            }, 10000);
         </script>
     </body>
     </html>
