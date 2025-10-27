@@ -2136,9 +2136,10 @@ app.get('/admin/advanced', (req, res) => {
                 }
             }
             
-            setInterval(() => {
-                location.reload();
-            }, 10000);
+            // تم تعطيل التحديث التلقائي للصفحة
+            // setInterval(() => {
+            //     location.reload();
+            // }, 10000);
         </script>
     </body>
     </html>
@@ -2408,9 +2409,10 @@ app.get('/admin/orders', (req, res) => {
                 });
             }
             
-            setInterval(() => {
-                location.reload();
-            }, 10000);
+            // تم تعطيل التحديث التلقائي للصفحة
+            // setInterval(() => {
+            //     location.reload();
+            // }, 10000);
         </script>
     </body>
     </html>
