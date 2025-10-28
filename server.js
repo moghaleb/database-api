@@ -2422,6 +2422,7 @@ app.get('/admin/orders', (req, res) => {
                     ${items.map(item => `
                         <div class="item-card">
                             <strong>${item.name || 'منتج'}</strong><br>
+                            <span style="color: #2196F3; font-weight: bold;">رقم المنتج: ${item.id || item.product_id || 'غير معروف'}</span><br>
                             السعر: ${item.price} ر.س × ${item.quantity || 1} 
                             = <strong>${(item.price * (item.quantity || 1)).toFixed(2)} ر.س</strong>
                             ${item.selectedSize && item.selectedSize !== 'غير محدد' ? `<br>المقاس: ${item.selectedSize}` : ''}
