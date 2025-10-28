@@ -104,6 +104,25 @@ db.serialize(() => {
     }
   });
 
+  // جدول تفاصيل الطلبات
+  db.run(`CREATE TABLE IF NOT EXISTS order_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
+    product_id INTEGER NOT NULL,
+    product_name TEXT NOT NULL,
+    quantity INTEGER NOT NULL,
+    price REAL NOT NULL,
+    total_price REAL NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (order_id) REFERENCES orders (id)
+  )`, (err) => {
+    if (err) {
+      console.error('❌ خطأ في إنشاء جدول تفاصيل الطلبات:', err);
+    } else {
+      console.log('✅ تم إنشاء جدول تفاصيل الطلبات بنجاح');
+    }
+  });
+
   // جدول الكوبونات
   db.run(`CREATE TABLE IF NOT EXISTS coupons (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -199,7 +218,7 @@ db.serialize(() => {
         VALUES
         ('theme', 'light'),
         ('items_per_page', '10'),
-        ('auto_refresh', 'true'),
+        ('auto_refresh', 'false'),
         ('refresh_interval', '30')
       `, (err) => {
         if (err) {
@@ -358,6 +377,7 @@ app.get('/', (req, res) => {
       'GET /api/all-data - عرض جميع البيانات',
       'POST /api/process-payment - معالجة الدفع',
       'GET /api/orders - جلب جميع الطلبات',
+      'GET /api/orders/:id/items - جلب تفاصيل الطلب',
       'PUT /api/orders/:id/status - تحديث حالة الطلب',
       'GET /api/validate-coupon - التحقق من الكوبون',
       'GET /api/coupons - جلب جميع الكوبونات',
@@ -1151,10 +1171,36 @@ app.post('/api/process-payment', (req, res) => {
             gift_card: appliedGiftCard ? appliedGiftCard.card_number : 'لا يوجد'
           });
           
-          res.json({
-            status: 'success',
-            message: 'تم إرسال الطلب بنجاح إلى الإدارة',
-            order_id: orderNumber,
+          // حفظ تفاصيل المنتجات في جدول order_items
+          const orderId = this.lastID;
+          let itemsProcessed = 0;
+          const totalItems = cart_items.length;
+          
+          cart_items.forEach(item => {
+            db.run(
+              `INSERT INTO order_items (order_id, product_id, product_name, quantity, price, total_price)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+              [
+                orderId,
+                item.product_id || 0, // استخدام 0 كقيمة افتراضية إذا لم يتم تحديد product_id
+                item.name || item.product_name || 'منتج غير معروف',
+                item.quantity || 1,
+                item.price || item.unit_price || 0,
+                (item.price || item.unit_price || 0) * (item.quantity || 1)
+              ],
+              function(err) {
+                if (err) {
+                  console.error('❌ خطأ في حفظ تفاصيل المنتج:', err);
+                }
+                
+                itemsProcessed++;
+                
+                // عندما تتم معالجة جميع المنتجات
+                if (itemsProcessed === totalItems) {
+                  res.json({
+                    status: 'success',
+                    message: 'تم إرسال الطلب بنجاح إلى الإدارة',
+                    order_id: orderNumber,
             order_status: 'pending',
             original_amount: parseFloat(total_amount),
             discount_amount: discountAmount,
@@ -1177,6 +1223,10 @@ app.post('/api/process-payment', (req, res) => {
             customer_name: customer_name,
             timestamp: new Date().toISOString(),
             admin_url: `https://database-api-kvxr.onrender.com/admin/orders`
+                  });
+                }
+              }
+            );
           });
         }
       );
@@ -1188,6 +1238,28 @@ app.post('/api/process-payment', (req, res) => {
         message: 'فشل في معالجة الكوبون أو القسيمة: ' + error.message
       });
     });
+});
+
+// API جلب تفاصيل الطلب
+app.get('/api/orders/:id/items', (req, res) => {
+  const { id } = req.params;
+  
+  db.all('SELECT * FROM order_items WHERE order_id = ?', [id], (err, rows) => {
+    if (err) {
+      console.error('❌ خطأ في جلب تفاصيل الطلب:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+    
+    res.json({
+      status: 'success',
+      order_items: rows,
+      count: rows.length,
+      message: `تم العثور على ${rows.length} منتج في الطلب`
+    });
+  });
 });
 
 // API جلب جميع الطلبات
@@ -2000,9 +2072,10 @@ app.get('/admin', (req, res) => {
         </div>
         
         <script>
-            setTimeout(() => {
-                location.reload();
-            }, 15000);
+            // تم تعطيل التحديث التلقائي للصفحة
+            // setTimeout(() => {
+            //     location.reload();
+            // }, 15000);
         </script>
     </body>
     </html>
