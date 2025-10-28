@@ -2520,8 +2520,10 @@ app.get('/admin/orders', (req, res) => {
                     <h4 style="margin: 0 0 15px 0;">🛍️ العناصر المطلوبة:</h4>
                     ${items.map(item => `
                         <div class="item-card">
-                            <strong>${item.name || 'منتج'}</strong><br>
-                            <span style="color: #2196F3; font-weight: bold;">رقم المنتج: ${item.id || item.product_id || 'غير معروف'}</span><br>
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                                <strong>${item.name || 'منتج'}</strong>
+                                <span style="background: #e3f2fd; color: #1976d2; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 14px;">ID: ${item.id || item.product_id || 'غير معروف'}</span>
+                            </div>
                             السعر: ${item.price} ر.س × ${item.quantity || 1} 
                             = <strong>${(item.price * (item.quantity || 1)).toFixed(2)} ر.س</strong>
                             ${item.selectedSize && item.selectedSize !== 'غير محدد' ? `<br>المقاس: ${item.selectedSize}` : ''}
