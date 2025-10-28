@@ -2360,9 +2360,108 @@ app.get('/admin/orders', (req, res) => {
             </div>
       `;
     } else {
-      rows.forEach(order => {
-        const items = JSON.parse(order.cart_items);
+      // تعريف دالة عرض الطلب
+      const displayOrder = function(order, items) {
         const statusClass = `status-${order.order_status}`;
+        const statusText = {
+          'pending': 'قيد الانتظار',
+          'completed': 'مكتمل',
+          'cancelled': 'ملغي'
+        }[order.order_status] || order.order_status;
+
+        const orderHtml = `
+          <div class="order-card">
+              <div class="order-header">
+                  <div>
+                      <span class="order-number">${order.order_number}</span>
+                      <span class="order-status ${statusClass}" style="margin-right: 10px;">${statusText}</span>
+                  </div>
+                  <div style="color: #666; font-size: 14px;">
+                      ${new Date(order.order_date).toLocaleString('ar-SA')}
+                  </div>
+              </div>
+
+              <div class="customer-info">
+                  <strong>معلومات العميل:</strong><br>
+                  الاسم: ${order.customer_name || 'غير محدد'} |
+                  الهاتف: ${order.customer_phone || 'غير محدد'} |
+                  البريد: ${order.customer_email || 'غير محدد'}<br>
+                  طريقة الدفع: ${order.payment_method === 'online' ? 'دفع إلكتروني' : 'الدفع عند الاستلام'}
+                  ${order.coupon_code ? `<br>كود الخصم: <strong>${order.coupon_code}</strong> (خصم: ${order.discount_amount} ر.س)` : ''}
+                  ${order.gift_card_number ? `<br>رقم القسيمة: <strong>${order.gift_card_number}</strong> (مستخدم: ${order.gift_card_amount} ر.س)` : ''}
+              </div>
+
+              <div class="order-details">
+                  <div class="detail-item">
+                      <strong>المجموع الأصلي:</strong> ${order.total_amount} ر.س
+                  </div>
+                  <div class="detail-item">
+                      <strong>الخصم:</strong> ${order.discount_amount} ر.س
+                  </div>
+                  <div class="detail-item">
+                      <strong>القسيمة:</strong> ${order.gift_card_amount} ر.س
+                  </div>
+                  <div class="detail-item">
+                      <strong>المجموع النهائي:</strong> ${(order.total_amount - order.discount_amount - order.gift_card_amount).toFixed(2)} ر.س
+                  </div>
+                  <div class="detail-item">
+                      <strong>عدد العناصر:</strong> ${items.length}
+                  </div>
+                  <div class="detail-item">
+                      <strong>حالة الطلب:</strong>
+                      <select onchange="updateOrderStatus(${order.id}, this.value)" style="margin-right: 10px; padding: 4px 8px; border-radius: 5px; border: 1px solid #ddd;">
+                          <option value="pending" ${order.order_status === 'pending' ? 'selected' : ''}>قيد الانتظار</option>
+                          <option value="completed" ${order.order_status === 'completed' ? 'selected' : ''}>مكتمل</option>
+                          <option value="cancelled" ${order.order_status === 'cancelled' ? 'selected' : ''}>ملغي</option>
+                      </select>
+                  </div>
+              </div>
+
+              <div class="items-list">
+                  <h4 style="margin: 0 0 15px 0;">🛍️ العناصر المطلوبة:</h4>
+                  ${items.map(item => `
+                      <div class="item-card">
+                          <strong>${item.name || 'منتج'}</strong><br>
+                          <span style="color: #2196F3; font-weight: bold;">رقم المنتج: ${item.id || item.product_id || 'غير معروف'}</span><br>
+                          السعر: ${item.price} ر.س × ${item.quantity || 1}
+                          = <strong>${(item.price * (item.quantity || 1)).toFixed(2)} ر.س</strong>
+                          ${item.selectedSize && item.selectedSize !== 'غير محدد' ? `<br>المقاس: ${item.selectedSize}` : ''}
+                          ${item.colors && item.colors[0] && item.colors[0] !== 'غير محدد' ? `<br>اللون: ${item.colors[0]}` : ''}
+                          ${item.image ? `<br><img src="${item.image}" style="max-width: 60px; max-height: 60px; margin-top: 5px; border-radius: 5px;">` : ''}
+                      </div>
+                  `).join('')}
+              </div>
+          </div>
+        `;
+        
+        html += orderHtml;
+      }
+
+      rows.forEach(order => {
+        // جلب تفاصيل المنتجات من جدول order_items
+        db.all('SELECT * FROM order_items WHERE order_id = ?', [order.id], (err, orderItems) => {
+          if (err) {
+            console.error('❌ خطأ في جلب تفاصيل المنتجات:', err);
+            // في حالة الخطأ، استخدام البيانات الأصلية
+            const items = JSON.parse(order.cart_items);
+            displayOrder(order, items);
+            return;
+          }
+          
+          // استخدام بيانات order_items بدلاً من cart_items
+          const items = orderItems.map(item => ({
+            name: item.product_name,
+            price: item.price,
+            quantity: item.quantity,
+            id: item.product_id, // استخدام product_id من جدول order_items
+            image: '', // يمكن إضافة حقل الصورة لاحقاً
+            selectedSize: '', // يمكن إضافة حقل المقاس لاحقاً
+            colors: [] // يمكن إضافة حقل الألوان لاحقاً
+          }));
+          
+          displayOrder(order, items);
+        });
+      });
         const statusText = {
           'pending': 'قيد الانتظار',
           'completed': 'مكتمل',
