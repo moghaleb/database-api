@@ -20,7 +20,7 @@ app.use(express.urlencoded({ extended: true }));
 // ======== إعداد بيانات مسؤول افتراضي ========
 const ADMIN_CREDENTIALS = {
   username: process.env.ADMIN_USER || 'admin',
-  password: process.env.ADMIN_PASS || 'admin123'
+  password: process.env.ADMIN_PASS || 'admin124'
 };
 
 // ======== دوال المصادقة ========
