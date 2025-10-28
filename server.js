@@ -1182,7 +1182,7 @@ app.post('/api/process-payment', (req, res) => {
                VALUES (?, ?, ?, ?, ?, ?)`,
               [
                 orderId,
-                item.product_id || 0, // استخدام 0 كقيمة افتراضية إذا لم يتم تحديد product_id
+                item.id || item.product_id || 0, // استخدام id أو product_id من تطبيق Flutter
                 item.name || item.product_name || 'منتج غير معروف',
                 item.quantity || 1,
                 item.price || item.unit_price || 0,
