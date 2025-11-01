@@ -77,7 +77,7 @@ db.serialize(() => {
     }
   });
 
-  // جدول الطلبات - محدث بإضافة حقول العنوان الجديدة
+  // جدول الطلبات - محدث بإضافة حقول طريقة الدفع
   db.run(`CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     order_number TEXT UNIQUE,
@@ -95,7 +95,11 @@ db.serialize(() => {
     customer_phone TEXT,
     customer_email TEXT,
     customer_secondary_phone TEXT,
+    
+    -- حقول طريقة الدفع الجديدة
     payment_method TEXT DEFAULT 'online',
+    transfer_name TEXT,
+    transfer_number TEXT,
     
     -- حقول العنوان الجديدة
     customer_address TEXT,
@@ -118,7 +122,7 @@ db.serialize(() => {
     if (err) {
       console.error('❌ خطأ في إنشاء جدول الطلبات:', err);
     } else {
-      console.log('✅ تم إنشاء جدول الطلبات بنجاح مع حقول العنوان الجديدة');
+      console.log('✅ تم إنشاء جدول الطلبات بنجاح مع حقول طريقة الدفع والعنوان');
     }
   });
 
@@ -296,7 +300,7 @@ function renderLoginPageHTML(req, res, message = '') {
           <button type="submit">دخول</button>
         </form>
         ${msgHtml}
-        <div class="help">المستخدم الافتراضي: <strong>admin</strong> / كلمة المرور: <strong>admin123</strong></div>
+        <div class="help">المستخدم الافتراضي: <strong>admin</strong> / كلمة المرور: <strong>admin1234</strong></div>
       </div>
     </body>
     </html>
@@ -969,7 +973,7 @@ app.delete('/api/gift-cards/:id', (req, res) => {
   });
 });
 
-// ======== API معالجة الدفع - محدث بإضافة حقول العنوان ========
+// ======== API معالجة الدفع - محدث بدعم طرق الدفع المختلفة ========
 app.post('/api/process-payment', (req, res) => {
   const { 
     cart_items, 
@@ -980,10 +984,11 @@ app.post('/api/process-payment', (req, res) => {
     customer_phone, 
     customer_email,
     customer_secondary_phone,
+    
+    // حقول طريقة الدفع الجديدة
     payment_method,
-    coupon_code,
-    gift_card_number,
-    gift_card_pin,
+    transfer_name,
+    transfer_number,
     
     // حقول العنوان الجديدة
     customer_address,
@@ -1001,13 +1006,19 @@ app.post('/api/process-payment', (req, res) => {
     order_notes,
     expected_delivery,
     items_count,
-    shipping_type
+    shipping_type,
+    
+    // الكوبونات والقسائم
+    coupon_code,
+    gift_card_number,
+    gift_card_pin
   } = req.body;
 
   console.log('💰 طلب دفع جديد:', { 
     customer: customer_name,
     items_count: cart_items?.length || 0, 
     total_amount, 
+    payment_method: payment_method || 'غير محدد',
     address: customer_address,
     city: address_city,
     area: address_area,
@@ -1020,6 +1031,23 @@ app.post('/api/process-payment', (req, res) => {
     return res.status(400).json({
       status: 'error',
       message: 'السلة فارغة'
+    });
+  }
+
+  // التحقق من طريقة الدفع
+  if (!payment_method) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'طريقة الدفع مطلوبة'
+    });
+  }
+
+  // التحقق من معلومات الحوالة إذا كانت طريقة الدفع تتطلب ذلك
+  if ((payment_method === 'bank_babalmandab' || payment_method === 'khameri') && 
+      (!transfer_name || !transfer_number)) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'اسم المرسل ورقم الحوالة مطلوبان لطريقة الدفع المختارة'
     });
   }
 
@@ -1167,16 +1195,16 @@ app.post('/api/process-payment', (req, res) => {
       // إنشاء رقم طلب فريد
       const orderNumber = 'ORD-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
 
-      // الاستعلام المحدث مع حقول العنوان الجديدة
+      // الاستعلام المحدث مع حقول طريقة الدفع والعنوان الجديدة
       db.run(
         `INSERT INTO orders (
           order_number, cart_items, total_amount, discount_amount, coupon_code,
           coupon_type, gift_card_number, gift_card_type, gift_card_amount, order_date, 
           order_status, customer_name, customer_phone, customer_email, customer_secondary_phone,
-          payment_method, customer_address, address_city, address_area, address_detail,
-          shipping_city, shipping_area, shipping_fee, final_amount, order_notes,
-          expected_delivery, items_count, shipping_type
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          payment_method, transfer_name, transfer_number, customer_address, address_city, 
+          address_area, address_detail, shipping_city, shipping_area, shipping_fee, 
+          final_amount, order_notes, expected_delivery, items_count, shipping_type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           orderNumber,
           JSON.stringify(cart_items),
@@ -1193,7 +1221,11 @@ app.post('/api/process-payment', (req, res) => {
           customer_phone || '',
           customer_email || '',
           customer_secondary_phone || '',
+          
+          // حقول طريقة الدفع الجديدة
           payment_method || 'online',
+          transfer_name || '',
+          transfer_number || '',
           
           // حقول العنوان الجديدة
           customer_address || '',
@@ -1223,6 +1255,7 @@ app.post('/api/process-payment', (req, res) => {
           console.log('✅ طلب جديد محفوظ:', {
             order_id: orderNumber,
             customer: customer_name,
+            payment_method: payment_method,
             address: customer_address,
             city: address_city,
             area: address_area,
@@ -1267,6 +1300,15 @@ app.post('/api/process-payment', (req, res) => {
                     discount_amount: calculatedDiscountAmount,
                     gift_card_amount: calculatedGiftCardAmount,
                     final_amount: calculatedFinalAmount,
+                    payment_method: payment_method,
+                    
+                    // معلومات الدفع الإضافية
+                    payment_info: {
+                      method: payment_method,
+                      transfer_name: transfer_name || '',
+                      transfer_number: transfer_number || ''
+                    },
+                    
                     coupon_code: appliedCoupon ? appliedCoupon.code : null,
                     gift_card_number: appliedGiftCard ? appliedGiftCard.card_number : null,
                     
@@ -1639,7 +1681,11 @@ function getOrderStatusText(status) {
 function getPaymentMethodText(method) {
     const methodMap = {
         'online': 'دفع إلكتروني',
-        'cash': 'الدفع عند الاستلام'
+        'cash': 'الدفع عند الاستلام',
+        'mobicash': 'موبي كاش',
+        'yemenwallet': 'محفظة جيب',
+        'bank_babalmandab': 'حوالة بنكية - باب المندب',
+        'khameri': 'الكريمي'
     };
     return methodMap[method] || method;
 }
@@ -1784,6 +1830,8 @@ app.get('/api/export-sales', async (req, res) => {
             { header: 'العنوان الكامل', key: 'customer_address', width: 30 },
             { header: 'حالة الطلب', key: 'order_status', width: 15 },
             { header: 'طريقة الدفع', key: 'payment_method', width: 15 },
+            { header: 'اسم المرسل', key: 'transfer_name', width: 15 },
+            { header: 'رقم الحوالة', key: 'transfer_number', width: 15 },
             { header: 'إجمالي الطلب', key: 'total_amount', width: 15 },
             { header: 'قيمة الخصم', key: 'discount_amount', width: 15 },
             { header: 'قسيمة شرائية', key: 'gift_card_amount', width: 15 },
@@ -1823,6 +1871,8 @@ app.get('/api/export-sales', async (req, res) => {
                 customer_address: order.customer_address || '',
                 order_status: getOrderStatusText(order.order_status),
                 payment_method: getPaymentMethodText(order.payment_method),
+                transfer_name: order.transfer_name || '',
+                transfer_number: order.transfer_number || '',
                 total_amount: `${parseFloat(order.total_amount).toFixed(2)} ر.س`,
                 discount_amount: `${parseFloat(order.discount_amount).toFixed(2)} ر.س`,
                 gift_card_amount: `${parseFloat(order.gift_card_amount).toFixed(2)} ر.س`,
@@ -1982,6 +2032,7 @@ app.get('/api/export-all-sales', async (req, res) => {
             { header: 'الهاتف', key: 'customer_phone', width: 15 },
             { header: 'المدينة', key: 'address_city', width: 15 },
             { header: 'المنطقة', key: 'address_area', width: 15 },
+            { header: 'طريقة الدفع', key: 'payment_method', width: 15 },
             { header: 'الإجمالي', key: 'total_amount', width: 15 },
             { header: 'الخصم', key: 'discount_amount', width: 15 },
             { header: 'القسيمة', key: 'gift_card_amount', width: 15 },
@@ -2008,6 +2059,7 @@ app.get('/api/export-all-sales', async (req, res) => {
                 customer_phone: order.customer_phone,
                 address_city: order.address_city || '',
                 address_area: order.address_area || '',
+                payment_method: getPaymentMethodText(order.payment_method),
                 total_amount: `${parseFloat(order.total_amount).toFixed(2)} ر.س`,
                 discount_amount: `${parseFloat(order.discount_amount).toFixed(2)} ر.س`,
                 gift_card_amount: `${parseFloat(order.gift_card_amount).toFixed(2)} ر.س`,
@@ -2362,6 +2414,7 @@ app.get('/admin/orders', (req, res) => {
             .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
             .stat-number { font-size: 24px; font-weight: bold; }
             .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
+            .payment-info { background: #e8f5e8; padding: 12px; border-radius: 8px; margin-top: 10px; border-right: 3px solid #4CAF50; }
         </style>
     </head>
     <body>
@@ -2462,6 +2515,14 @@ app.get('/admin/orders', (req, res) => {
           'cancelled': 'ملغي'
         }[order.order_status] || order.order_status;
         
+        const paymentMethodText = {
+          'mobicash': 'موبي كاش',
+          'yemenwallet': 'محفظة جيب',
+          'bank_babalmandab': 'حوالة بنكية - باب المندب',
+          'khameri': 'الكريمي',
+          'online': 'دفع إلكتروني'
+        }[order.payment_method] || order.payment_method;
+        
         html += `
             <div class="order-card">
                 <div class="order-header">
@@ -2480,7 +2541,14 @@ app.get('/admin/orders', (req, res) => {
                     الهاتف: ${order.customer_phone || 'غير محدد'} | 
                     ${order.customer_secondary_phone ? `هاتف إضافي: ${order.customer_secondary_phone} | ` : ''}
                     البريد: ${order.customer_email || 'غير محدد'}<br>
-                    طريقة الدفع: ${order.payment_method === 'online' ? 'دفع إلكتروني' : 'الدفع عند الاستلام'}
+                    طريقة الدفع: <strong>${paymentMethodText}</strong>
+                    
+                    <!-- عرض معلومات الحوالة إذا كانت موجودة -->
+                    ${order.transfer_name ? `<div class="payment-info">
+                        <strong>معلومات الحوالة:</strong><br>
+                        اسم المرسل: ${order.transfer_name} | 
+                        رقم الحوالة: ${order.transfer_number}
+                    </div>` : ''}
                     
                     <!-- عرض العنوان الجديد -->
                     ${order.customer_address ? `<br><strong>العنوان:</strong> ${order.customer_address}` : ''}
@@ -3860,6 +3928,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('📈 نظام التصدير: مفعل (Excel)');
   console.log('🚪 نظام تسجيل الدخول والخروج: مفعل');
   console.log('🏠 نظام العناوين: مفعل ومتكامل');
+  console.log('💰 نظام الدفع: مفعل ومتكامل (موبي كاش، محفظة جيب، حوالات بنكية، الكريمي)');
   console.log('📋 صفحات العرض:');
   console.log('   📊 /admin - صفحة عرض البيانات');
   console.log('   🛠️ /admin/advanced - لوحة التحكم');
