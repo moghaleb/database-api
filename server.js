@@ -77,7 +77,7 @@ db.serialize(() => {
     }
   });
 
-  // جدول الطلبات
+  // جدول الطلبات - محدث بإضافة حقول العنوان الجديدة
   db.run(`CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     order_number TEXT UNIQUE,
@@ -94,13 +94,31 @@ db.serialize(() => {
     customer_name TEXT,
     customer_phone TEXT,
     customer_email TEXT,
+    customer_secondary_phone TEXT,
     payment_method TEXT DEFAULT 'online',
+    
+    -- حقول العنوان الجديدة
+    customer_address TEXT,
+    address_city TEXT,
+    address_area TEXT,
+    address_detail TEXT,
+    shipping_city TEXT,
+    shipping_area TEXT,
+    
+    -- معلومات إضافية
+    shipping_fee REAL DEFAULT 0,
+    final_amount REAL DEFAULT 0,
+    order_notes TEXT,
+    expected_delivery TEXT,
+    items_count INTEGER DEFAULT 0,
+    shipping_type TEXT DEFAULT 'توصيل منزلي',
+    
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`, (err) => {
     if (err) {
       console.error('❌ خطأ في إنشاء جدول الطلبات:', err);
     } else {
-      console.log('✅ تم إنشاء جدول الطلبات بنجاح');
+      console.log('✅ تم إنشاء جدول الطلبات بنجاح مع حقول العنوان الجديدة');
     }
   });
 
@@ -951,7 +969,7 @@ app.delete('/api/gift-cards/:id', (req, res) => {
   });
 });
 
-// ======== API معالجة الدفع - مصحح ========
+// ======== API معالجة الدفع - محدث بإضافة حقول العنوان ========
 app.post('/api/process-payment', (req, res) => {
   const { 
     cart_items, 
@@ -961,16 +979,38 @@ app.post('/api/process-payment', (req, res) => {
     customer_name,
     customer_phone, 
     customer_email,
+    customer_secondary_phone,
     payment_method,
     coupon_code,
     gift_card_number,
-    gift_card_pin
+    gift_card_pin,
+    
+    // حقول العنوان الجديدة
+    customer_address,
+    address_city,
+    address_area,
+    address_detail,
+    shipping_city,
+    shipping_area,
+    
+    // معلومات إضافية
+    shipping_fee,
+    discount_amount,
+    gift_card_amount,
+    final_amount,
+    order_notes,
+    expected_delivery,
+    items_count,
+    shipping_type
   } = req.body;
 
   console.log('💰 طلب دفع جديد:', { 
     customer: customer_name,
     items_count: cart_items?.length || 0, 
     total_amount, 
+    address: customer_address,
+    city: address_city,
+    area: address_area,
     coupon_code: coupon_code || 'لا يوجد',
     gift_card: gift_card_number || 'لا يوجد'
   });
@@ -984,9 +1024,9 @@ app.post('/api/process-payment', (req, res) => {
   }
 
   // متغيرات الخصم والقسيمة
-  let discountAmount = 0;
-  let giftCardAmount = 0;
-  let finalAmount = parseFloat(total_amount);
+  let calculatedDiscountAmount = discount_amount || 0;
+  let calculatedGiftCardAmount = gift_card_amount || 0;
+  let calculatedFinalAmount = final_amount || parseFloat(total_amount);
   let appliedCoupon = null;
   let appliedGiftCard = null;
 
@@ -1013,20 +1053,20 @@ app.post('/api/process-payment', (req, res) => {
                 // التحقق من الحد الأقصى للاستخدام
                 if (coupon.max_uses === -1 || coupon.used_count < coupon.max_uses) {
                   // التحقق من الحد الأدنى للطلب
-                  if (finalAmount >= coupon.min_order_amount) {
+                  if (calculatedFinalAmount >= coupon.min_order_amount) {
                     // حساب قيمة الخصم
                     if (coupon.discount_type === 'percentage') {
-                      discountAmount = (finalAmount * coupon.discount_value) / 100;
+                      calculatedDiscountAmount = (calculatedFinalAmount * coupon.discount_value) / 100;
                     } else {
-                      discountAmount = coupon.discount_value;
+                      calculatedDiscountAmount = coupon.discount_value;
                     }
 
                     // التأكد من أن الخصم لا يتجاوز قيمة الطلب
-                    if (discountAmount > finalAmount) {
-                      discountAmount = finalAmount;
+                    if (calculatedDiscountAmount > calculatedFinalAmount) {
+                      calculatedDiscountAmount = calculatedFinalAmount;
                     }
 
-                    finalAmount = finalAmount - discountAmount;
+                    calculatedFinalAmount = calculatedFinalAmount - calculatedDiscountAmount;
                     appliedCoupon = coupon;
 
                     // زيادة عداد استخدامات الكوبون
@@ -1037,8 +1077,8 @@ app.post('/api/process-payment', (req, res) => {
 
                     console.log('✅ تم تطبيق الكوبون:', {
                       code: coupon.code,
-                      discount: discountAmount,
-                      final: finalAmount
+                      discount: calculatedDiscountAmount,
+                      final: calculatedFinalAmount
                     });
                   } else {
                     console.log('❌ قيمة الطلب أقل من الحد الأدنى للكوبون');
@@ -1083,24 +1123,24 @@ app.post('/api/process-payment', (req, res) => {
                   // التحقق من الرصيد المتاح
                   if (giftCard.current_balance > 0) {
                     // حساب المبلغ المستخدم من القسيمة
-                    giftCardAmount = Math.min(giftCard.current_balance, finalAmount);
-                    finalAmount = finalAmount - giftCardAmount;
+                    calculatedGiftCardAmount = Math.min(giftCard.current_balance, calculatedFinalAmount);
+                    calculatedFinalAmount = calculatedFinalAmount - calculatedGiftCardAmount;
                     appliedGiftCard = giftCard;
 
                     // تحديث رصيد القسيمة وعداد الاستخدام
-                    const newBalance = giftCard.current_balance - giftCardAmount;
+                    const newBalance = giftCard.current_balance - calculatedGiftCardAmount;
                     const newUsedCount = giftCard.used_count + 1;
 
                     db.run(
                       'UPDATE gift_cards SET current_balance = ?, used_count = ?, used_amount = used_amount + ? WHERE id = ?',
-                      [newBalance, newUsedCount, giftCardAmount, giftCard.id]
+                      [newBalance, newUsedCount, calculatedGiftCardAmount, giftCard.id]
                     );
 
                     console.log('✅ تم استخدام القسيمة:', {
                       card_number: giftCard.card_number,
-                      used_amount: giftCardAmount,
+                      used_amount: calculatedGiftCardAmount,
                       remaining_balance: newBalance,
-                      final: finalAmount
+                      final: calculatedFinalAmount
                     });
                   } else {
                     console.log('❌ لا يوجد رصيد متاح في القسيمة');
@@ -1127,29 +1167,49 @@ app.post('/api/process-payment', (req, res) => {
       // إنشاء رقم طلب فريد
       const orderNumber = 'ORD-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
 
-      // 🔧 **الاستعلام المصحح - تطابق الأعمدة مع القيم**
+      // الاستعلام المحدث مع حقول العنوان الجديدة
       db.run(
         `INSERT INTO orders (
           order_number, cart_items, total_amount, discount_amount, coupon_code,
           coupon_type, gift_card_number, gift_card_type, gift_card_amount, order_date, 
-          order_status, customer_name, customer_phone, customer_email, payment_method
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          order_status, customer_name, customer_phone, customer_email, customer_secondary_phone,
+          payment_method, customer_address, address_city, address_area, address_detail,
+          shipping_city, shipping_area, shipping_fee, final_amount, order_notes,
+          expected_delivery, items_count, shipping_type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           orderNumber,
           JSON.stringify(cart_items),
           parseFloat(total_amount), // المبلغ الأصلي
-          parseFloat(discountAmount), // قيمة الخصم
+          parseFloat(calculatedDiscountAmount), // قيمة الخصم
           appliedCoupon ? appliedCoupon.code : null,
           appliedCoupon ? appliedCoupon.discount_type : null,
           appliedGiftCard ? appliedGiftCard.card_number : null,
           appliedGiftCard ? 'gift_card' : null,
-          parseFloat(giftCardAmount), // المبلغ المستخدم من القسيمة
+          parseFloat(calculatedGiftCardAmount), // المبلغ المستخدم من القسيمة
           order_date || new Date().toISOString(),
           order_status || 'pending',
           customer_name || 'عميل',
           customer_phone || '',
           customer_email || '',
-          payment_method || 'online'
+          customer_secondary_phone || '',
+          payment_method || 'online',
+          
+          // حقول العنوان الجديدة
+          customer_address || '',
+          address_city || '',
+          address_area || '',
+          address_detail || '',
+          shipping_city || address_city || '',
+          shipping_area || address_area || '',
+          
+          // معلومات إضافية
+          parseFloat(shipping_fee) || 0,
+          parseFloat(calculatedFinalAmount),
+          order_notes || '',
+          expected_delivery || 'تقريباً مابين 11-15/2025',
+          items_count || cart_items.length,
+          shipping_type || 'توصيل منزلي'
         ],
         function(err) {
           if (err) {
@@ -1163,12 +1223,13 @@ app.post('/api/process-payment', (req, res) => {
           console.log('✅ طلب جديد محفوظ:', {
             order_id: orderNumber,
             customer: customer_name,
+            address: customer_address,
+            city: address_city,
+            area: address_area,
             original_total: total_amount,
-            discount: discountAmount,
-            gift_card: giftCardAmount,
-            final_total: finalAmount,
-            coupon: appliedCoupon ? appliedCoupon.code : 'لا يوجد',
-            gift_card: appliedGiftCard ? appliedGiftCard.card_number : 'لا يوجد'
+            discount: calculatedDiscountAmount,
+            gift_card: calculatedGiftCardAmount,
+            final_total: calculatedFinalAmount
           });
           
           // حفظ تفاصيل المنتجات في جدول order_items
@@ -1182,7 +1243,7 @@ app.post('/api/process-payment', (req, res) => {
                VALUES (?, ?, ?, ?, ?, ?)`,
               [
                 orderId,
-                item.id || item.product_id || 0, // استخدام id أو product_id من تطبيق Flutter
+                item.id || item.product_id || 0,
                 item.name || item.product_name || 'منتج غير معروف',
                 item.quantity || 1,
                 item.price || item.unit_price || 0,
@@ -1201,28 +1262,40 @@ app.post('/api/process-payment', (req, res) => {
                     status: 'success',
                     message: 'تم إرسال الطلب بنجاح إلى الإدارة',
                     order_id: orderNumber,
-            order_status: 'pending',
-            original_amount: parseFloat(total_amount),
-            discount_amount: discountAmount,
-            gift_card_amount: giftCardAmount,
-            final_amount: finalAmount,
-            coupon_code: appliedCoupon ? appliedCoupon.code : null,
-            gift_card_number: appliedGiftCard ? appliedGiftCard.card_number : null,
-            coupon_details: appliedCoupon ? {
-              code: appliedCoupon.code,
-              description: appliedCoupon.description,
-              discount_type: appliedCoupon.discount_type,
-              discount_value: appliedCoupon.discount_value
-            } : null,
-            gift_card_details: appliedGiftCard ? {
-              card_number: appliedGiftCard.card_number,
-              initial_amount: appliedGiftCard.initial_amount,
-              remaining_balance: appliedGiftCard.current_balance - giftCardAmount
-            } : null,
-            items_count: cart_items.length,
-            customer_name: customer_name,
-            timestamp: new Date().toISOString(),
-            admin_url: `https://database-api-kvxr.onrender.com/admin/orders`
+                    order_status: 'pending',
+                    original_amount: parseFloat(total_amount),
+                    discount_amount: calculatedDiscountAmount,
+                    gift_card_amount: calculatedGiftCardAmount,
+                    final_amount: calculatedFinalAmount,
+                    coupon_code: appliedCoupon ? appliedCoupon.code : null,
+                    gift_card_number: appliedGiftCard ? appliedGiftCard.card_number : null,
+                    
+                    // إرجاع بيانات العنوان للإدارة
+                    customer_info: {
+                      name: customer_name,
+                      phone: customer_phone,
+                      secondary_phone: customer_secondary_phone,
+                      email: customer_email,
+                      address: customer_address,
+                      city: address_city,
+                      area: address_area,
+                      address_detail: address_detail
+                    },
+                    
+                    coupon_details: appliedCoupon ? {
+                      code: appliedCoupon.code,
+                      description: appliedCoupon.description,
+                      discount_type: appliedCoupon.discount_type,
+                      discount_value: appliedCoupon.discount_value
+                    } : null,
+                    gift_card_details: appliedGiftCard ? {
+                      card_number: appliedGiftCard.card_number,
+                      initial_amount: appliedGiftCard.initial_amount,
+                      remaining_balance: appliedGiftCard.current_balance - calculatedGiftCardAmount
+                    } : null,
+                    items_count: cart_items.length,
+                    timestamp: new Date().toISOString(),
+                    admin_url: `https://database-api-kvxr.onrender.com/admin/orders`
                   });
                 }
               }
@@ -1678,7 +1751,8 @@ app.get('/api/export-sales', async (req, res) => {
         const totalSales = orders.reduce((sum, order) => sum + parseFloat(order.total_amount), 0);
         const totalDiscounts = orders.reduce((sum, order) => sum + parseFloat(order.discount_amount), 0);
         const totalGiftCards = orders.reduce((sum, order) => sum + parseFloat(order.gift_card_amount), 0);
-        const netSales = totalSales - totalDiscounts - totalGiftCards;
+        const totalShipping = orders.reduce((sum, order) => sum + parseFloat(order.shipping_fee || 0), 0);
+        const netSales = totalSales - totalDiscounts - totalGiftCards + totalShipping;
         const totalOrders = orders.length;
         const completedOrders = orders.filter(order => order.order_status === 'completed').length;
         const pendingOrders = orders.filter(order => order.order_status === 'pending').length;
@@ -1688,6 +1762,7 @@ app.get('/api/export-sales', async (req, res) => {
         summarySheet.addRow(['إجمالي المبيعات', `${totalSales.toFixed(2)} ر.س`, '', '', '', '', '', '']);
         summarySheet.addRow(['إجمالي الخصومات', `${totalDiscounts.toFixed(2)} ر.س`, '', '', '', '', '', '']);
         summarySheet.addRow(['إجمالي القسائم', `${totalGiftCards.toFixed(2)} ر.س`, '', '', '', '', '', '']);
+        summarySheet.addRow(['إجمالي التوصيل', `${totalShipping.toFixed(2)} ر.س`, '', '', '', '', '', '']);
         summarySheet.addRow(['صافي المبيعات', `${netSales.toFixed(2)} ر.س`, '', '', '', '', '', '']);
         summarySheet.addRow(['إجمالي الطلبات', totalOrders, '', '', '', '', '', '']);
         summarySheet.addRow(['الطلبات المكتملة', completedOrders, '', '', '', '', '', '']);
@@ -1701,12 +1776,18 @@ app.get('/api/export-sales', async (req, res) => {
             { header: 'تاريخ الطلب', key: 'order_date', width: 20 },
             { header: 'اسم العميل', key: 'customer_name', width: 20 },
             { header: 'هاتف العميل', key: 'customer_phone', width: 15 },
+            { header: 'هاتف إضافي', key: 'customer_secondary_phone', width: 15 },
             { header: 'بريد العميل', key: 'customer_email', width: 25 },
+            { header: 'المدينة', key: 'address_city', width: 15 },
+            { header: 'المنطقة', key: 'address_area', width: 15 },
+            { header: 'العنوان التفصيلي', key: 'address_detail', width: 25 },
+            { header: 'العنوان الكامل', key: 'customer_address', width: 30 },
             { header: 'حالة الطلب', key: 'order_status', width: 15 },
             { header: 'طريقة الدفع', key: 'payment_method', width: 15 },
             { header: 'إجمالي الطلب', key: 'total_amount', width: 15 },
             { header: 'قيمة الخصم', key: 'discount_amount', width: 15 },
             { header: 'قسيمة شرائية', key: 'gift_card_amount', width: 15 },
+            { header: 'رسوم التوصيل', key: 'shipping_fee', width: 15 },
             { header: 'الصافي', key: 'net_amount', width: 15 },
             { header: 'كود الخصم', key: 'coupon_code', width: 15 },
             { header: 'رقم القسيمة', key: 'gift_card_number', width: 15 },
@@ -1724,7 +1805,7 @@ app.get('/api/export-sales', async (req, res) => {
         headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
 
         orders.forEach(order => {
-            const netAmount = parseFloat(order.total_amount) - parseFloat(order.discount_amount) - parseFloat(order.gift_card_amount);
+            const netAmount = parseFloat(order.total_amount) - parseFloat(order.discount_amount) - parseFloat(order.gift_card_amount) + parseFloat(order.shipping_fee || 0);
             const productsText = order.cart_items.map(item => 
                 `${item.name} (${item.quantity}x)`
             ).join('، ');
@@ -1734,12 +1815,18 @@ app.get('/api/export-sales', async (req, res) => {
                 order_date: new Date(order.order_date).toLocaleString('ar-SA'),
                 customer_name: order.customer_name,
                 customer_phone: order.customer_phone,
+                customer_secondary_phone: order.customer_secondary_phone || '',
                 customer_email: order.customer_email,
+                address_city: order.address_city || '',
+                address_area: order.address_area || '',
+                address_detail: order.address_detail || '',
+                customer_address: order.customer_address || '',
                 order_status: getOrderStatusText(order.order_status),
                 payment_method: getPaymentMethodText(order.payment_method),
                 total_amount: `${parseFloat(order.total_amount).toFixed(2)} ر.س`,
                 discount_amount: `${parseFloat(order.discount_amount).toFixed(2)} ر.س`,
                 gift_card_amount: `${parseFloat(order.gift_card_amount).toFixed(2)} ر.س`,
+                shipping_fee: `${parseFloat(order.shipping_fee || 0).toFixed(2)} ر.س`,
                 net_amount: `${netAmount.toFixed(2)} ر.س`,
                 coupon_code: order.coupon_code || 'لا يوجد',
                 gift_card_number: order.gift_card_number || 'لا يوجد',
@@ -1893,9 +1980,12 @@ app.get('/api/export-all-sales', async (req, res) => {
             { header: 'التاريخ', key: 'order_date', width: 20 },
             { header: 'العميل', key: 'customer_name', width: 20 },
             { header: 'الهاتف', key: 'customer_phone', width: 15 },
+            { header: 'المدينة', key: 'address_city', width: 15 },
+            { header: 'المنطقة', key: 'address_area', width: 15 },
             { header: 'الإجمالي', key: 'total_amount', width: 15 },
             { header: 'الخصم', key: 'discount_amount', width: 15 },
             { header: 'القسيمة', key: 'gift_card_amount', width: 15 },
+            { header: 'التوصيل', key: 'shipping_fee', width: 15 },
             { header: 'الصافي', key: 'net_amount', width: 15 },
             { header: 'الحالة', key: 'order_status', width: 15 }
         ];
@@ -1909,16 +1999,19 @@ app.get('/api/export-all-sales', async (req, res) => {
         };
 
         orders.forEach(order => {
-            const netAmount = parseFloat(order.total_amount) - parseFloat(order.discount_amount) - parseFloat(order.gift_card_amount);
+            const netAmount = parseFloat(order.total_amount) - parseFloat(order.discount_amount) - parseFloat(order.gift_card_amount) + parseFloat(order.shipping_fee || 0);
             
             worksheet.addRow({
                 order_number: order.order_number,
                 order_date: new Date(order.order_date).toLocaleString('ar-SA'),
                 customer_name: order.customer_name,
                 customer_phone: order.customer_phone,
+                address_city: order.address_city || '',
+                address_area: order.address_area || '',
                 total_amount: `${parseFloat(order.total_amount).toFixed(2)} ر.س`,
                 discount_amount: `${parseFloat(order.discount_amount).toFixed(2)} ر.س`,
                 gift_card_amount: `${parseFloat(order.gift_card_amount).toFixed(2)} ر.س`,
+                shipping_fee: `${parseFloat(order.shipping_fee || 0).toFixed(2)} ر.س`,
                 net_amount: `${netAmount.toFixed(2)} ر.س`,
                 order_status: getOrderStatusText(order.order_status)
             });
@@ -2385,8 +2478,16 @@ app.get('/admin/orders', (req, res) => {
                     <strong>معلومات العميل:</strong><br>
                     الاسم: ${order.customer_name || 'غير محدد'} | 
                     الهاتف: ${order.customer_phone || 'غير محدد'} | 
+                    ${order.customer_secondary_phone ? `هاتف إضافي: ${order.customer_secondary_phone} | ` : ''}
                     البريد: ${order.customer_email || 'غير محدد'}<br>
                     طريقة الدفع: ${order.payment_method === 'online' ? 'دفع إلكتروني' : 'الدفع عند الاستلام'}
+                    
+                    <!-- عرض العنوان الجديد -->
+                    ${order.customer_address ? `<br><strong>العنوان:</strong> ${order.customer_address}` : ''}
+                    ${order.address_city ? ` | <strong>المدينة:</strong> ${order.address_city}` : ''}
+                    ${order.address_area ? ` | <strong>المنطقة:</strong> ${order.address_area}` : ''}
+                    ${order.address_detail ? `<br><strong>تفاصيل العنوان:</strong> ${order.address_detail}` : ''}
+                    
                     ${order.coupon_code ? `<br>كود الخصم: <strong>${order.coupon_code}</strong> (خصم: ${order.discount_amount} ر.س)` : ''}
                     ${order.gift_card_number ? `<br>رقم القسيمة: <strong>${order.gift_card_number}</strong> (مستخدم: ${order.gift_card_amount} ر.س)` : ''}
                 </div>
@@ -2402,7 +2503,10 @@ app.get('/admin/orders', (req, res) => {
                         <strong>القسيمة:</strong> ${order.gift_card_amount} ر.س
                     </div>
                     <div class="detail-item">
-                        <strong>المجموع النهائي:</strong> ${(order.total_amount - order.discount_amount - order.gift_card_amount).toFixed(2)} ر.س
+                        <strong>رسوم التوصيل:</strong> ${order.shipping_fee || 0} ر.س
+                    </div>
+                    <div class="detail-item">
+                        <strong>المجموع النهائي:</strong> ${(order.final_amount || (order.total_amount - order.discount_amount - order.gift_card_amount + parseFloat(order.shipping_fee || 0))).toFixed(2)} ر.س
                     </div>
                     <div class="detail-item">
                         <strong>عدد العناصر:</strong> ${items.length}
@@ -3755,6 +3859,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('💳 نظام القسائم الشرائية: مفعل ومتكامل');
   console.log('📈 نظام التصدير: مفعل (Excel)');
   console.log('🚪 نظام تسجيل الدخول والخروج: مفعل');
+  console.log('🏠 نظام العناوين: مفعل ومتكامل');
   console.log('📋 صفحات العرض:');
   console.log('   📊 /admin - صفحة عرض البيانات');
   console.log('   🛠️ /admin/advanced - لوحة التحكم');
