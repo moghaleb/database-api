@@ -1,4 +1,5 @@
 const express = require('express');
+const https = require('https');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const sqlite3 = require('sqlite3').verbose();
@@ -3916,8 +3917,24 @@ app.use((req, res) => {
   });
 });
 
+// إعداد HTTPS
+const httpsOptions = {
+  key: fs.readFileSync('/etc/letsencrypt/live/yourdomain.com/privkey.pem'),
+  cert: fs.readFileSync('/etc/letsencrypt/live/yourdomain.com/fullchain.pem')
+};
+
 // بدء الخادم
-app.listen(PORT, '0.0.0.0', () => {
+// إنشاء خادم HTTP لإعادة التوجيه إلى HTTPS
+const http = express();
+http.get('*', (req, res) => {
+  res.redirect(`https://${req.headers.host}${req.url}`);
+});
+http.listen(80, () => {
+  console.log('🔄 خادم HTTP يعمل على المنفذ 80 للتحويل إلى HTTPS');
+});
+
+// بدء خادم HTTPS
+https.createServer(httpsOptions, app).listen(PORT, '0.0.0.0', () => {
   console.log('🚀 الخادم يعمل على المنفذ', PORT);
   console.log('🔗 رابط التطبيق: https://database-api-kvxr.onrender.com');
   console.log('📊 قاعدة البيانات: SQLite (في الذاكرة)');
@@ -3937,4 +3954,4 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('   💳 /admin/gift-cards - إدارة القسائم');
   console.log('   ⚙️ /admin/settings - إعدادات النظام');
   console.log('   🚪 /logout - تسجيل الخروج');
-});
+}); 
