@@ -3919,8 +3919,8 @@ app.use((req, res) => {
 
 // إعداد HTTPS
 const httpsOptions = {
-  key: fs.readFileSync('/etc/letsencrypt/live/yourdomain.com/privkey.pem'),
-  cert: fs.readFileSync('/etc/letsencrypt/live/yourdomain.com/fullchain.pem')
+  key: fs.readFileSync('/etc/letsencrypt/live/redshe.shop/privkey.pem'),
+  cert: fs.readFileSync('/etc/letsencrypt/live/redshe.shop/fullchain.pem')
 };
 
 // بدء الخادم
