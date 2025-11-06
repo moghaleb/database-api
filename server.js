@@ -3925,11 +3925,12 @@ const httpsOptions = {
 
 // بدء الخادم
 // إنشاء خادم HTTP لإعادة التوجيه إلى HTTPS
-const http = express();
-http.get('*', (req, res) => {
+const http = require('http');
+const httpApp = express();
+httpApp.get('*', (req, res) => {
   res.redirect(`https://${req.headers.host}${req.url}`);
 });
-http.listen(80, () => {
+http.createServer(httpApp).listen(80, () => {
   console.log('🔄 خادم HTTP يعمل على المنفذ 80 للتحويل إلى HTTPS');
 });
 
