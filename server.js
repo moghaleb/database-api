@@ -3940,7 +3940,7 @@ app.listen(PORT, HOST, () => {
   console.log(`📍 الاستضافة: VPS (72.61.181.208)`);
   console.log(`🌐 النطاق: https://redshe.shop`);
   console.log(`🖥️  العنوان: http://${HOST}:${PORT}`);
-  console.log(`📊 قاعدة البيانات: ${dbPath}`);
+  //console.log(`📊 قاعدة البيانات: ${dbPath}`);
   console.log('🔒 وضع التشغيل:', process.env.NODE_ENV || 'development');
   console.log('✅ جاهز لاستقبال الطلبات من تطبيق Flutter');
   console.log('📋 صفحات الإدارة:');
