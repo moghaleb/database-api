@@ -5,6 +5,8 @@ const sqlite3 = require('sqlite3').verbose();
 const ExcelJS = require('exceljs');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
+const http = require('http');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -385,13 +387,68 @@ app.put('/api/admin-settings/:key', (req, res) => {
   );
 });
 
+// مسار التحقق من SSL
+app.get('/api/ssl-check', (req, res) => {
+  try {
+    const certPath = '/etc/letsencrypt/live/redshe.shop';
+    const files = {
+      privkey: fs.existsSync(`${certPath}/privkey.pem`),
+      fullchain: fs.existsSync(`${certPath}/fullchain.pem`),
+      cert: fs.existsSync(`${certPath}/cert.pem`),
+      chain: fs.existsSync(`${certPath}/chain.pem`)
+    };
+
+    if (files.privkey && files.fullchain) {
+      const keyStats = fs.statSync(`${certPath}/privkey.pem`);
+      const certStats = fs.statSync(`${certPath}/fullchain.pem`);
+      
+      // قراءة معلومات الشهادة
+      const certContent = fs.readFileSync(`${certPath}/fullchain.pem`, 'utf8');
+      const certMatches = certContent.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g);
+      
+      res.json({
+        status: 'success',
+        message: 'شهادة SSL مثبتة بشكل صحيح',
+        files: files,
+        details: {
+          key_size: keyStats.size,
+          cert_size: certStats.size,
+          certificate_count: certMatches ? certMatches.length : 0,
+          key_last_modified: keyStats.mtime,
+          cert_last_modified: certStats.mtime
+        },
+        paths: {
+          privkey: `${certPath}/privkey.pem`,
+          fullchain: `${certPath}/fullchain.pem`
+        },
+        domain: 'redshe.shop',
+        server_ip: '72.61.181.208'
+      });
+    } else {
+      res.status(500).json({
+        status: 'error',
+        message: 'ملفات الشهادة غير موجودة',
+        files: files,
+        instructions: 'قم بتثبيت شهادة SSL باستخدام certbot'
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: 'خطأ في التحقق من الشهادة: ' + error.message
+    });
+  }
+});
+
 // الرابط الأساسي
 app.get('/', (req, res) => {
   res.json({
     status: 'success',
     message: '🚀 نظام اختبار الاتصال يعمل بنجاح!',
     timestamp: new Date().toISOString(),
-    database: 'SQLite - سريعة وموثوقة',
+    server: 'VPS - 72.61.181.208',
+    ssl_enabled: true,
+    domain: 'redshe.shop',
     endpoints: [
       'GET /api/test - اختبار الاتصال',
       'GET /api/db-test - اختبار قاعدة البيانات', 
@@ -417,6 +474,7 @@ app.get('/', (req, res) => {
       'PUT /api/admin-settings/:key - تحديث إعداد',
       'GET /api/export-sales - تصدير المبيعات إلى Excel',
       'GET /api/export-all-sales - تصدير سريع للمبيعات',
+      'GET /api/ssl-check - التحقق من شهادة SSL',
       'GET /admin - صفحة عرض البيانات',
       'GET /admin/advanced - لوحة التحكم',
       'GET /admin/orders - إدارة الطلبات',
@@ -432,7 +490,9 @@ app.get('/api/test', (req, res) => {
   res.json({
     status: 'success',
     message: '✅ تم الاتصال بالخادم بنجاح!',
-    server: 'Render.com',
+    server: 'VPS - 72.61.181.208',
+    domain: 'redshe.shop',
+    ssl: true,
     environment: 'Production',
     timestamp: new Date().toISOString(),
     arabic_support: 'نظام يدعم اللغة العربية'
@@ -1337,7 +1397,7 @@ app.post('/api/process-payment', (req, res) => {
                     } : null,
                     items_count: cart_items.length,
                     timestamp: new Date().toISOString(),
-                    admin_url: `https://database-api-kvxr.onrender.com/admin/orders`
+                    admin_url: `https://redshe.shop/admin/orders`
                   });
                 }
               }
@@ -2165,12 +2225,15 @@ app.get('/admin', (req, res) => {
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/api/all-data" class="nav-btn">📋 JSON البيانات</a>
                 <a href="/api/test" class="nav-btn">🧪 اختبار الاتصال</a>
+                <a href="/api/ssl-check" class="nav-btn">🔒 فحص SSL</a>
             </div>
             
             <div class="stats">
                 <h3 style="margin: 0 0 15px 0; color: #333;">📈 الإحصائيات</h3>
                 <p style="margin: 5px 0;">عدد السجلات: <strong style="color: #667eea;">${rows.length}</strong></p>
                 <p style="margin: 5px 0;">آخر تحديث: <strong>${new Date().toLocaleString('ar-SA')}</strong></p>
+                <p style="margin: 5px 0;">النطاق: <strong>redshe.shop</strong></p>
+                <p style="margin: 5px 0;">الخادم: <strong>72.61.181.208</strong></p>
             </div>
     `;
 
@@ -2282,6 +2345,7 @@ app.get('/admin/advanced', (req, res) => {
                 <a href="/admin/settings" class="btn btn-info">⚙️ إعدادات النظام</a>
                 <a href="/api/all-data" class="btn btn-success">📋 JSON البيانات</a>
                 <a href="/api/orders" class="btn btn-primary">📦 JSON الطلبات</a>
+                <a href="/api/ssl-check" class="btn btn-success">🔒 فحص SSL</a>
                 <a href="/" class="btn btn-secondary">🏠 الرئيسية</a>
                 <button onclick="clearAllData()" class="btn btn-danger">🗑️ مسح جميع البيانات</button>
                 <div style="margin-left: auto; display: flex; align-items: center; gap: 15px;">
@@ -2290,6 +2354,9 @@ app.get('/admin/advanced', (req, res) => {
                     </div>
                     <div class="stats-card">
                         <strong>الحالة:</strong> <span style="color: #4CAF50; font-weight: bold;">✅ نشط</span>
+                    </div>
+                    <div class="stats-card">
+                        <strong>النطاق:</strong> <span style="color: #9C27B0; font-weight: bold;">redshe.shop</span>
                     </div>
                 </div>
             </div>
@@ -2431,6 +2498,7 @@ app.get('/admin/orders', (req, res) => {
                 <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
                 <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
+                <a href="/api/ssl-check" class="nav-btn">🔒 فحص SSL</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
             </div>
 
@@ -2735,6 +2803,7 @@ app.get('/admin/coupons', (req, res) => {
                 <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
                 <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
+                <a href="/api/ssl-check" class="nav-btn">🔒 فحص SSL</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
                 <button onclick="showAddModal()" class="btn btn-success">+ إضافة كوبون جديد</button>
             </div>
@@ -3233,6 +3302,7 @@ app.get('/admin/gift-cards', (req, res) => {
                 <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
                 <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
+                <a href="/api/ssl-check" class="nav-btn">🔒 فحص SSL</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
                 <button onclick="showAddModal()" class="btn btn-success">+ إضافة قسيمة جديدة</button>
             </div>
@@ -3722,6 +3792,7 @@ app.get('/admin/settings', (req, res) => {
               <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
               <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
               <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
+              <a href="/api/ssl-check" class="nav-btn">🔒 فحص SSL</a>
               <a href="/" class="nav-btn">🏠 الرئيسية</a>
           </div>
 
@@ -3916,25 +3987,44 @@ app.use((req, res) => {
   });
 });
 
-// بدء الخادم
-app.listen(PORT, '0.0.0.0', () => {
-  console.log('🚀 الخادم يعمل على المنفذ', PORT);
-  console.log('🔗 رابط التطبيق: https://database-api-kvxr.onrender.com');
-  console.log('📊 قاعدة البيانات: SQLite (في الذاكرة)');
-  console.log('✅ جاهز لاستقبال طلبات Flutter');
-  console.log('🎯 يدعم اللغة العربية بشكل كامل');
-  console.log('🎫 نظام الكوبونات: مفعل ومتكامل مع التعديل');
-  console.log('💳 نظام القسائم الشرائية: مفعل ومتكامل');
-  console.log('📈 نظام التصدير: مفعل (Excel)');
-  console.log('🚪 نظام تسجيل الدخول والخروج: مفعل');
-  console.log('🏠 نظام العناوين: مفعل ومتكامل');
-  console.log('💰 نظام الدفع: مفعل ومتكامل (موبي كاش، محفظة جيب، حوالات بنكية، الكريمي)');
-  console.log('📋 صفحات العرض:');
-  console.log('   📊 /admin - صفحة عرض البيانات');
-  console.log('   🛠️ /admin/advanced - لوحة التحكم');
-  console.log('   🛒 /admin/orders - إدارة الطلبات');
-  console.log('   🎫 /admin/coupons - إدارة الكوبونات');
-  console.log('   💳 /admin/gift-cards - إدارة القسائم');
-  console.log('   ⚙️ /admin/settings - إعدادات النظام');
-  console.log('   🚪 /logout - تسجيل الخروج');
-});
+// ======== بدء الخادم مع دعم HTTPS ========
+function startServers() {
+    try {
+        // محاولة تحميل شهادات SSL
+        const privateKey = fs.readFileSync('/etc/letsencrypt/live/redshe.shop/privkey.pem', 'utf8');
+        const certificate = fs.readFileSync('/etc/letsencrypt/live/redshe.shop/fullchain.pem', 'utf8');
+        const credentials = { key: privateKey, cert: certificate };
+
+        // بدء خادم HTTPS
+        const httpsServer = https.createServer(credentials, app);
+        httpsServer.listen(443, '0.0.0.0', () => {
+            console.log('🚀 خادم HTTPS يعمل على المنفذ 443');
+            console.log('🔒 رابط التطبيق الآمن: https://redshe.shop');
+        });
+
+        // بدء خادم HTTP لإعادة التوجيه
+        const httpApp = express();
+        httpApp.use((req, res) => {
+            res.redirect(301, `https://redshe.shop${req.url}`);
+        });
+        http.createServer(httpApp).listen(80, '0.0.0.0', () => {
+            console.log('🔄 خادم HTTP يعمل على المنفذ 80 (إعادة توجيه إلى HTTPS)');
+        });
+
+        console.log('✅ تم تفعيل HTTPS بنجاح');
+        console.log('📧 يمكنك الآن الوصول للتطبيق عبر: https://redshe.shop');
+
+    } catch (error) {
+        console.log('❌ فشل في تحميل شهادة SSL، التشغيل على HTTP فقط');
+        console.log('💡 تأكد من تثبيت شهادة SSL باستخدام certbot');
+        
+        app.listen(PORT, '0.0.0.0', () => {
+            console.log('🚀 الخادم يعمل على المنفذ', PORT);
+            console.log('🔗 رابط التطبيق: http://redshe.shop:' + PORT);
+            console.log('⚠️ 注意: التطبيق يعمل على HTTP فقط - قم بتثبيت SSL للحصول على اتصال آمن');
+        });
+    }
+}
+
+// بدء التشغيل
+startServers();
