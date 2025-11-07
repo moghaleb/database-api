@@ -8,6 +8,7 @@ const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 
 // ======== Middleware ========
 app.use(cors({
@@ -3948,4 +3949,4 @@ app.listen(PORT, HOST, () => {
   console.log('   🎫 https://redshe.shop/admin/coupons');
   console.log('   💳 https://redshe.shop/admin/gift-cards');
 });
-//l
+//lش
