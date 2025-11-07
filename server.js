@@ -10,17 +10,27 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ======== Middleware ========
-app.use(cors());
+app.use(cors({
+origin: [
+'https://redshe.shop',
+'http://redshe.shop', 
+'https://www.redshe.shop',
+'http://www.redshe.shop',
+'http://localhost:3000',
+'http://127.0.0.1:3000'
+],
+credentials: true
+}));
 app.use(express.json());
-const SESSION_SECRET = process.env.SESSION_SECRET || 'dev_session_secret_please_change';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'redshe_shop_production_secret_2024_change_this';
 app.use(cookieParser(SESSION_SECRET));
 app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
 
 // ======== إعداد بيانات مسؤول افتراضي ========
 const ADMIN_CREDENTIALS = {
-  username: process.env.ADMIN_USER || 'admin',
-  password: process.env.ADMIN_PASS || 'admin1234'
+  username: process.env.ADMIN_USER || 'redshe_admin',
+  password: process.env.ADMIN_PASS || 'Redshe@2024!Secure'
 };
 
 // ======== دوال المصادقة ========
@@ -50,10 +60,12 @@ function isLocalRequest(req) {
 }
 
 // ======== إنشاء مجلد التصدير ========
-const exportsDir = path.join(__dirname, 'exports');
+const exportsDir = process.env.NODE_ENV === 'production' 
+? '/var/www/redshe/exports'
+: path.join(__dirname, 'exports');
 if (!fs.existsSync(exportsDir)) {
     fs.mkdirSync(exportsDir, { recursive: true });
-    console.log('✅ تم إنشاء مجلد التصدير');
+    console.log('✅ تم إنشاء مجلد التصدير:', exportsDir);
 }
 
 // ======== Database Configuration ========
@@ -256,22 +268,27 @@ db.serialize(() => {
 // ======== دوال تسجيل الدخول ========
 function handleLoginRequest(req, res) {
   const { username, password } = req.body;
-
   if (!username || !password) {
     if (req.is('application/x-www-form-urlencoded')) {
       return renderLoginPageHTML(req, res, 'اسم المستخدم وكلمة المرور مطلوبان');
     }
     return res.status(400).json({ status: 'error', message: 'اسم المستخدم وكلمة المرور مطلوبان' });
   }
-
   if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
-    res.cookie('admin_auth', ADMIN_CREDENTIALS.username, { signed: true, httpOnly: true, maxAge: 12 * 60 * 60 * 1000 });
+    res.cookie('admin_auth', ADMIN_CREDENTIALS.username, { 
+      signed: true, 
+      httpOnly: true, 
+      secure: process.env.NODE_ENV === 'production',
+      domain: process.env.NODE_ENV === 'production' ? '.redshe.shop' : undefined,
+      maxAge: 12 * 60 * 60 * 1000,
+      sameSite: 'lax'
+    });
+
     if (req.is('application/x-www-form-urlencoded')) {
       return res.redirect('/admin');
     }
     return res.json({ status: 'success', message: 'تم تسجيل الدخول بنجاح', redirect: '/admin' });
   }
-
   if (req.is('application/x-www-form-urlencoded')) {
     return renderLoginPageHTML(req, res, 'بيانات اعتماد غير صحيحة');
   }
@@ -1337,7 +1354,7 @@ app.post('/api/process-payment', (req, res) => {
                     } : null,
                     items_count: cart_items.length,
                     timestamp: new Date().toISOString(),
-                    admin_url: `https://database-api-kvxr.onrender.com/admin/orders`
+                    admin_url: `https://redshe.shop/admin/orders`
                   });
                 }
               }
@@ -3917,25 +3934,18 @@ app.use((req, res) => {
 });
 
 // بدء الخادم
-app.listen(PORT, '0.0.0.0', () => {
-  console.log('🚀 الخادم يعمل على المنفذ', PORT);
-  console.log('🔗 رابط التطبيق: https://database-api-kvxr.onrender.com');
-  console.log('📊 قاعدة البيانات: SQLite (في الذاكرة)');
-  console.log('✅ جاهز لاستقبال طلبات Flutter');
-  console.log('🎯 يدعم اللغة العربية بشكل كامل');
-  console.log('🎫 نظام الكوبونات: مفعل ومتكامل مع التعديل');
-  console.log('💳 نظام القسائم الشرائية: مفعل ومتكامل');
-  console.log('📈 نظام التصدير: مفعل (Excel)');
-  console.log('🚪 نظام تسجيل الدخول والخروج: مفعل');
-  console.log('🏠 نظام العناوين: مفعل ومتكامل');
-  console.log('💰 نظام الدفع: مفعل ومتكامل (موبي كاش، محفظة جيب، حوالات بنكية، الكريمي)');
-  console.log('📋 صفحات العرض:');
-  console.log('   📊 /admin - صفحة عرض البيانات');
-  console.log('   🛠️ /admin/advanced - لوحة التحكم');
-  console.log('   🛒 /admin/orders - إدارة الطلبات');
-  console.log('   🎫 /admin/coupons - إدارة الكوبونات');
-  console.log('   💳 /admin/gift-cards - إدارة القسائم');
-  console.log('   ⚙️ /admin/settings - إعدادات النظام');
-  console.log('   🚪 /logout - تسجيل الخروج');
+app.listen(PORT, HOST, () => {
+  console.log('🚀 الخادم يعمل بنجاح!');
+  console.log(`📍 الاستضافة: VPS (72.61.181.208)`);
+  console.log(`🌐 النطاق: https://redshe.shop`);
+  console.log(`🖥️  العنوان: http://${HOST}:${PORT}`);
+  console.log(`📊 قاعدة البيانات: ${dbPath}`);
+  console.log('🔒 وضع التشغيل:', process.env.NODE_ENV || 'development');
+  console.log('✅ جاهز لاستقبال الطلبات من تطبيق Flutter');
+  console.log('📋 صفحات الإدارة:');
+  console.log('   📊 https://redshe.shop/admin');
+  console.log('   🛒 https://redshe.shop/admin/orders');
+  console.log('   🎫 https://redshe.shop/admin/coupons');
+  console.log('   💳 https://redshe.shop/admin/gift-cards');
 });
 //l
