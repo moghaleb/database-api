@@ -5,32 +5,83 @@ const sqlite3 = require('sqlite3').verbose();
 const ExcelJS = require('exceljs');
 const path = require('path');
 const fs = require('fs');
-const https = require('https');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
 
-// ======== إعدادات SSL ========
-let sslOptions;
-try {
-  sslOptions = {
-    key: fs.readFileSync('/etc/letsencrypt/live/redshe.shop/privkey.pem'),
-    cert: fs.readFileSync('/etc/letsencrypt/live/redshe.shop/fullchain.pem'),
-    secureProtocol: 'TLSv1_2_method',
-    ciphers: [
-      'ECDHE-RSA-AES128-GCM-SHA256',
-      'ECDHE-RSA-AES256-GCM-SHA384',
-      'ECDHE-RSA-AES128-SHA256',
-      'ECDHE-RSA-AES256-SHA384'
-    ].join(':'),
-    honorCipherOrder: true
-  };
-  console.log('✅ تم تحميل شهادة SSL بنجاح');
-} catch (error) {
-  console.error('❌ خطأ في تحميل شهادة SSL:', error.message);
-  console.log('⚠️  سيتم استخدام HTTP بدون SSL');
-  sslOptions = null;
+// ======== إعدادات SSL الذكية ========
+let sslOptions = null;
+let useSSL = false;
+
+// المسارات المحتملة لملفات SSL
+const possibleSSLCertPaths = [
+  '/etc/letsencrypt/live/redshe.shop/fullchain.pem',
+  '/etc/letsencrypt/live/redshe.shop/cert.pem',
+  '/etc/ssl/certs/redshe.shop.crt',
+  '/path/to/your/ssl/certificate.crt' // مسار مخصص
+];
+
+const possibleSSLKeyPaths = [
+  '/etc/letsencrypt/live/redshe.shop/privkey.pem',
+  '/etc/ssl/private/redshe.shop.key',
+  '/path/to/your/ssl/private.key' // مسار مخصص
+];
+
+// البحث عن ملفات SSL
+function findSSLCertificates() {
+  let certPath = null;
+  let keyPath = null;
+
+  // البحث عن الشهادة
+  for (const path of possibleSSLCertPaths) {
+    if (fs.existsSync(path)) {
+      certPath = path;
+      console.log(`✅ تم العثور على الشهادة في: ${path}`);
+      break;
+    }
+  }
+
+  // البحث عن المفتاح
+  for (const path of possibleSSLKeyPaths) {
+    if (fs.existsSync(path)) {
+      keyPath = path;
+      console.log(`✅ تم العثور على المفتاح في: ${path}`);
+      break;
+    }
+  }
+
+  if (certPath && keyPath) {
+    try {
+      return {
+        key: fs.readFileSync(keyPath),
+        cert: fs.readFileSync(certPath),
+        secureProtocol: 'TLSv1_2_method',
+        ciphers: [
+          'ECDHE-RSA-AES128-GCM-SHA256',
+          'ECDHE-RSA-AES256-GCM-SHA384'
+        ].join(':'),
+        honorCipherOrder: true
+      };
+    } catch (error) {
+      console.error('❌ خطأ في قراءة ملفات SSL:', error.message);
+      return null;
+    }
+  }
+
+  return null;
+}
+
+// محاولة تحميل SSL
+sslOptions = findSSLCertificates();
+useSSL = sslOptions !== null;
+
+if (!useSSL) {
+  console.log('⚠️  لم يتم العثور على شهادات SSL. سيتم استخدام HTTP.');
+  console.log('💡 للحصول على شهادة SSL مجانية، قم بتشغيل:');
+  console.log('   sudo certbot --nginx -d redshe.shop -d www.redshe.shop');
+} else {
+  console.log('🔐 تم تحميل شهادات SSL بنجاح!');
 }
 
 // ======== Middleware ========
@@ -44,7 +95,7 @@ app.use(cors({
     'http://127.0.0.1:3000'
   ],
   credentials: true
-}));
+}))
 app.use(express.json());
 const SESSION_SECRET = process.env.SESSION_SECRET || 'redshe_shop_production_secret_2024_change_this';
 app.use(cookieParser(SESSION_SECRET));
@@ -3959,46 +4010,37 @@ app.use((req, res) => {
 
 // بدء الخادم
 function startServer() {
-  if (sslOptions) {
-    // تشغيل مع SSL
+  if (useSSL && sslOptions) {
+    const https = require('https');
     const server = https.createServer(sslOptions, app);
     
     server.listen(PORT, HOST, () => {
       console.log('🚀 الخادم يعمل بنجاح مع SSL!');
-      console.log(`📍 الاستضافة: VPS (72.61.181.208)`);
-      console.log(`🌐 النطاق الآمن: https://redshe.shop`);
-      console.log(`🔐 المنفذ: ${PORT}`);
-      console.log('🔒 وضع التشغيل:', process.env.NODE_ENV || 'development');
-      console.log('✅ جاهز لاستقبال الطلبات الآمنة من تطبيق Flutter');
+      console.log(`🌐 النطاق الآمن: https://redshe.shop:${PORT}`);
+      console.log(`🔒 تم تفعيل HTTPS بنجاح`);
+    });
+
+    // إعادة توجيه HTTP إلى HTTPS
+    const http = require('http');
+    const httpApp = express();
+    httpApp.use((req, res) => {
+      res.redirect(301, `https://redshe.shop${req.url}`);
+    });
+    http.createServer(httpApp).listen(80, () => {
+      console.log('🔄 خادم إعادة التوجيه يعمل على المنفذ 80');
     });
 
     return server;
   } else {
-    // تشغيل بدون SSL (للتنمية)
+    // تشغيل بدون SSL
     return app.listen(PORT, HOST, () => {
       console.log('🚀 الخادم يعمل بنجاح!');
-      console.log(`📍 الاستضافة: VPS (72.61.181.208)`);
-      console.log(`🌐 النطاق: http://redshe.shop`);
-      console.log(`🖥️  العنوان: http://${HOST}:${PORT}`);
-      console.log('🔒 وضع التشغيل:', process.env.NODE_ENV || 'development');
-      console.log('✅ جاهز لاستقبال الطلبات من تطبيق Flutter');
+      console.log(`🌐 النطاق: http://redshe.shop:${PORT}`);
+      console.log('💡 ملاحظة: الخادم يعمل بدون SSL');
+      console.log('   للحصول على SSL، قم بتثبيت شهادة Let\'s Encrypt');
     });
   }
 }
 
 // بدء الخادم
 const server = startServer();
-
-// إعادة توجيه HTTP إلى HTTPS (في الإنتاج)
-if (process.env.NODE_ENV === 'production' && sslOptions) {
-  const http = require('http');
-  const httpApp = express();
-  
-  httpApp.use((req, res) => {
-    res.redirect(301, `https://redshe.shop${req.url}`);
-  });
-  
-  http.createServer(httpApp).listen(80, () => {
-    console.log('🔄 خادم إعادة التوجيه يعمل على المنفذ 80');
-  });
-}
