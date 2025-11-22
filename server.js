@@ -1876,10 +1876,10 @@ app.get('/api/export-sales', async (req, res) => {
                     return;
                 }
                 
-                const processedOrders = rows.map(order => ({
-                    ...order,
-                    cart_items: JSON.parse(order.cart_items_json)
-                });
+               const processedOrders = rows.map(order => ({
+    ...order,
+    cart_items: JSON.parse(order.cart_items_json)
+}));
                 
                 resolve(processedOrders);
             });
@@ -2149,9 +2149,9 @@ app.get('/api/export-all-sales', async (req, res) => {
                 }
                 
                 const processedOrders = rows.map(order => ({
-                    ...order,
-                    cart_items: JSON.parse(order.cart_items_json)
-                });
+    ...order,
+    cart_items: JSON.parse(order.cart_items_json)
+}));
                 
                 resolve(processedOrders);
             });
