@@ -213,7 +213,7 @@ db.serialize(() => {
     }
   });
 
-  // جدول تفاصيل الطلبات
+  // جدول تفاصيل الطلبات - محدث بإضافة product_url
   db.run(`CREATE TABLE IF NOT EXISTS order_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     order_id INTEGER NOT NULL,
@@ -222,13 +222,14 @@ db.serialize(() => {
     quantity INTEGER NOT NULL,
     price REAL NOT NULL,
     total_price REAL NOT NULL,
+    product_url TEXT DEFAULT '',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (order_id) REFERENCES orders (id)
   )`, (err) => {
     if (err) {
       console.error('❌ خطأ في إنشاء جدول تفاصيل الطلبات:', err);
     } else {
-      console.log('✅ تم إنشاء جدول تفاصيل الطلبات بنجاح');
+      console.log('✅ تم إنشاء جدول تفاصيل الطلبات بنجاح مع حقل product_url');
     }
   });
 
@@ -334,6 +335,37 @@ db.serialize(() => {
           console.error('❌ خطأ في إضافة الإعدادات الافتراضية:', err);
         } else {
           console.log('✅ تمت إضافة الإعدادات الافتراضية بنجاح');
+        }
+      });
+    }
+  });
+
+  // جدول الإشعارات
+  db.run(`CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    type TEXT DEFAULT 'info' CHECK (type IN ('info', 'success', 'warning', 'error')),
+    is_read INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME
+  )`, (err) => {
+    if (err) {
+      console.error('❌ خطأ في إنشاء جدول الإشعارات:', err);
+    } else {
+      console.log('✅ تم إنشاء جدول الإشعارات بنجاح');
+      
+      // إضافة بعض الإشعارات الافتراضية
+      db.run(`
+        INSERT OR IGNORE INTO notifications (title, message, type)
+        VALUES
+        ('مرحباً', 'مرحباً بك في نظام الإشعارات الجديد', 'info'),
+        ('معلومات', 'يمكنك إدارة الإشعارات من هنا', 'success')
+      `, (err) => {
+        if (err) {
+          console.error('❌ خطأ في إضافة الإشعارات الافتراضية:', err);
+        } else {
+          console.log('✅ تمت إضافة الإشعارات الافتراضية بنجاح');
         }
       });
     }
@@ -1357,22 +1389,23 @@ app.post('/api/process-payment', (req, res) => {
             final_total: calculatedFinalAmount
           });
           
-          // حفظ تفاصيل المنتجات في جدول order_items
+          // حفظ تفاصيل المنتجات في جدول order_items - محدث بإضافة product_url
           const orderId = this.lastID;
           let itemsProcessed = 0;
           const totalItems = cart_items.length;
           
           cart_items.forEach(item => {
             db.run(
-              `INSERT INTO order_items (order_id, product_id, product_name, quantity, price, total_price)
-               VALUES (?, ?, ?, ?, ?, ?)`,
+              `INSERT INTO order_items (order_id, product_id, product_name, quantity, price, total_price, product_url)
+               VALUES (?, ?, ?, ?, ?, ?, ?)`,
               [
                 orderId,
                 item.id || item.product_id || 0,
                 item.name || item.product_name || 'منتج غير معروف',
                 item.quantity || 1,
                 item.price || item.unit_price || 0,
-                (item.price || item.unit_price || 0) * (item.quantity || 1)
+                (item.price || item.unit_price || 0) * (item.quantity || 1),
+                item.productUrl || item.product_url || item.url || item.link || item.permalink || ''
               ],
               function(err) {
                 if (err) {
@@ -1846,7 +1879,7 @@ app.get('/api/export-sales', async (req, res) => {
                 const processedOrders = rows.map(order => ({
                     ...order,
                     cart_items: JSON.parse(order.cart_items_json)
-                }));
+                });
                 
                 resolve(processedOrders);
             });
@@ -1866,7 +1899,7 @@ app.get('/api/export-sales', async (req, res) => {
         // ورقة الملخص
         const summarySheet = workbook.addWorksheet('ملخص المبيعات');
         
-        summarySheet.mergeCells('A1:H1');
+        summarySheet.mergeCells('A1:I1');
         const titleCell = summarySheet.getCell('A1');
         titleCell.value = 'تقرير المبيعات - نظام المتجر';
         titleCell.font = { bold: true, size: 16, color: { argb: 'FFFFFF' } };
@@ -1877,7 +1910,7 @@ app.get('/api/export-sales', async (req, res) => {
         };
         titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
-        summarySheet.mergeCells('A2:H2');
+        summarySheet.mergeCells('A2:I2');
         const periodCell = summarySheet.getCell('A2');
         const periodText = start_date && end_date 
             ? `الفترة: من ${start_date} إلى ${end_date}`
@@ -1896,15 +1929,15 @@ app.get('/api/export-sales', async (req, res) => {
         const pendingOrders = orders.filter(order => order.order_status === 'pending').length;
 
         summarySheet.addRow([]);
-        summarySheet.addRow(['إحصائيات المبيعات', '', '', '', '', '', '', '']);
-        summarySheet.addRow(['إجمالي المبيعات', `${totalSales.toFixed(2)} ر.س`, '', '', '', '', '', '']);
-        summarySheet.addRow(['إجمالي الخصومات', `${totalDiscounts.toFixed(2)} ر.س`, '', '', '', '', '', '']);
-        summarySheet.addRow(['إجمالي القسائم', `${totalGiftCards.toFixed(2)} ر.س`, '', '', '', '', '', '']);
-        summarySheet.addRow(['إجمالي التوصيل', `${totalShipping.toFixed(2)} ر.س`, '', '', '', '', '', '']);
-        summarySheet.addRow(['صافي المبيعات', `${netSales.toFixed(2)} ر.س`, '', '', '', '', '', '']);
-        summarySheet.addRow(['إجمالي الطلبات', totalOrders, '', '', '', '', '', '']);
-        summarySheet.addRow(['الطلبات المكتملة', completedOrders, '', '', '', '', '', '']);
-        summarySheet.addRow(['الطلبات قيد الانتظار', pendingOrders, '', '', '', '', '', '']);
+        summarySheet.addRow(['إحصائيات المبيعات', '', '', '', '', '', '', '', '']);
+        summarySheet.addRow(['إجمالي المبيعات', `${totalSales.toFixed(2)} ر.س`, '', '', '', '', '', '', '']);
+        summarySheet.addRow(['إجمالي الخصومات', `${totalDiscounts.toFixed(2)} ر.س`, '', '', '', '', '', '', '']);
+        summarySheet.addRow(['إجمالي القسائم', `${totalGiftCards.toFixed(2)} ر.س`, '', '', '', '', '', '', '']);
+        summarySheet.addRow(['إجمالي التوصيل', `${totalShipping.toFixed(2)} ر.س`, '', '', '', '', '', '', '']);
+        summarySheet.addRow(['صافي المبيعات', `${netSales.toFixed(2)} ر.س`, '', '', '', '', '', '', '']);
+        summarySheet.addRow(['إجمالي الطلبات', totalOrders, '', '', '', '', '', '', '']);
+        summarySheet.addRow(['الطلبات المكتملة', completedOrders, '', '', '', '', '', '', '']);
+        summarySheet.addRow(['الطلبات قيد الانتظار', pendingOrders, '', '', '', '', '', '', '']);
 
         // ورقة التفاصيل
         const detailsSheet = workbook.addWorksheet('تفاصيل الطلبات');
@@ -1932,7 +1965,8 @@ app.get('/api/export-sales', async (req, res) => {
             { header: 'كود الخصم', key: 'coupon_code', width: 15 },
             { header: 'رقم القسيمة', key: 'gift_card_number', width: 15 },
             { header: 'عدد المنتجات', key: 'items_count', width: 15 },
-            { header: 'المنتجات', key: 'products', width: 40 }
+            { header: 'المنتجات', key: 'products', width: 40 },
+            { header: 'روابط المنتجات', key: 'product_urls', width: 50 }
         ];
 
         const headerRow = detailsSheet.getRow(1);
@@ -1949,6 +1983,15 @@ app.get('/api/export-sales', async (req, res) => {
             const productsText = order.cart_items.map(item => 
                 `${item.name} (${item.quantity}x)`
             ).join('، ');
+
+            // جلب روابط المنتجات من جدول order_items
+            const productUrls = [];
+            order.cart_items.forEach(item => {
+                if (item.productUrl) {
+                    productUrls.push(`${item.name}: ${item.productUrl}`);
+                }
+            });
+            const productUrlsText = productUrls.join('\n');
 
             detailsSheet.addRow({
                 order_number: order.order_number,
@@ -1973,7 +2016,8 @@ app.get('/api/export-sales', async (req, res) => {
                 coupon_code: order.coupon_code || 'لا يوجد',
                 gift_card_number: order.gift_card_number || 'لا يوجد',
                 items_count: order.cart_items.length,
-                products: productsText
+                products: productsText,
+                product_urls: productUrlsText || 'لا توجد روابط'
             });
         });
 
@@ -1998,13 +2042,17 @@ app.get('/api/export-sales', async (req, res) => {
                     productAnalysis[productName] = {
                         quantity: 0,
                         totalSales: 0,
-                        ordersCount: 0
+                        ordersCount: 0,
+                        productUrl: item.productUrl || ''
                     };
                 }
 
                 productAnalysis[productName].quantity += quantity;
                 productAnalysis[productName].totalSales += total;
                 productAnalysis[productName].ordersCount += 1;
+                if (item.productUrl && !productAnalysis[productName].productUrl) {
+                    productAnalysis[productName].productUrl = item.productUrl;
+                }
             });
         });
 
@@ -2013,7 +2061,8 @@ app.get('/api/export-sales', async (req, res) => {
             { header: 'الكمية المباعة', key: 'quantity', width: 15 },
             { header: 'إجمالي المبيعات', key: 'total_sales', width: 20 },
             { header: 'عدد الطلبات', key: 'orders_count', width: 15 },
-            { header: 'متوسط السعر', key: 'avg_price', width: 15 }
+            { header: 'متوسط السعر', key: 'avg_price', width: 15 },
+            { header: 'رابط المنتج', key: 'product_url', width: 40 }
         ];
 
         const productsHeader = productsSheet.getRow(1);
@@ -2033,7 +2082,8 @@ app.get('/api/export-sales', async (req, res) => {
                 quantity: data.quantity,
                 total_sales: `${data.totalSales.toFixed(2)} ر.س`,
                 orders_count: data.ordersCount,
-                avg_price: `${avgPrice.toFixed(2)} ر.س`
+                avg_price: `${avgPrice.toFixed(2)} ر.س`,
+                product_url: data.productUrl || 'لا يوجد رابط'
             });
         });
 
@@ -2101,7 +2151,7 @@ app.get('/api/export-all-sales', async (req, res) => {
                 const processedOrders = rows.map(order => ({
                     ...order,
                     cart_items: JSON.parse(order.cart_items_json)
-                }));
+                });
                 
                 resolve(processedOrders);
             });
@@ -2130,7 +2180,8 @@ app.get('/api/export-all-sales', async (req, res) => {
             { header: 'القسيمة', key: 'gift_card_amount', width: 15 },
             { header: 'التوصيل', key: 'shipping_fee', width: 15 },
             { header: 'الصافي', key: 'net_amount', width: 15 },
-            { header: 'الحالة', key: 'order_status', width: 15 }
+            { header: 'الحالة', key: 'order_status', width: 15 },
+            { header: 'روابط المنتجات', key: 'product_urls', width: 50 }
         ];
 
         const headerRow = worksheet.getRow(1);
@@ -2144,6 +2195,15 @@ app.get('/api/export-all-sales', async (req, res) => {
         orders.forEach(order => {
             const netAmount = parseFloat(order.total_amount) - parseFloat(order.discount_amount) - parseFloat(order.gift_card_amount) + parseFloat(order.shipping_fee || 0);
             
+            // جلب روابط المنتجات
+            const productUrls = [];
+            order.cart_items.forEach(item => {
+                if (item.productUrl) {
+                    productUrls.push(`${item.name}: ${item.productUrl}`);
+                }
+            });
+            const productUrlsText = productUrls.join('\n');
+
             worksheet.addRow({
                 order_number: order.order_number,
                 order_date: new Date(order.order_date).toLocaleString('ar-SA'),
@@ -2157,7 +2217,8 @@ app.get('/api/export-all-sales', async (req, res) => {
                 gift_card_amount: `${parseFloat(order.gift_card_amount).toFixed(2)} ر.س`,
                 shipping_fee: `${parseFloat(order.shipping_fee || 0).toFixed(2)} ر.س`,
                 net_amount: `${netAmount.toFixed(2)} ر.س`,
-                order_status: getOrderStatusText(order.order_status)
+                order_status: getOrderStatusText(order.order_status),
+                product_urls: productUrlsText || 'لا توجد روابط'
             });
         });
 
@@ -2368,6 +2429,7 @@ app.get('/admin/advanced', (req, res) => {
             
             <div class="controls">
                 <a href="/admin" class="btn btn-secondary">📊 العرض البسيط</a>
+                <a href="/admin/advanced" class="btn btn-success">🛠️ لوحة التحكم</a>
                 <a href="/admin/orders" class="btn btn-success">🛒 إدارة الطلبات</a>
                 <a href="/admin/coupons" class="btn btn-info">🎫 إدارة الكوبونات</a>
                 <a href="/admin/gift-cards" class="btn btn-info">💳 إدارة القسائم</a>
@@ -2507,6 +2569,8 @@ app.get('/admin/orders', (req, res) => {
             .stat-number { font-size: 24px; font-weight: bold; }
             .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
             .payment-info { background: #e8f5e8; padding: 12px; border-radius: 8px; margin-top: 10px; border-right: 3px solid #4CAF50; }
+            .product-url { color: #1976D2; text-decoration: none; font-size: 12px; }
+            .product-url:hover { text-decoration: underline; }
         </style>
     </head>
     <body>
@@ -2566,6 +2630,7 @@ app.get('/admin/orders', (req, res) => {
                         <li>التصدير المفصل يحتوي على 3 أوراق: ملخص، تفاصيل الطلبات، تحليل المنتجات</li>
                         <li>التصدير السريع يحتوي على البيانات الأساسية فقط</li>
                         <li>يمكنك استخدام الفلاتر لتصدير بيانات محددة</li>
+                        <li>التصدير الآن يشمل روابط المنتجات</li>
                     </ul>
                 </div>
             </div>
@@ -2691,6 +2756,7 @@ app.get('/admin/orders', (req, res) => {
                             = <strong>${(item.price * (item.quantity || 1)).toFixed(2)} ر.س</strong>
                             ${item.selectedSize && item.selectedSize !== 'غير محدد' ? `<br>المقاس: ${item.selectedSize}` : ''}
                             ${item.colors && item.colors[0] && item.colors[0] !== 'غير محدد' ? `<br>اللون: ${item.colors[0]}` : ''}
+                            ${item.productUrl ? `<br><a href="${item.productUrl}" target="_blank" class="product-url">🔗 رابط المنتج</a>` : ''}
                             ${item.image ? `<br><img src="${item.image}" style="max-width: 60px; max-height: 60px; margin-top: 5px; border-radius: 5px;">` : ''}
                         </div>
                     `).join('')}
@@ -3980,10 +4046,20 @@ app.delete('/api/clear-all-data', (req, res) => {
           });
         }
 
-        res.json({
-          status: 'success',
-          message: '✅ تم مسح جميع البيانات بنجاح',
-          users_deleted: this.changes
+        db.run('DELETE FROM order_items', function(err) {
+          if (err) {
+            console.error('❌ خطأ في مسح تفاصيل الطلبات:', err);
+            return res.status(500).json({
+              status: 'error',
+              message: err.message
+            });
+          }
+
+          res.json({
+            status: 'success',
+            message: '✅ تم مسح جميع البيانات بنجاح',
+            users_deleted: this.changes
+          });
         });
       });
     });
