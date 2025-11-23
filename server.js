@@ -1193,6 +1193,601 @@ app.get('/api/perfumes-search', (req, res) => {
   });
 });
 
+// ======== APIs جديدة للتشخيص ========
+
+// API لفحص حالة قاعدة البيانات
+app.get('/api/check-db', (req, res) => {
+  db.all("SELECT name FROM sqlite_master WHERE type='table'", (err, tables) => {
+    if (err) {
+      return res.status(500).json({
+        status: 'error',
+        message: 'خطأ في قاعدة البيانات: ' + err.message
+      });
+    }
+
+    res.json({
+      status: 'success',
+      tables: tables.map(t => t.name),
+      count: tables.length
+    });
+  });
+});
+
+// API للتحقق من جداول المنتجات
+app.get('/api/check-products-tables', (req, res) => {
+  const requiredTables = ['categories', 'perfumes'];
+  const tableChecks = requiredTables.map(table => {
+    return new Promise((resolve) => {
+      db.get(`SELECT COUNT(*) as count FROM ${table}`, (err, result) => {
+        if (err) {
+          resolve({ table, exists: false, error: err.message });
+        } else {
+          resolve({ table, exists: true, count: result.count });
+        }
+      });
+    });
+  });
+
+  Promise.all(tableChecks)
+    .then(results => {
+      res.json({
+        status: 'success',
+        tables: results
+      });
+    })
+    .catch(error => {
+      res.status(500).json({
+        status: 'error',
+        message: error.message
+      });
+    });
+});
+
+// API لإعادة إنشاء الجداول
+app.post('/api/rebuild-products-tables', (req, res) => {
+  if (!isAuthenticated(req)) {
+    return res.status(401).json({ status: 'error', message: 'غير مصرح' });
+  }
+
+  db.serialize(() => {
+    // إسقاط الجداول الحالية
+    db.run('DROP TABLE IF EXISTS perfumes');
+    db.run('DROP TABLE IF EXISTS categories');
+
+    // إعادة إنشاء جدول الفئات
+    db.run(`CREATE TABLE categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name_ar TEXT NOT NULL,
+      name_en TEXT NOT NULL,
+      description TEXT,
+      image TEXT,
+      is_active INTEGER DEFAULT 1,
+      sort_order INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`, (err) => {
+      if (err) {
+        console.error('❌ خطأ في إعادة إنشاء جدول الفئات:', err);
+      } else {
+        console.log('✅ تم إعادة إنشاء جدول الفئات بنجاح');
+        
+        // إضافة فئات افتراضية
+        db.run(`
+          INSERT INTO categories (name_ar, name_en, description, image, sort_order) 
+          VALUES 
+          ('عطور رجالية', 'Men Perfumes', 'أجمل العطور الرجالية', 'assets/images/category/men.png', 1),
+          ('عطور نسائية', 'Women Perfumes', 'أجمل العطور النسائية', 'assets/images/category/women.png', 2),
+          ('عطور عائلية', 'Family Perfumes', 'عطور مناسبة للعائلة', 'assets/images/category/family.png', 3),
+          ('عطور فاخرة', 'Luxury Perfumes', 'أرقى العطور الفاخرة', 'assets/images/category/luxury.png', 4)
+        `);
+      }
+    });
+
+    // إعادة إنشاء جدول العطور
+    db.run(`CREATE TABLE perfumes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name_ar TEXT NOT NULL,
+      name_en TEXT NOT NULL,
+      description TEXT,
+      price REAL NOT NULL,
+      original_price REAL,
+      category_id INTEGER,
+      image TEXT,
+      images TEXT,
+      in_stock INTEGER DEFAULT 1,
+      stock_quantity INTEGER DEFAULT 0,
+      is_featured INTEGER DEFAULT 0,
+      is_active INTEGER DEFAULT 1,
+      sort_order INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (category_id) REFERENCES categories (id)
+    )`, (err) => {
+      if (err) {
+        console.error('❌ خطأ في إعادة إنشاء جدول العطور:', err);
+      } else {
+        console.log('✅ تم إعادة إنشاء جدول العطور بنجاح');
+        
+        // إضافة عطور افتراضية
+        db.run(`
+          INSERT INTO perfumes (name_ar, name_en, description, price, original_price, category_id, image, is_featured, stock_quantity) 
+          VALUES 
+          ('عطر رجالي فاخر', 'Luxury Men Perfume', 'عطر رجالي برائحة مميزة', 150.0, 200.0, 1, 'assets/images/L/L1.png', 1, 50),
+          ('عطر نسائي أنيق', 'Elegant Women Perfume', 'عطر نسائي برائحة زهرية', 120.0, 150.0, 2, 'assets/images/L/L2.png', 1, 40),
+          ('عطر عائلي مميز', 'Family Special Perfume', 'عطر مناسب لجميع أفراد العائلة', 100.0, 120.0, 3, 'assets/images/L/L3.png', 0, 30),
+          ('عطر فاخر متميز', 'Premium Luxury Perfume', 'عطر فاخر برائحة استثنائية', 250.0, 300.0, 4, 'assets/images/L/L4.png', 1, 20)
+        `);
+      }
+    });
+
+    res.json({
+      status: 'success',
+      message: 'تم إعادة إنشاء الجداول بنجاح'
+    });
+  });
+});
+
+// ======== صفحة إدارة المنتجات المحدثة ========
+app.get('/admin/products', (req, res) => {
+  // التحقق من المصادقة أولاً
+  if (!isAuthenticated(req)) {
+    return res.redirect('/admin/login');
+  }
+
+  const html = `
+  <!DOCTYPE html>
+  <html dir="rtl">
+  <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>إدارة الفئات والعطور - نظام المتجر</title>
+      <style>
+          body { 
+              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+              margin: 0; 
+              padding: 20px; 
+              background: #f0f2f5; 
+              min-height: 100vh; 
+          }
+          .container { 
+              max-width: 1400px; 
+              margin: 0 auto; 
+          }
+          .header { 
+              background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%); 
+              color: white; 
+              padding: 30px; 
+              border-radius: 15px; 
+              margin-bottom: 20px; 
+              text-align: center; 
+              position: relative; 
+          }
+          .nav { 
+              display: flex; 
+              gap: 10px; 
+              margin-bottom: 20px; 
+              flex-wrap: wrap; 
+          }
+          .nav-btn { 
+              background: #fff; 
+              padding: 10px 20px; 
+              border: none; 
+              border-radius: 25px; 
+              text-decoration: none; 
+              color: #333; 
+              box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
+              transition: all 0.3s; 
+          }
+          .nav-btn:hover { 
+              background: #2196F3; 
+              color: white; 
+              transform: translateY(-2px); 
+          }
+          .logout-btn { 
+              position: absolute; 
+              left: 20px; 
+              top: 20px; 
+              background: #f44336; 
+              color: white; 
+              padding: 10px 20px; 
+              border: none; 
+              border-radius: 25px; 
+              text-decoration: none; 
+          }
+          .loading { 
+              text-align: center; 
+              padding: 50px; 
+              color: #666; 
+          }
+          .error { 
+              background: #ffebee; 
+              color: #c62828; 
+              padding: 15px; 
+              border-radius: 8px; 
+              margin: 10px 0; 
+          }
+          .stats-grid { 
+              display: grid; 
+              grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+              gap: 15px; 
+              margin-bottom: 20px; 
+          }
+          .stat-card { 
+              background: white; 
+              padding: 20px; 
+              border-radius: 10px; 
+              text-align: center; 
+              box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
+          }
+          .category-grid { 
+              display: grid; 
+              grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); 
+              gap: 15px; 
+              margin-bottom: 20px;
+          }
+          .category-card { 
+              background: white; 
+              padding: 20px; 
+              border-radius: 10px; 
+              box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+              border-left: 4px solid #2196F3;
+          }
+          .btn { 
+              padding: 8px 16px; 
+              border: none; 
+              border-radius: 8px; 
+              cursor: pointer; 
+              text-decoration: none; 
+              display: inline-flex; 
+              align-items: center; 
+              gap: 8px; 
+              transition: all 0.3s; 
+              font-weight: 500; 
+              margin: 5px;
+          }
+          .btn-primary { 
+              background: #2196F3; 
+              color: white; 
+          }
+          .btn-success { 
+              background: #4CAF50; 
+              color: white; 
+          }
+          .modal { 
+              position: fixed; 
+              top: 0; 
+              left: 0; 
+              width: 100%; 
+              height: 100%; 
+              background: rgba(0,0,0,0.5); 
+              display: none; 
+              align-items: center; 
+              justify-content: center; 
+              z-index: 1000; 
+          }
+          .modal-content { 
+              background: white; 
+              padding: 30px; 
+              border-radius: 15px; 
+              width: 90%; 
+              max-width: 600px; 
+              max-height: 80vh; 
+              overflow-y: auto; 
+          }
+          .form-group { 
+              margin-bottom: 15px; 
+          }
+          .form-label { 
+              display: block; 
+              margin-bottom: 5px; 
+              font-weight: bold; 
+              color: #333; 
+          }
+          .form-control { 
+              width: 100%; 
+              padding: 8px 12px; 
+              border: 1px solid #ddd; 
+              border-radius: 5px; 
+              font-size: 14px; 
+          }
+      </style>
+  </head>
+  <body>
+      <div class="container">
+          <div class="header">
+              <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
+              <h1 style="margin: 0;">🛍️ إدارة الفئات والعطور</h1>
+              <p style="margin: 10px 0 0 0; opacity: 0.9;">إدارة كتالوج المنتجات والعطور</p>
+          </div>
+
+          <div class="nav">
+              <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
+              <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
+              <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
+              <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
+              <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
+              <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
+              <a href="/" class="nav-btn">🏠 الرئيسية</a>
+          </div>
+
+          <div id="app">
+              <div class="loading">
+                  <h3>🔄 جاري تحميل البيانات...</h3>
+                  <p>يرجى الانتظار أثناء تحميل صفحة إدارة المنتجات</p>
+              </div>
+          </div>
+      </div>
+
+      <!-- Modal إضافة فئة -->
+      <div id="addCategoryModal" class="modal">
+          <div class="modal-content">
+              <span class="close" onclick="closeModal('addCategoryModal')" style="float: left; font-size: 28px; cursor: pointer; color: #666;">&times;</span>
+              <h2>إضافة فئة جديدة</h2>
+              <form id="addCategoryForm">
+                  <div class="form-group">
+                      <label class="form-label">الاسم بالعربية *</label>
+                      <input type="text" name="name_ar" class="form-control" required>
+                  </div>
+                  <div class="form-group">
+                      <label class="form-label">الاسم بالإنجليزية *</label>
+                      <input type="text" name="name_en" class="form-control" required>
+                  </div>
+                  <div class="form-group">
+                      <label class="form-label">الوصف</label>
+                      <textarea name="description" class="form-control" rows="3"></textarea>
+                  </div>
+                  <div class="form-group">
+                      <label class="form-label">رابط الصورة</label>
+                      <input type="text" name="image" class="form-control">
+                  </div>
+                  <div class="form-group">
+                      <label class="form-label">ترتيب العرض</label>
+                      <input type="number" name="sort_order" class="form-control" value="0">
+                  </div>
+                  <div class="form-group">
+                      <label style="display: flex; align-items: center; gap: 8px;">
+                          <input type="checkbox" name="is_active" checked>
+                          <span>تفعيل الفئة</span>
+                      </label>
+                  </div>
+                  <div style="display: flex; gap: 10px;">
+                      <button type="submit" class="btn btn-success" style="flex: 1;">💾 حفظ</button>
+                      <button type="button" class="btn" style="background: #6c757d; color: white;" onclick="closeModal('addCategoryModal')">إلغاء</button>
+                  </div>
+              </form>
+          </div>
+      </div>
+
+      <script>
+          async function loadPage() {
+              try {
+                  // تحميل الإحصائيات
+                  const statsResponse = await fetch('/api/perfumes-stats');
+                  const statsData = await statsResponse.json();
+                  
+                  // تحميل الفئات
+                  const categoriesResponse = await fetch('/api/categories');
+                  const categoriesData = await categoriesResponse.json();
+                  
+                  if (statsData.status === 'success' && categoriesData.status === 'success') {
+                      renderPage(statsData.stats, categoriesData.categories);
+                  } else {
+                      showError('فشل في تحميل البيانات');
+                  }
+              } catch (error) {
+                  console.error('Error loading page:', error);
+                  showError('حدث خطأ في تحميل الصفحة: ' + error.message);
+              }
+          }
+
+          function renderPage(stats, categories) {
+              const app = document.getElementById('app');
+              app.innerHTML = \`
+                  <div class="stats-grid">
+                      <div class="stat-card">
+                          <div style="font-size: 24px; font-weight: bold; color: #2196F3;">\${stats.total || 0}</div>
+                          <div style="font-size: 14px; color: #666;">إجمالي العطور</div>
+                      </div>
+                      <div class="stat-card">
+                          <div style="font-size: 24px; font-weight: bold; color: #4CAF50;">\${stats.active || 0}</div>
+                          <div style="font-size: 14px; color: #666;">عطور نشطة</div>
+                      </div>
+                      <div class="stat-card">
+                          <div style="font-size: 24px; font-weight: bold; color: #FF9800;">\${stats.in_stock || 0}</div>
+                          <div style="font-size: 14px; color: #666;">متوفرة بالمخزون</div>
+                      </div>
+                      <div class="stat-card">
+                          <div style="font-size: 24px; font-weight: bold; color: #9C27B0;">\${stats.total_stock || 0}</div>
+                          <div style="font-size: 14px; color: #666;">إجمالي المخزون</div>
+                      </div>
+                  </div>
+
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                      <h2 style="margin: 0;">الفئات المتاحة (\${categories.length})</h2>
+                      <button class="btn btn-success" onclick="showAddCategoryModal()">+ إضافة فئة جديدة</button>
+                  </div>
+
+                  <div class="category-grid">
+                      \${categories.map(category => \`
+                          <div class="category-card">
+                              <h3 style="margin: 0 0 10px 0;">\${category.name_ar}</h3>
+                              <p style="margin: 0; color: #666;">\${category.name_en}</p>
+                              \${category.description ? \`<p style="margin: 10px 0; color: #888;">\${category.description}</p>\` : ''}
+                              
+                              <div style="display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap;">
+                                  <button class="btn btn-primary" onclick="viewCategoryPerfumes(\${category.id})">عرض العطور</button>
+                                  <button class="btn" style="background: \${category.is_active ? '#ff9800' : '#4CAF50'}; color: white;" 
+                                          onclick="toggleCategoryStatus(\${category.id}, \${category.is_active ? 0 : 1})">
+                                      \${category.is_active ? '❌ إيقاف' : '✅ تفعيل'}
+                                  </button>
+                                  <button class="btn" style="background: #f44336; color: white;" 
+                                          onclick="deleteCategory(\${category.id})">🗑️ حذف</button>
+                              </div>
+                              
+                              <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                                  <span style="background: #e3f2fd; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
+                                      الترتيب: \${category.sort_order}
+                                  </span>
+                                  <span style="background: \${category.is_active ? '#e8f5e8' : '#ffebee'}; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
+                                      \${category.is_active ? '✅ نشط' : '❌ غير نشط'}
+                                  </span>
+                              </div>
+                          </div>
+                      \`).join('')}
+                  </div>
+
+                  <div style="text-align: center; margin-top: 30px;">
+                      <button class="btn btn-primary" onclick="loadAllPerfumes()" style="padding: 12px 30px; font-size: 16px;">
+                          🛍️ عرض جميع العطور
+                      </button>
+                      <button class="btn" style="background: #607d8b; color: white;" onclick="checkDatabase()">
+                          🔍 فحص قاعدة البيانات
+                      </button>
+                  </div>
+              \`;
+          }
+
+          function showError(message) {
+              const app = document.getElementById('app');
+              app.innerHTML = \`<div class="error">\${message}</div>\`;
+          }
+
+          function showAddCategoryModal() {
+              document.getElementById('addCategoryModal').style.display = 'flex';
+          }
+
+          function closeModal(modalId) {
+              document.getElementById(modalId).style.display = 'none';
+          }
+
+          async function viewCategoryPerfumes(categoryId) {
+              try {
+                  const response = await fetch(\`/api/categories/\${categoryId}/perfumes\`);
+                  const data = await response.json();
+                  
+                  if (data.status === 'success') {
+                      const perfumesList = data.perfumes.map(perfume => \`
+                          <div style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 8px;">
+                              <h4>\${perfume.name_ar}</h4>
+                              <p>السعر: \${perfume.price} ر.س</p>
+                              <p>المخزون: \${perfume.stock_quantity}</p>
+                              <button class="btn btn-primary" onclick="editPerfume(\${perfume.id})">تعديل</button>
+                          </div>
+                      \`).join('');
+                      
+                      alert('عطور الفئة: \\n' + data.perfumes.map(p => p.name_ar).join('\\n'));
+                  }
+              } catch (error) {
+                  alert('خطأ في تحميل العطور: ' + error.message);
+              }
+          }
+
+          function loadAllPerfumes() {
+              // تنفيذ عرض جميع العطور
+              window.location.href = '/admin/products?view=all';
+          }
+
+          async function checkDatabase() {
+              try {
+                  const response = await fetch('/api/check-products-tables');
+                  const data = await response.json();
+                  alert('حالة الجداول: ' + JSON.stringify(data.tables, null, 2));
+              } catch (error) {
+                  alert('خطأ في فحص قاعدة البيانات: ' + error.message);
+              }
+          }
+
+          // إدارة الفئات
+          document.getElementById('addCategoryForm').addEventListener('submit', async function(e) {
+              e.preventDefault();
+              const formData = new FormData(this);
+              const data = Object.fromEntries(formData.entries());
+              
+              data.is_active = data.is_active ? 1 : 0;
+              data.sort_order = parseInt(data.sort_order);
+              
+              try {
+                  const response = await fetch('/api/categories', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(data)
+                  });
+                  
+                  const result = await response.json();
+                  
+                  if (result.status === 'success') {
+                      alert('✅ ' + result.message);
+                      closeModal('addCategoryModal');
+                      loadPage();
+                  } else {
+                      alert('❌ ' + result.message);
+                  }
+              } catch (error) {
+                  alert('❌ حدث خطأ: ' + error);
+              }
+          });
+
+          async function toggleCategoryStatus(id, newStatus) {
+              try {
+                  const response = await fetch(\`/api/categories/\${id}\`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ is_active: newStatus })
+                  });
+                  
+                  const result = await response.json();
+                  
+                  if (result.status === 'success') {
+                      alert('✅ ' + result.message);
+                      loadPage();
+                  } else {
+                      alert('❌ ' + result.message);
+                  }
+              } catch (error) {
+                  alert('❌ حدث خطأ: ' + error);
+              }
+          }
+
+          async function deleteCategory(id) {
+              if (confirm('⚠️ هل أنت متأكد من حذف هذه الفئة؟')) {
+                  try {
+                      const response = await fetch(\`/api/categories/\${id}\`, { 
+                          method: 'DELETE' 
+                      });
+                      
+                      const result = await response.json();
+                      
+                      if (result.status === 'success') {
+                          alert('✅ ' + result.message);
+                          loadPage();
+                      } else {
+                          alert('❌ ' + result.message);
+                      }
+                  } catch (error) {
+                      alert('❌ حدث خطأ: ' + error);
+                  }
+              }
+          }
+
+          // تحميل الصفحة عند البدء
+          loadPage();
+
+          // إغلاق المودال عند النقر خارج المحتوى
+          window.onclick = function(event) {
+              if (event.target.classList.contains('modal')) {
+                  event.target.style.display = 'none';
+              }
+          }
+      </script>
+  </body>
+  </html>
+  `;
+
+  res.send(html);
+});
+
+// ======== باقي الـ APIs والمسارات (بدون تغيير) ========
+
 // API إعدادات الـ admin
 app.get('/api/admin-settings', (req, res) => {
   db.all('SELECT * FROM admin_settings ORDER BY setting_key', (err, rows) => {
@@ -4586,887 +5181,6 @@ app.get('/admin/gift-cards', (req, res) => {
 
     res.send(html);
   });
-});
-
-// صفحة إدارة الفئات والعطور - كاملة
-app.get('/admin/products', (req, res) => {
-  res.send(`
-  <!DOCTYPE html>
-  <html dir="rtl">
-  <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>إدارة الفئات والعطور - نظام المتجر</title>
-      <style>
-          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
-          .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; position: relative; }
-          .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-          .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
-          .nav-btn:hover { background: #2196F3; color: white; transform: translateY(-2px); }
-          .logout-btn { position: absolute; left: 20px; top: 20px; background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
-          .logout-btn:hover { background: #d32f2f; transform: translateY(-2px); }
-          .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
-          .tab { padding: 12px 24px; background: white; border: none; border-radius: 8px; cursor: pointer; transition: all 0.3s; }
-          .tab.active { background: #2196F3; color: white; }
-          .content-section { display: none; }
-          .content-section.active { display: block; }
-          .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
-          .btn-success { background: #4CAF50; color: white; }
-          .btn-success:hover { background: #388E3C; transform: translateY(-2px); }
-          .btn-primary { background: #2196F3; color: white; }
-          .btn-primary:hover { background: #1976D2; transform: translateY(-2px); }
-          .btn-warning { background: #ff9800; color: white; }
-          .btn-warning:hover { background: #f57c00; transform: translateY(-2px); }
-          .btn-danger { background: #f44336; color: white; }
-          .btn-danger:hover { background: #d32f2f; transform: translateY(-2px); }
-          .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
-          .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-          .stat-number { font-size: 24px; font-weight: bold; color: #2196F3; }
-          .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
-          .category-card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.3s; }
-          .category-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
-          .perfume-card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-          .perfume-image { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; }
-          .stock-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-          .stock-in { background: #e8f5e8; color: #2e7d32; }
-          .stock-out { background: #ffebee; color: #c62828; }
-          .featured-badge { background: #fff3e0; color: #ef6c00; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-          .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 1000; }
-          .modal-content { background: white; padding: 30px; border-radius: 15px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; }
-          .close { float: left; font-size: 28px; font-weight: bold; cursor: pointer; color: #666; }
-          .close:hover { color: #000; }
-          .form-group { margin-bottom: 15px; }
-          .form-label { display: block; margin-bottom: 5px; font-weight: bold; color: #333; }
-          .form-control { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
-          .form-help { font-size: 12px; color: #666; margin-top: 4px; }
-          .search-box { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-      </style>
-  </head>
-  <body>
-      <div class="container">
-          <div class="header">
-              <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
-              <h1 style="margin: 0;">🛍️ إدارة الفئات والعطور</h1>
-              <p style="margin: 10px 0 0 0; opacity: 0.9;">إدارة كتالوج المنتجات والعطور</p>
-          </div>
-
-          <div class="nav">
-              <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
-              <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
-              <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
-              <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
-              <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
-              <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
-              <a href="/" class="nav-btn">🏠 الرئيسية</a>
-          </div>
-
-          <!-- إحصائيات سريعة -->
-          <div class="stats-grid" id="stats-container">
-              <div class="stat-card">
-                  <div class="stat-number" id="total-perfumes">0</div>
-                  <div class="stat-label">إجمالي العطور</div>
-              </div>
-              <div class="stat-card">
-                  <div class="stat-number" id="active-perfumes">0</div>
-                  <div class="stat-label">عطور نشطة</div>
-              </div>
-              <div class="stat-card">
-                  <div class="stat-number" id="stock-perfumes">0</div>
-                  <div class="stat-label">متوفرة بالمخزون</div>
-              </div>
-              <div class="stat-card">
-                  <div class="stat-number" id="total-stock">0</div>
-                  <div class="stat-label">إجمالي المخزون</div>
-              </div>
-          </div>
-
-          <div class="tabs">
-              <button class="tab active" onclick="showTab('categories')">📁 الفئات</button>
-              <button class="tab" onclick="showTab('perfumes')">🛍️ جميع العطور</button>
-              <button class="tab" onclick="showTab('add-perfume')">➕ إضافة عطر جديد</button>
-          </div>
-
-          <!-- قسم الفئات -->
-          <div id="categories-section" class="content-section active">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                  <h2 style="margin: 0;">إدارة الفئات</h2>
-                  <button class="btn btn-success" onclick="showAddCategoryModal()">+ إضافة فئة جديدة</button>
-              </div>
-              <div id="categories-list"></div>
-          </div>
-
-          <!-- قسم جميع العطور -->
-          <div id="perfumes-section" class="content-section">
-              <div class="search-box">
-                  <div style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 10px; align-items: end;">
-                      <div>
-                          <label class="form-label">بحث في العطور</label>
-                          <input type="text" id="search-perfumes" class="form-control" placeholder="ابحث بالاسم أو الوصف...">
-                      </div>
-                      <div>
-                          <label class="form-label">الفئة</label>
-                          <select id="filter-category" class="form-control">
-                              <option value="">جميع الفئات</option>
-                          </select>
-                      </div>
-                      <div>
-                          <label class="form-label">الحالة</label>
-                          <select id="filter-status" class="form-control">
-                              <option value="">جميع الحالات</option>
-                              <option value="in_stock">متوفر</option>
-                              <option value="out_of_stock">غير متوفر</option>
-                              <option value="featured">مميز</option>
-                          </select>
-                      </div>
-                      <button class="btn btn-primary" onclick="loadAllPerfumes()">🔍 بحث</button>
-                  </div>
-              </div>
-              <div id="all-perfumes-list"></div>
-          </div>
-
-          <!-- قسم إضافة عطر جديد -->
-          <div id="add-perfume-section" class="content-section">
-              <div style="background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                  <h2 style="margin-top: 0;">إضافة عطر جديد</h2>
-                  <form id="addPerfumeForm">
-                      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                          <div>
-                              <div class="form-group">
-                                  <label class="form-label">اسم العطر بالعربية *</label>
-                                  <input type="text" name="name_ar" class="form-control" required>
-                              </div>
-                              <div class="form-group">
-                                  <label class="form-label">اسم العطر بالإنجليزية *</label>
-                                  <input type="text" name="name_en" class="form-control" required>
-                              </div>
-                              <div class="form-group">
-                                  <label class="form-label">الفئة *</label>
-                                  <select name="category_id" class="form-control" required id="perfume-category-select">
-                                      <option value="">اختر الفئة</option>
-                                  </select>
-                              </div>
-                              <div class="form-group">
-                                  <label class="form-label">السعر *</label>
-                                  <input type="number" name="price" class="form-control" step="0.01" min="0" required>
-                              </div>
-                              <div class="form-group">
-                                  <label class="form-label">السعر الأصلي</label>
-                                  <input type="number" name="original_price" class="form-control" step="0.01" min="0">
-                                  <div class="form-help">اتركه فارغاً إذا لم يكن هناك خصم</div>
-                              </div>
-                          </div>
-                          <div>
-                              <div class="form-group">
-                                  <label class="form-label">الوصف</label>
-                                  <textarea name="description" class="form-control" rows="4"></textarea>
-                              </div>
-                              <div class="form-group">
-                                  <label class="form-label">رابط الصورة الرئيسية</label>
-                                  <input type="text" name="image" class="form-control">
-                              </div>
-                              <div class="form-group">
-                                  <label class="form-label">كمية المخزون</label>
-                                  <input type="number" name="stock_quantity" class="form-control" value="0" min="0">
-                              </div>
-                              <div class="form-group">
-                                  <label style="display: flex; align-items: center; gap: 8px;">
-                                      <input type="checkbox" name="in_stock" checked>
-                                      <span>متوفر في المخزون</span>
-                                  </label>
-                              </div>
-                              <div class="form-group">
-                                  <label style="display: flex; align-items: center; gap: 8px;">
-                                      <input type="checkbox" name="is_featured">
-                                      <span>عطر مميز</span>
-                                  </label>
-                              </div>
-                              <div class="form-group">
-                                  <label style="display: flex; align-items: center; gap: 8px;">
-                                      <input type="checkbox" name="is_active" checked>
-                                      <span>تفعيل العطر</span>
-                                  </label>
-                              </div>
-                          </div>
-                      </div>
-                      <div style="text-align: center; margin-top: 20px;">
-                          <button type="submit" class="btn btn-success" style="padding: 12px 30px;">💾 حفظ العطر</button>
-                      </div>
-                  </form>
-              </div>
-          </div>
-      </div>
-
-      <!-- Modal إضافة فئة -->
-      <div id="addCategoryModal" class="modal">
-          <div class="modal-content">
-              <span class="close" onclick="closeModal('addCategoryModal')">&times;</span>
-              <h2>إضافة فئة جديدة</h2>
-              <form id="addCategoryForm">
-                  <div class="form-group">
-                      <label class="form-label">الاسم بالعربية *</label>
-                      <input type="text" name="name_ar" class="form-control" required>
-                  </div>
-                  <div class="form-group">
-                      <label class="form-label">الاسم بالإنجليزية *</label>
-                      <input type="text" name="name_en" class="form-control" required>
-                  </div>
-                  <div class="form-group">
-                      <label class="form-label">الوصف</label>
-                      <textarea name="description" class="form-control" rows="3"></textarea>
-                  </div>
-                  <div class="form-group">
-                      <label class="form-label">رابط الصورة</label>
-                      <input type="text" name="image" class="form-control">
-                  </div>
-                  <div class="form-group">
-                      <label class="form-label">ترتيب العرض</label>
-                      <input type="number" name="sort_order" class="form-control" value="0">
-                  </div>
-                  <div class="form-group">
-                      <label style="display: flex; align-items: center; gap: 8px;">
-                          <input type="checkbox" name="is_active" checked>
-                          <span>تفعيل الفئة</span>
-                      </label>
-                  </div>
-                  <div style="display: flex; gap: 10px;">
-                      <button type="submit" class="btn btn-success" style="flex: 1;">💾 حفظ</button>
-                      <button type="button" class="btn" style="background: #6c757d; color: white;" onclick="closeModal('addCategoryModal')">إلغاء</button>
-                  </div>
-              </form>
-          </div>
-      </div>
-
-      <!-- Modal تعديل فئة -->
-      <div id="editCategoryModal" class="modal">
-          <div class="modal-content">
-              <span class="close" onclick="closeModal('editCategoryModal')">&times;</span>
-              <h2>تعديل الفئة</h2>
-              <form id="editCategoryForm">
-                  <input type="hidden" name="id" id="edit_category_id">
-                  <div class="form-group">
-                      <label class="form-label">الاسم بالعربية *</label>
-                      <input type="text" name="name_ar" id="edit_name_ar" class="form-control" required>
-                  </div>
-                  <div class="form-group">
-                      <label class="form-label">الاسم بالإنجليزية *</label>
-                      <input type="text" name="name_en" id="edit_name_en" class="form-control" required>
-                  </div>
-                  <div class="form-group">
-                      <label class="form-label">الوصف</label>
-                      <textarea name="description" id="edit_description" class="form-control" rows="3"></textarea>
-                  </div>
-                  <div class="form-group">
-                      <label class="form-label">رابط الصورة</label>
-                      <input type="text" name="image" id="edit_image" class="form-control">
-                  </div>
-                  <div class="form-group">
-                      <label class="form-label">ترتيب العرض</label>
-                      <input type="number" name="sort_order" id="edit_sort_order" class="form-control">
-                  </div>
-                  <div class="form-group">
-                      <label style="display: flex; align-items: center; gap: 8px;">
-                          <input type="checkbox" name="is_active" id="edit_is_active">
-                          <span>تفعيل الفئة</span>
-                      </label>
-                  </div>
-                  <div style="display: flex; gap: 10px;">
-                      <button type="submit" class="btn btn-success" style="flex: 1;">💾 حفظ التعديلات</button>
-                      <button type="button" class="btn" style="background: #6c757d; color: white;" onclick="closeModal('editCategoryModal')">إلغاء</button>
-                  </div>
-              </form>
-          </div>
-      </div>
-
-      <script>
-          // تحميل الإحصائيات عند فتح الصفحة
-          async function loadStats() {
-              try {
-                  const response = await fetch('/api/perfumes-stats');
-                  const data = await response.json();
-                  
-                  if (data.status === 'success') {
-                      const stats = data.stats;
-                      document.getElementById('total-perfumes').textContent = stats.total;
-                      document.getElementById('active-perfumes').textContent = stats.active;
-                      document.getElementById('stock-perfumes').textContent = stats.in_stock;
-                      document.getElementById('total-stock').textContent = stats.total_stock;
-                  }
-              } catch (error) {
-                  console.error('Error loading stats:', error);
-              }
-          }
-
-          function showTab(tabName) {
-              // إخفاء جميع الأقسام
-              document.querySelectorAll('.content-section').forEach(section => {
-                  section.classList.remove('active');
-              });
-              
-              // إلغاء تفعيل جميع الألسنة
-              document.querySelectorAll('.tab').forEach(tab => {
-                  tab.classList.remove('active');
-              });
-              
-              // إظهار القسم المطلوب
-              document.getElementById(tabName + '-section').classList.add('active');
-              
-              // تفعيل اللسان المطلوب
-              event.target.classList.add('active');
-              
-              // تحميل البيانات إذا لزم الأمر
-              if (tabName === 'categories') {
-                  loadCategories();
-              } else if (tabName === 'perfumes') {
-                  loadAllPerfumes();
-                  loadCategoriesForFilter();
-              } else if (tabName === 'add-perfume') {
-                  loadCategoriesForSelect();
-              }
-          }
-
-          // تحميل الفئات للفلتر
-          async function loadCategoriesForFilter() {
-              try {
-                  const response = await fetch('/api/categories');
-                  const data = await response.json();
-                  
-                  if (data.status === 'success') {
-                      const select = document.getElementById('filter-category');
-                      select.innerHTML = '<option value="">جميع الفئات</option>';
-                      
-                      data.categories.forEach(category => {
-                          const option = document.createElement('option');
-                          option.value = category.id;
-                          option.textContent = category.name_ar;
-                          select.appendChild(option);
-                      });
-                  }
-              } catch (error) {
-                  console.error('Error loading categories for filter:', error);
-              }
-          }
-
-          // تحميل الفئات للاختيار
-          async function loadCategoriesForSelect() {
-              try {
-                  const response = await fetch('/api/categories');
-                  const data = await response.json();
-                  
-                  if (data.status === 'success') {
-                      const select = document.getElementById('perfume-category-select');
-                      select.innerHTML = '<option value="">اختر الفئة</option>';
-                      
-                      data.categories.forEach(category => {
-                          const option = document.createElement('option');
-                          option.value = category.id;
-                          option.textContent = category.name_ar;
-                          select.appendChild(option);
-                      });
-                  }
-              } catch (error) {
-                  console.error('Error loading categories for select:', error);
-              }
-          }
-
-          async function loadCategories() {
-              try {
-                  const response = await fetch('/api/categories?include_inactive=true');
-                  const data = await response.json();
-                  
-                  if (data.status === 'success') {
-                      displayCategories(data.categories);
-                  } else {
-                      alert('❌ ' + data.message);
-                  }
-              } catch (error) {
-                  alert('❌ حدث خطأ: ' + error);
-              }
-          }
-
-          function displayCategories(categories) {
-              const container = document.getElementById('categories-list');
-              
-              if (categories.length === 0) {
-                  container.innerHTML = '<div style="text-align: center; padding: 40px; color: #666;">لا توجد فئات</div>';
-                  return;
-              }
-              
-              container.innerHTML = categories.map(category => \`
-                  <div class="category-card" onclick="viewCategoryPerfumes(${category.id})">
-                      <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <div style="display: flex; align-items: center; gap: 15px;">
-                              \${category.image ? \`<img src="\${category.image}" alt="\${category.name_ar}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px;">\` : ''}
-                              <div>
-                                  <h3 style="margin: 0 0 5px 0;">\${category.name_ar}</h3>
-                                  <p style="margin: 0; color: #666;">\${category.name_en}</p>
-                                  \${category.description ? \`<p style="margin: 10px 0 0 0; color: #888;">\${category.description}</p>\` : ''}
-                              </div>
-                          </div>
-                          <div style="display: flex; gap: 10px;">
-                              <button class="btn btn-primary" onclick="event.stopPropagation(); editCategory(\${category.id})">✏️ تعديل</button>
-                              <button class="btn" style="background: \${category.is_active ? '#ff9800' : '#4CAF50'}; color: white;" onclick="event.stopPropagation(); toggleCategoryStatus(\${category.id}, \${category.is_active ? 0 : 1})">
-                                  \${category.is_active ? '❌ إيقاف' : '✅ تفعيل'}
-                              </button>
-                              <button class="btn btn-danger" onclick="event.stopPropagation(); deleteCategory(\${category.id})">🗑️ حذف</button>
-                          </div>
-                      </div>
-                      <div style="margin-top: 15px; display: flex; gap: 15px; flex-wrap: wrap;">
-                          <span style="background: #e3f2fd; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
-                              الترتيب: \${category.sort_order}
-                          </span>
-                          <span style="background: \${category.is_active ? '#e8f5e8' : '#ffebee'}; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
-                              \${category.is_active ? '✅ نشط' : '❌ غير نشط'}
-                          </span>
-                          <span style="background: #f3e5f5; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
-                              \${new Date(category.created_at).toLocaleDateString('ar-SA')}
-                          </span>
-                      </div>
-                  </div>
-              \`).join('');
-          }
-
-          async function viewCategoryPerfumes(categoryId) {
-              try {
-                  const response = await fetch(\`/api/categories/\${categoryId}/perfumes\`);
-                  const data = await response.json();
-                  
-                  if (data.status === 'success') {
-                      const modalHtml = \`
-                          <div class="modal" style="display: flex;">
-                              <div class="modal-content" style="max-width: 800px;">
-                                  <span class="close" onclick="closeModal()">&times;</span>
-                                  <h2>عطور الفئة</h2>
-                                  <div style="margin-bottom: 20px;">
-                                      <button class="btn btn-success" onclick="showAddPerfumeToCategoryModal(\${categoryId})">+ إضافة عطر لهذه الفئة</button>
-                                  </div>
-                                  <div id="category-perfumes-list">
-                                      \${displayPerfumesList(data.perfumes)}
-                                  </div>
-                              </div>
-                          </div>
-                      \`;
-                      
-                      document.body.insertAdjacentHTML('beforeend', modalHtml);
-                  }
-              } catch (error) {
-                  alert('❌ حدث خطأ: ' + error);
-              }
-          }
-
-          function displayPerfumesList(perfumes) {
-              if (perfumes.length === 0) {
-                  return '<div style="text-align: center; padding: 40px; color: #666;">لا توجد عطور في هذه الفئة</div>';
-              }
-              
-              return perfumes.map(perfume => \`
-                  <div class="perfume-card">
-                      <div style="display: flex; justify-content: space-between; align-items: start;">
-                          <div style="display: flex; align-items: start; gap: 15px;">
-                              \${perfume.image ? \`<img src="\${perfume.image}" alt="\${perfume.name_ar}" class="perfume-image">\` : \`<div class="perfume-image" style="background: #f0f0f0; display: flex; align-items: center; justify-content: center; color: #999;">لا توجد صورة</div>\`}
-                              <div>
-                                  <h4 style="margin: 0 0 5px 0;">\${perfume.name_ar}</h4>
-                                  <p style="margin: 0; color: #666;">\${perfume.name_en}</p>
-                                  <p style="margin: 5px 0; color: #2196F3; font-weight: bold;">\${perfume.price} ر.س</p>
-                                  \${perfume.original_price ? \`<p style="margin: 0; color: #999; text-decoration: line-through;">\${perfume.original_price} ر.س</p>\` : ''}
-                                  \${perfume.description ? \`<p style="margin: 10px 0 0 0; color: #888; font-size: 14px;">\${perfume.description}</p>\` : ''}
-                              </div>
-                          </div>
-                          <div style="display: flex; gap: 5px; flex-direction: column;">
-                              <button class="btn btn-primary" onclick="editPerfume(\${perfume.id})">✏️ تعديل</button>
-                              <button class="btn \${perfume.in_stock ? 'btn-warning' : 'btn-success'}" onclick="togglePerfumeStock(\${perfume.id}, \${perfume.in_stock ? 0 : 1})">
-                                  \${perfume.in_stock ? '❌ إيقاف' : '✅ تفعيل'}
-                              </button>
-                              <button class="btn btn-danger" onclick="deletePerfume(\${perfume.id})">🗑️ حذف</button>
-                          </div>
-                      </div>
-                      <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
-                          <span class="stock-badge \${perfume.in_stock && perfume.stock_quantity > 0 ? 'stock-in' : 'stock-out'}">
-                              \${perfume.in_stock && perfume.stock_quantity > 0 ? '🟢 متوفر' : '🔴 غير متوفر'} (\${perfume.stock_quantity})
-                          </span>
-                          \${perfume.is_featured ? '<span class="featured-badge">⭐ مميز</span>' : ''}
-                          <span style="background: #e3f2fd; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
-                              \${perfume.category_name}
-                          </span>
-                          <span style="background: #f3e5f5; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
-                              \${new Date(perfume.created_at).toLocaleDateString('ar-SA')}
-                          </span>
-                      </div>
-                  </div>
-              \`).join('');
-          }
-
-          function showAddPerfumeToCategoryModal(categoryId) {
-              closeModal(); // إغلاق المودال الحالي أولاً
-              
-              const modalHtml = \`
-                  <div class="modal" style="display: flex;">
-                      <div class="modal-content" style="max-width: 600px;">
-                          <span class="close" onclick="closeModal()">&times;</span>
-                          <h2>إضافة عطر جديد للفئة</h2>
-                          <form id="addPerfumeToCategoryForm">
-                              <input type="hidden" name="category_id" value="\${categoryId}">
-                              <div class="form-group">
-                                  <label class="form-label">اسم العطر بالعربية *</label>
-                                  <input type="text" name="name_ar" class="form-control" required>
-                              </div>
-                              <div class="form-group">
-                                  <label class="form-label">اسم العطر بالإنجليزية *</label>
-                                  <input type="text" name="name_en" class="form-control" required>
-                              </div>
-                              <div class="form-group">
-                                  <label class="form-label">السعر *</label>
-                                  <input type="number" name="price" class="form-control" step="0.01" min="0" required>
-                              </div>
-                              <div class="form-group">
-                                  <label class="form-label">الوصف</label>
-                                  <textarea name="description" class="form-control" rows="3"></textarea>
-                              </div>
-                              <div class="form-group">
-                                  <label class="form-label">رابط الصورة</label>
-                                  <input type="text" name="image" class="form-control">
-                              </div>
-                              <div style="display: flex; gap: 10px;">
-                                  <button type="submit" class="btn btn-success" style="flex: 1;">💾 حفظ العطر</button>
-                                  <button type="button" class="btn" style="background: #6c757d; color: white;" onclick="closeModal()">إلغاء</button>
-                              </div>
-                          </form>
-                      </div>
-                  </div>
-              \`;
-              
-              document.body.insertAdjacentHTML('beforeend', modalHtml);
-              
-              document.getElementById('addPerfumeToCategoryForm').addEventListener('submit', function(e) {
-                  e.preventDefault();
-                  const formData = new FormData(this);
-                  const data = Object.fromEntries(formData.entries());
-                  
-                  // إضافة القيم الافتراضية
-                  data.stock_quantity = 0;
-                  data.in_stock = true;
-                  data.is_active = true;
-                  
-                  fetch('/api/perfumes', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(data)
-                  })
-                  .then(response => response.json())
-                  .then(data => {
-                      if (data.status === 'success') {
-                          alert('✅ ' + data.message);
-                          closeModal();
-                          viewCategoryPerfumes(categoryId); // إعادة تحميل قائمة العطور
-                      } else {
-                          alert('❌ ' + data.message);
-                      }
-                  })
-                  .catch(error => {
-                      alert('❌ حدث خطأ: ' + error);
-                  });
-              });
-          }
-
-          async function loadAllPerfumes() {
-              try {
-                  const search = document.getElementById('search-perfumes').value;
-                  const categoryId = document.getElementById('filter-category').value;
-                  const status = document.getElementById('filter-status').value;
-                  
-                  let url = '/api/perfumes?include_inactive=true';
-                  if (search) url += \`&search=\${encodeURIComponent(search)}\`;
-                  if (categoryId) url += \`&category_id=\${categoryId}\`;
-                  if (status === 'in_stock') url += '&in_stock=true';
-                  if (status === 'out_of_stock') url += '&in_stock=false';
-                  if (status === 'featured') url += '&is_featured=true';
-                  
-                  const response = await fetch(url);
-                  const data = await response.json();
-                  
-                  if (data.status === 'success') {
-                      displayAllPerfumes(data.perfumes);
-                  } else {
-                      alert('❌ ' + data.message);
-                  }
-              } catch (error) {
-                  alert('❌ حدث خطأ: ' + error);
-              }
-          }
-
-          function displayAllPerfumes(perfumes) {
-              const container = document.getElementById('all-perfumes-list');
-              
-              if (perfumes.length === 0) {
-                  container.innerHTML = '<div style="text-align: center; padding: 40px; color: #666;">لا توجد عطور</div>';
-                  return;
-              }
-              
-              container.innerHTML = perfumes.map(perfume => \`
-                  <div class="perfume-card">
-                      <div style="display: flex; justify-content: space-between; align-items: start;">
-                          <div style="display: flex; align-items: start; gap: 15px;">
-                              \${perfume.image ? \`<img src="\${perfume.image}" alt="\${perfume.name_ar}" class="perfume-image">\` : \`<div class="perfume-image" style="background: #f0f0f0; display: flex; align-items: center; justify-content: center; color: #999;">لا توجد صورة</div>\`}
-                              <div>
-                                  <h4 style="margin: 0 0 5px 0;">\${perfume.name_ar}</h4>
-                                  <p style="margin: 0; color: #666;">\${perfume.name_en}</p>
-                                  <p style="margin: 5px 0; color: #2196F3; font-weight: bold;">\${perfume.price} ر.س</p>
-                                  \${perfume.original_price ? \`<p style="margin: 0; color: #999; text-decoration: line-through;">\${perfume.original_price} ر.س</p>\` : ''}
-                                  <p style="margin: 5px 0; color: #666; font-size: 14px;">\${perfume.category_name}</p>
-                                  \${perfume.description ? \`<p style="margin: 10px 0 0 0; color: #888; font-size: 14px;">\${perfume.description}</p>\` : ''}
-                              </div>
-                          </div>
-                          <div style="display: flex; gap: 5px; flex-direction: column;">
-                              <button class="btn btn-primary" onclick="editPerfume(\${perfume.id})">✏️ تعديل</button>
-                              <button class="btn \${perfume.in_stock ? 'btn-warning' : 'btn-success'}" onclick="togglePerfumeStock(\${perfume.id}, \${perfume.in_stock ? 0 : 1})">
-                                  \${perfume.in_stock ? '❌ إيقاف' : '✅ تفعيل'}
-                              </button>
-                              <button class="btn btn-danger" onclick="deletePerfume(\${perfume.id})">🗑️ حذف</button>
-                          </div>
-                      </div>
-                      <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
-                          <span class="stock-badge \${perfume.in_stock && perfume.stock_quantity > 0 ? 'stock-in' : 'stock-out'}">
-                              \${perfume.in_stock && perfume.stock_quantity > 0 ? '🟢 متوفر' : '🔴 غير متوفر'} (\${perfume.stock_quantity})
-                          </span>
-                          \${perfume.is_featured ? '<span class="featured-badge">⭐ مميز</span>' : ''}
-                          \${perfume.is_active ? '<span style="background: #e8f5e8; padding: 4px 8px; border-radius: 4px; font-size: 12px; color: #2e7d32;">✅ نشط</span>' : '<span style="background: #ffebee; padding: 4px 8px; border-radius: 4px; font-size: 12px; color: #c62828;">❌ غير نشط</span>'}
-                          <span style="background: #f3e5f5; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
-                              \${new Date(perfume.created_at).toLocaleDateString('ar-SA')}
-                          </span>
-                      </div>
-                  </div>
-              \`).join('');
-          }
-
-          // دوال إدارة الفئات
-          function showAddCategoryModal() {
-              document.getElementById('addCategoryModal').style.display = 'flex';
-          }
-
-          function closeModal(modalId) {
-              if (modalId) {
-                  document.getElementById(modalId).style.display = 'none';
-              } else {
-                  // إغلاق جميع المودالات
-                  document.querySelectorAll('.modal').forEach(modal => {
-                      modal.style.display = 'none';
-                  });
-                  // إزالة المودالات المضافة ديناميكياً
-                  document.querySelectorAll('.modal').forEach(modal => {
-                      if (!modal.id) modal.remove();
-                  });
-              }
-          }
-
-          document.getElementById('addCategoryForm').addEventListener('submit', function(e) {
-              e.preventDefault();
-              const formData = new FormData(this);
-              const data = Object.fromEntries(formData.entries());
-              
-              data.is_active = data.is_active ? 1 : 0;
-              data.sort_order = parseInt(data.sort_order);
-              
-              fetch('/api/categories', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(data)
-              })
-              .then(response => response.json())
-              .then(data => {
-                  if (data.status === 'success') {
-                      alert('✅ ' + data.message);
-                      closeModal('addCategoryModal');
-                      loadCategories();
-                  } else {
-                      alert('❌ ' + data.message);
-                  }
-              })
-              .catch(error => {
-                  alert('❌ حدث خطأ: ' + error);
-              });
-          });
-
-          async function editCategory(id) {
-              try {
-                  const response = await fetch('/api/categories/' + id);
-                  const data = await response.json();
-                  
-                  if (data.status === 'success') {
-                      const category = data.category;
-                      
-                      document.getElementById('edit_category_id').value = category.id;
-                      document.getElementById('edit_name_ar').value = category.name_ar;
-                      document.getElementById('edit_name_en').value = category.name_en;
-                      document.getElementById('edit_description').value = category.description || '';
-                      document.getElementById('edit_image').value = category.image || '';
-                      document.getElementById('edit_sort_order').value = category.sort_order;
-                      document.getElementById('edit_is_active').checked = category.is_active;
-                      
-                      document.getElementById('editCategoryModal').style.display = 'flex';
-                  } else {
-                      alert('❌ ' + data.message);
-                  }
-              } catch (error) {
-                  alert('❌ حدث خطأ في جلب بيانات الفئة: ' + error);
-              }
-          }
-
-          document.getElementById('editCategoryForm').addEventListener('submit', function(e) {
-              e.preventDefault();
-              const formData = new FormData(this);
-              const data = Object.fromEntries(formData.entries());
-              const categoryId = data.id;
-              
-              data.is_active = data.is_active ? 1 : 0;
-              data.sort_order = parseInt(data.sort_order);
-              
-              fetch('/api/categories/' + categoryId, {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(data)
-              })
-              .then(response => response.json())
-              .then(data => {
-                  if (data.status === 'success') {
-                      alert('✅ ' + data.message);
-                      closeModal('editCategoryModal');
-                      loadCategories();
-                  } else {
-                      alert('❌ ' + data.message);
-                  }
-              })
-              .catch(error => {
-                  alert('❌ حدث خطأ: ' + error);
-              });
-          });
-
-          function toggleCategoryStatus(id, newStatus) {
-              fetch('/api/categories/' + id, {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ is_active: newStatus })
-              })
-              .then(response => response.json())
-              .then(data => {
-                  if (data.status === 'success') {
-                      alert('✅ ' + data.message);
-                      loadCategories();
-                  } else {
-                      alert('❌ ' + data.message);
-                  }
-              })
-              .catch(error => {
-                  alert('❌ حدث خطأ: ' + error);
-              });
-          }
-
-          function deleteCategory(id) {
-              if (confirm('⚠️ هل أنت متأكد من حذف هذه الفئة؟ لا يمكن التراجع عن هذا الإجراء!')) {
-                  fetch('/api/categories/' + id, { method: 'DELETE' })
-                      .then(response => response.json())
-                      .then(data => {
-                          if (data.status === 'success') {
-                              alert('✅ ' + data.message);
-                              loadCategories();
-                          } else {
-                              alert('❌ ' + data.message);
-                          }
-                      })
-                      .catch(error => {
-                          alert('❌ حدث خطأ: ' + error);
-                      });
-              }
-          }
-
-          // دوال إدارة العطور
-          document.getElementById('addPerfumeForm').addEventListener('submit', function(e) {
-              e.preventDefault();
-              const formData = new FormData(this);
-              const data = Object.fromEntries(formData.entries());
-              
-              data.price = parseFloat(data.price);
-              data.original_price = data.original_price ? parseFloat(data.original_price) : null;
-              data.category_id = parseInt(data.category_id);
-              data.stock_quantity = parseInt(data.stock_quantity);
-              data.in_stock = data.in_stock ? 1 : 0;
-              data.is_featured = data.is_featured ? 1 : 0;
-              data.is_active = data.is_active ? 1 : 0;
-              
-              fetch('/api/perfumes', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(data)
-              })
-              .then(response => response.json())
-              .then(data => {
-                  if (data.status === 'success') {
-                      alert('✅ ' + data.message);
-                      this.reset();
-                      loadStats();
-                  } else {
-                      alert('❌ ' + data.message);
-                  }
-              })
-              .catch(error => {
-                  alert('❌ حدث خطأ: ' + error);
-              });
-          });
-
-          function togglePerfumeStock(id, newStatus) {
-              fetch('/api/perfumes/' + id + '/stock', {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ in_stock: newStatus })
-              })
-              .then(response => response.json())
-              .then(data => {
-                  if (data.status === 'success') {
-                      alert('✅ ' + data.message);
-                      loadAllPerfumes();
-                      loadStats();
-                  } else {
-                      alert('❌ ' + data.message);
-                  }
-              })
-              .catch(error => {
-                  alert('❌ حدث خطأ: ' + error);
-              });
-          }
-
-          function deletePerfume(id) {
-              if (confirm('⚠️ هل أنت متأكد من حذف هذا العطر؟ لا يمكن التراجع عن هذا الإجراء!')) {
-                  fetch('/api/perfumes/' + id, { method: 'DELETE' })
-                      .then(response => response.json())
-                      .then(data => {
-                          if (data.status === 'success') {
-                              alert('✅ ' + data.message);
-                              loadAllPerfumes();
-                              loadStats();
-                          } else {
-                              alert('❌ ' + data.message);
-                          }
-                      })
-                      .catch(error => {
-                          alert('❌ حدث خطأ: ' + error);
-                      });
-              }
-          }
-
-          // تحميل البيانات الأولية
-          loadStats();
-          loadCategories();
-          loadCategoriesForSelect();
-
-          // إغلاق المودال عند النقر خارج المحتوى
-          window.onclick = function(event) {
-              if (event.target.classList.contains('modal')) {
-                  closeModal();
-              }
-          }
-      </script>
-  </body>
-  </html>
-  `);
 });
 
 // صفحة إعدادات الـ admin
