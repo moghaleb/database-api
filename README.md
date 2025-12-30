@@ -46,10 +46,10 @@ If you need to test the API directly, you can POST JSON or submit a form to `/lo
 PowerShell example (JSON API):
 
 ```powershell
-Invoke-RestMethod -Uri http://localhost:3000/login -Method POST -ContentType 'application/json' -Body (ConvertTo-Json @{username='admin'; password='admin123'}) | ConvertTo-Json -Depth 5
+Invoke-RestMethod -Uri https://redme.cfd/api/login -Method POST -ContentType 'application/json' -Body (ConvertTo-Json @{username='admin'; password='admin123'}) | ConvertTo-Json -Depth 5
 ```
 
-To simulate a browser login (form submit), visit `http://localhost:3000/admin` and use the login form.
+To simulate a browser login (form submit), visit `https://redme.cfd/admin` and use the login form.
 
 Security note
 -------------

@@ -16,15 +16,15 @@ let useSSL = false;
 
 // المسارات المحتملة لملفات SSL
 const possibleSSLCertPaths = [
-  '/etc/letsencrypt/live/redshe.shop/fullchain.pem',
-  '/etc/letsencrypt/live/redshe.shop/cert.pem',
-  '/etc/ssl/certs/redshe.shop.crt',
+  '/etc/letsencrypt/live/redme.cfd/fullchain.pem',
+  '/etc/letsencrypt/live/redme.cfd/cert.pem',
+  '/etc/ssl/certs/redme.cfd.crt',
   '/path/to/your/ssl/certificate.crt' // مسار مخصص
 ];
 
 const possibleSSLKeyPaths = [
-  '/etc/letsencrypt/live/redshe.shop/privkey.pem',
-  '/etc/ssl/private/redshe.shop.key',
+  '/etc/letsencrypt/live/redme.cfd/privkey.pem',
+  '/etc/ssl/private/redme.cfd.key',
   '/path/to/your/ssl/private.key' // مسار مخصص
 ];
 
@@ -79,7 +79,7 @@ useSSL = sslOptions !== null;
 if (!useSSL) {
   console.log('⚠️  لم يتم العثور على شهادات SSL. سيتم استخدام HTTP.');
   console.log('💡 للحصول على شهادة SSL مجانية، قم بتشغيل:');
-  console.log('   sudo certbot --nginx -d redshe.shop -d www.redshe.shop');
+  console.log('   sudo certbot --nginx -d redme.cfd -d www.redme.cfd');
 } else {
   console.log('🔐 تم تحميل شهادات SSL بنجاح!');
 }
@@ -87,10 +87,10 @@ if (!useSSL) {
 // ======== Middleware ========
 app.use(cors({
   origin: [
-    'https://redshe.shop',
-    'http://redshe.shop', 
-    'https://www.redshe.shop',
-    'http://www.redshe.shop',
+    'https://redme.cfd',
+    'http://redme.cfd',
+    'https://www.redme.cfd',
+    'http://www.redme.cfd',
     'http://localhost:3000',
     'http://127.0.0.1:3000'
   ],
@@ -135,12 +135,12 @@ function isLocalRequest(req) {
 }
 
 // ======== إنشاء مجلد التصدير ========
-const exportsDir = process.env.NODE_ENV === 'production' 
-? '/var/www/redshe/exports'
-: path.join(__dirname, 'exports');
+const exportsDir = process.env.NODE_ENV === 'production'
+  ? '/var/www/redshe/exports'
+  : path.join(__dirname, 'exports');
 if (!fs.existsSync(exportsDir)) {
-    fs.mkdirSync(exportsDir, { recursive: true });
-    console.log('✅ تم إنشاء مجلد التصدير:', exportsDir);
+  fs.mkdirSync(exportsDir, { recursive: true });
+  console.log('✅ تم إنشاء مجلد التصدير:', exportsDir);
 }
 
 // ======== Database Configuration ========
@@ -354,7 +354,7 @@ db.serialize(() => {
       console.error('❌ خطأ في إنشاء جدول الإشعارات:', err);
     } else {
       console.log('✅ تم إنشاء جدول الإشعارات بنجاح');
-      
+
       // إضافة بعض الإشعارات الافتراضية
       db.run(`
         INSERT OR IGNORE INTO notifications (title, message, type)
@@ -389,7 +389,7 @@ db.serialize(() => {
       console.error('❌ خطأ في إنشاء جدول الفئات:', err);
     } else {
       console.log('✅ تم إنشاء جدول الفئات بنجاح');
-      
+
       // إضافة فئات افتراضية
       db.run(`
         INSERT OR IGNORE INTO categories (name_ar, name_en, description, image, sort_order) 
@@ -432,7 +432,7 @@ db.serialize(() => {
       console.error('❌ خطأ في إنشاء جدول العطور:', err);
     } else {
       console.log('✅ تم إنشاء جدول العطور بنجاح');
-      
+
       // إضافة عطور افتراضية
       db.run(`
         INSERT OR IGNORE INTO perfumes (name_ar, name_en, description, price, original_price, category_id, image, is_featured, stock_quantity) 
@@ -462,11 +462,11 @@ function handleLoginRequest(req, res) {
     return res.status(400).json({ status: 'error', message: 'اسم المستخدم وكلمة المرور مطلوبان' });
   }
   if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
-    res.cookie('admin_auth', ADMIN_CREDENTIALS.username, { 
-      signed: true, 
-      httpOnly: true, 
+    res.cookie('admin_auth', ADMIN_CREDENTIALS.username, {
+      signed: true,
+      httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      domain: process.env.NODE_ENV === 'production' ? '.redshe.shop' : undefined,
+      domain: process.env.NODE_ENV === 'production' ? '.redme.cfd' : undefined,
       maxAge: 12 * 60 * 60 * 1000,
       sameSite: 'lax'
     });
@@ -541,7 +541,7 @@ app.get('/api/perfumes-stats', (req, res) => {
     'SELECT SUM(stock_quantity) as total_stock FROM perfumes WHERE in_stock = 1'
   ];
 
-  Promise.all(queries.map(query => 
+  Promise.all(queries.map(query =>
     new Promise((resolve, reject) => {
       db.get(query, (err, row) => {
         if (err) reject(err);
@@ -549,24 +549,24 @@ app.get('/api/perfumes-stats', (req, res) => {
       });
     })
   ))
-  .then(results => {
-    res.json({
-      status: 'success',
-      stats: {
-        total: results[0].total,
-        active: results[1].active,
-        in_stock: results[2].in_stock,
-        total_stock: results[3].total_stock || 0
-      }
+    .then(results => {
+      res.json({
+        status: 'success',
+        stats: {
+          total: results[0].total,
+          active: results[1].active,
+          in_stock: results[2].in_stock,
+          total_stock: results[3].total_stock || 0
+        }
+      });
+    })
+    .catch(err => {
+      console.error('❌ خطأ في جلب إحصائيات العطور:', err);
+      res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
     });
-  })
-  .catch(err => {
-    console.error('❌ خطأ في جلب إحصائيات العطور:', err);
-    res.status(500).json({
-      status: 'error',
-      message: err.message
-    });
-  });
 });
 
 // API لجلب عطور فئة محددة
@@ -605,7 +605,7 @@ app.put('/api/perfumes/:id/stock', (req, res) => {
   db.run(
     'UPDATE perfumes SET in_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
     [in_stock, id],
-    function(err) {
+    function (err) {
       if (err) {
         console.error('❌ خطأ في تحديث حالة المخزون:', err);
         return res.status(500).json({
@@ -633,18 +633,18 @@ app.put('/api/perfumes/:id/stock', (req, res) => {
 // API جلب جميع الفئات
 app.get('/api/categories', (req, res) => {
   const { include_inactive, active_only } = req.query;
-  
+
   let query = 'SELECT * FROM categories';
   const params = [];
-  
+
   if (active_only === 'true') {
     query += ' WHERE is_active = 1';
   } else if (include_inactive !== 'true') {
     query += ' WHERE is_active = 1';
   }
-  
+
   query += ' ORDER BY sort_order ASC, name_ar ASC';
-  
+
   db.all(query, params, (err, rows) => {
     if (err) {
       console.error('❌ خطأ في جلب الفئات:', err);
@@ -720,7 +720,7 @@ app.post('/api/categories', (req, res) => {
       is_active !== undefined ? is_active : 1,
       sort_order || 0
     ],
-    function(err) {
+    function (err) {
       if (err) {
         console.error('❌ خطأ في إنشاء الفئة:', err);
         return res.status(500).json({
@@ -772,7 +772,7 @@ app.put('/api/categories/:id', (req, res) => {
       sort_order,
       id
     ],
-    function(err) {
+    function (err) {
       if (err) {
         console.error('❌ خطأ في تحديث الفئة:', err);
         return res.status(500).json({
@@ -821,7 +821,7 @@ app.delete('/api/categories/:id', (req, res) => {
       });
     }
 
-    db.run('DELETE FROM categories WHERE id = ?', [id], function(err) {
+    db.run('DELETE FROM categories WHERE id = ?', [id], function (err) {
       if (err) {
         console.error('❌ خطأ في حذف الفئة:', err);
         return res.status(500).json({
@@ -850,21 +850,21 @@ app.delete('/api/categories/:id', (req, res) => {
 
 // API جلب جميع العطور
 app.get('/api/perfumes', (req, res) => {
-  const { 
-    category_id, 
-    featured_only, 
+  const {
+    category_id,
+    featured_only,
     active_only,
     in_stock_only,
     search,
     include_inactive
   } = req.query;
-  
+
   let query = `
     SELECT p.*, c.name_ar as category_name_ar, c.name_en as category_name_en 
     FROM perfumes p 
     LEFT JOIN categories c ON p.category_id = c.id
   `;
-  
+
   const conditions = [];
   const params = [];
 
@@ -895,7 +895,7 @@ app.get('/api/perfumes', (req, res) => {
   if (conditions.length > 0) {
     query += ' WHERE ' + conditions.join(' AND ');
   }
-  
+
   query += ' ORDER BY p.sort_order ASC, p.created_at DESC';
 
   db.all(query, params, (err, rows) => {
@@ -997,7 +997,7 @@ app.post('/api/perfumes', (req, res) => {
       is_active !== undefined ? is_active : 1,
       sort_order || 0
     ],
-    function(err) {
+    function (err) {
       if (err) {
         console.error('❌ خطأ في إنشاء العطر:', err);
         return res.status(500).json({
@@ -1073,7 +1073,7 @@ app.put('/api/perfumes/:id', (req, res) => {
       sort_order,
       id
     ],
-    function(err) {
+    function (err) {
       if (err) {
         console.error('❌ خطأ في تحديث العطر:', err);
         return res.status(500).json({
@@ -1105,7 +1105,7 @@ app.put('/api/perfumes/:id', (req, res) => {
 app.delete('/api/perfumes/:id', (req, res) => {
   const { id } = req.params;
 
-  db.run('DELETE FROM perfumes WHERE id = ?', [id], function(err) {
+  db.run('DELETE FROM perfumes WHERE id = ?', [id], function (err) {
     if (err) {
       console.error('❌ خطأ في حذف العطر:', err);
       return res.status(500).json({
@@ -1141,7 +1141,7 @@ app.get('/api/perfumes-search', (req, res) => {
     LEFT JOIN categories c ON p.category_id = c.id 
     WHERE p.is_active = 1
   `;
-  
+
   const conditions = [];
   const params = [];
 
@@ -1270,7 +1270,7 @@ app.post('/api/rebuild-products-tables', (req, res) => {
         console.error('❌ خطأ في إعادة إنشاء جدول الفئات:', err);
       } else {
         console.log('✅ تم إعادة إنشاء جدول الفئات بنجاح');
-        
+
         // إضافة فئات افتراضية
         db.run(`
           INSERT INTO categories (name_ar, name_en, description, image, sort_order) 
@@ -1307,7 +1307,7 @@ app.post('/api/rebuild-products-tables', (req, res) => {
         console.error('❌ خطأ في إعادة إنشاء جدول العطور:', err);
       } else {
         console.log('✅ تم إعادة إنشاء جدول العطور بنجاح');
-        
+
         // إضافة عطور افتراضية
         db.run(`
           INSERT INTO perfumes (name_ar, name_en, description, price, original_price, category_id, image, is_featured, stock_quantity) 
@@ -1828,7 +1828,7 @@ app.put('/api/admin-settings/:key', (req, res) => {
     `INSERT OR REPLACE INTO admin_settings (setting_key, setting_value, updated_at) 
      VALUES (?, ?, CURRENT_TIMESTAMP)`,
     [key, String(value)],
-    function(err) {
+    function (err) {
       if (err) {
         console.error('❌ خطأ في تحديث إعداد الـ admin:', err);
         return res.status(500).json({
@@ -1856,7 +1856,7 @@ app.get('/', (req, res) => {
     database: 'SQLite - سريعة وموثوقة',
     endpoints: [
       'GET /api/test - اختبار الاتصال',
-      'GET /api/db-test - اختبار قاعدة البيانات', 
+      'GET /api/db-test - اختبار قاعدة البيانات',
       'POST /api/save-data - حفظ بيانات الاختبار',
       'GET /api/all-data - عرض جميع البيانات',
       'POST /api/process-payment - معالجة الدفع',
@@ -1880,7 +1880,7 @@ app.get('/', (req, res) => {
       'GET /api/export-sales - تصدير المبيعات إلى Excel',
       'GET /api/export-all-sales - تصدير سريع للمبيعات',
       'GET /api/categories - جلب جميع الفئات',
-      'GET /api/categories/:id - جلب فئة محددة', 
+      'GET /api/categories/:id - جلب فئة محددة',
       'POST /api/categories - إنشاء فئة جديدة',
       'PUT /api/categories/:id - تحديث فئة',
       'DELETE /api/categories/:id - حذف فئة',
@@ -1927,7 +1927,7 @@ app.get('/api/db-test', (req, res) => {
         message: 'فشل اختبار قاعدة البيانات: ' + err.message
       });
     }
-    
+
     res.json({
       status: 'success',
       message: '✅ تم الاتصال بقاعدة البيانات بنجاح!',
@@ -1955,7 +1955,7 @@ app.post('/api/save-data', (req, res) => {
   db.run(
     'INSERT INTO test_users (name, email, phone, message) VALUES (?, ?, ?, ?)',
     [name, email, phone || '', message || ''],
-    function(err) {
+    function (err) {
       if (err) {
         console.error('❌ خطأ في حفظ البيانات:', err);
         return res.status(500).json({
@@ -1965,16 +1965,16 @@ app.post('/api/save-data', (req, res) => {
       }
 
       console.log('✅ بيانات محفوظة برقم:', this.lastID);
-      
+
       res.json({
         status: 'success',
         message: '✅ تم حفظ البيانات بنجاح!',
         insert_id: this.lastID,
-        data: { 
+        data: {
           name: name,
-          email: email, 
-          phone: phone || '', 
-          message: message || '' 
+          email: email,
+          phone: phone || '',
+          message: message || ''
         },
         timestamp: new Date().toISOString(),
         arabic_message: 'تم الحفظ بنجاح في قاعدة البيانات'
@@ -2307,7 +2307,7 @@ app.post('/api/gift-cards', (req, res) => {
         max_uses || 1,
         is_active !== undefined ? is_active : 1
       ],
-      function(err) {
+      function (err) {
         if (err) {
           console.error('❌ خطأ في إنشاء القسيمة:', err);
           return res.status(500).json({
@@ -2347,7 +2347,7 @@ app.put('/api/gift-cards/:id', (req, res) => {
   } = req.body;
 
   const checkCardQuery = 'SELECT id FROM gift_cards WHERE card_number = ? AND id != ?';
-  
+
   db.get(checkCardQuery, [card_number, id], (err, existingCard) => {
     if (err) {
       console.error('❌ خطأ في التحقق من رقم القسيمة:', err);
@@ -2392,7 +2392,7 @@ app.put('/api/gift-cards/:id', (req, res) => {
         is_active,
         id
       ],
-      function(err) {
+      function (err) {
         if (err) {
           console.error('❌ خطأ في تحديث القسيمة:', err);
           return res.status(500).json({
@@ -2425,7 +2425,7 @@ app.put('/api/gift-cards/:id', (req, res) => {
 app.delete('/api/gift-cards/:id', (req, res) => {
   const { id } = req.params;
 
-  db.run('DELETE FROM gift_cards WHERE id = ?', [id], function(err) {
+  db.run('DELETE FROM gift_cards WHERE id = ?', [id], function (err) {
     if (err) {
       console.error('❌ خطأ في حذف القسيمة:', err);
       return res.status(500).json({
@@ -2453,21 +2453,21 @@ app.delete('/api/gift-cards/:id', (req, res) => {
 
 // ======== API معالجة الدفع - محدث بدعم طرق الدفع المختلفة ========
 app.post('/api/process-payment', (req, res) => {
-  const { 
-    cart_items, 
-    total_amount, 
-    order_date, 
+  const {
+    cart_items,
+    total_amount,
+    order_date,
     order_status,
     customer_name,
-    customer_phone, 
+    customer_phone,
     customer_email,
     customer_secondary_phone,
-    
+
     // حقول طريقة الدفع الجديدة
     payment_method,
     transfer_name,
     transfer_number,
-    
+
     // حقول العنوان الجديدة
     customer_address,
     address_city,
@@ -2475,7 +2475,7 @@ app.post('/api/process-payment', (req, res) => {
     address_detail,
     shipping_city,
     shipping_area,
-    
+
     // معلومات إضافية
     shipping_fee,
     discount_amount,
@@ -2485,17 +2485,17 @@ app.post('/api/process-payment', (req, res) => {
     expected_delivery,
     items_count,
     shipping_type,
-    
+
     // الكوبونات والقسائم
     coupon_code,
     gift_card_number,
     gift_card_pin
   } = req.body;
 
-  console.log('💰 طلب دفع جديد:', { 
+  console.log('💰 طلب دفع جديد:', {
     customer: customer_name,
-    items_count: cart_items?.length || 0, 
-    total_amount, 
+    items_count: cart_items?.length || 0,
+    total_amount,
     payment_method: payment_method || 'غير محدد',
     address: customer_address,
     city: address_city,
@@ -2521,8 +2521,8 @@ app.post('/api/process-payment', (req, res) => {
   }
 
   // التحقق من معلومات الحوالة إذا كانت طريقة الدفع تتطلب ذلك
-  if ((payment_method === 'bank_babalmandab' || payment_method === 'khameri') && 
-      (!transfer_name || !transfer_number)) {
+  if ((payment_method === 'bank_babalmandab' || payment_method === 'khameri') &&
+    (!transfer_name || !transfer_number)) {
     return res.status(400).json({
       status: 'error',
       message: 'اسم المرسل ورقم الحوالة مطلوبان لطريقة الدفع المختارة'
@@ -2699,12 +2699,12 @@ app.post('/api/process-payment', (req, res) => {
           customer_phone || '',
           customer_email || '',
           customer_secondary_phone || '',
-          
+
           // حقول طريقة الدفع الجديدة
           payment_method || 'online',
           transfer_name || '',
           transfer_number || '',
-          
+
           // حقول العنوان الجديدة
           customer_address || '',
           address_city || '',
@@ -2712,7 +2712,7 @@ app.post('/api/process-payment', (req, res) => {
           address_detail || '',
           shipping_city || address_city || '',
           shipping_area || address_area || '',
-          
+
           // معلومات إضافية
           parseFloat(shipping_fee) || 0,
           parseFloat(calculatedFinalAmount),
@@ -2721,7 +2721,7 @@ app.post('/api/process-payment', (req, res) => {
           items_count || cart_items.length,
           shipping_type || 'توصيل منزلي'
         ],
-        function(err) {
+        function (err) {
           if (err) {
             console.error('❌ خطأ في حفظ الطلب:', err);
             return res.status(500).json({
@@ -2742,12 +2742,12 @@ app.post('/api/process-payment', (req, res) => {
             gift_card: calculatedGiftCardAmount,
             final_total: calculatedFinalAmount
           });
-          
+
           // حفظ تفاصيل المنتجات في جدول order_items - محدث بإضافة product_url
           const orderId = this.lastID;
           let itemsProcessed = 0;
           const totalItems = cart_items.length;
-          
+
           cart_items.forEach(item => {
             db.run(
               `INSERT INTO order_items (order_id, product_id, product_name, quantity, price, total_price, product_url)
@@ -2761,13 +2761,13 @@ app.post('/api/process-payment', (req, res) => {
                 (item.price || item.unit_price || 0) * (item.quantity || 1),
                 item.productUrl || item.product_url || item.url || item.link || item.permalink || ''
               ],
-              function(err) {
+              function (err) {
                 if (err) {
                   console.error('❌ خطأ في حفظ تفاصيل المنتج:', err);
                 }
-                
+
                 itemsProcessed++;
-                
+
                 // عندما تتم معالجة جميع المنتجات
                 if (itemsProcessed === totalItems) {
                   res.json({
@@ -2780,17 +2780,17 @@ app.post('/api/process-payment', (req, res) => {
                     gift_card_amount: calculatedGiftCardAmount,
                     final_amount: calculatedFinalAmount,
                     payment_method: payment_method,
-                    
+
                     // معلومات الدفع الإضافية
                     payment_info: {
                       method: payment_method,
                       transfer_name: transfer_name || '',
                       transfer_number: transfer_number || ''
                     },
-                    
+
                     coupon_code: appliedCoupon ? appliedCoupon.code : null,
                     gift_card_number: appliedGiftCard ? appliedGiftCard.card_number : null,
-                    
+
                     // إرجاع بيانات العنوان للإدارة
                     customer_info: {
                       name: customer_name,
@@ -2802,7 +2802,7 @@ app.post('/api/process-payment', (req, res) => {
                       area: address_area,
                       address_detail: address_detail
                     },
-                    
+
                     coupon_details: appliedCoupon ? {
                       code: appliedCoupon.code,
                       description: appliedCoupon.description,
@@ -2816,7 +2816,7 @@ app.post('/api/process-payment', (req, res) => {
                     } : null,
                     items_count: cart_items.length,
                     timestamp: new Date().toISOString(),
-                    admin_url: `https://redshe.shop/admin/orders`
+                    admin_url: `https://redme.cfd/admin/orders`
                   });
                 }
               }
@@ -2837,7 +2837,7 @@ app.post('/api/process-payment', (req, res) => {
 // API جلب تفاصيل الطلب
 app.get('/api/orders/:id/items', (req, res) => {
   const { id } = req.params;
-  
+
   db.all('SELECT * FROM order_items WHERE order_id = ?', [id], (err, rows) => {
     if (err) {
       console.error('❌ خطأ في جلب تفاصيل الطلب:', err);
@@ -2846,7 +2846,7 @@ app.get('/api/orders/:id/items', (req, res) => {
         message: err.message
       });
     }
-    
+
     res.json({
       status: 'success',
       order_items: rows,
@@ -2890,7 +2890,7 @@ app.put('/api/orders/:id/status', (req, res) => {
   db.run(
     'UPDATE orders SET order_status = ? WHERE id = ?',
     [status, id],
-    function(err) {
+    function (err) {
       if (err) {
         console.error('❌ خطأ في تحديث حالة الطلب:', err);
         return res.status(500).json({
@@ -3008,7 +3008,7 @@ app.post('/api/coupons', (req, res) => {
         valid_until || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         is_active !== undefined ? is_active : 1
       ],
-      function(err) {
+      function (err) {
         if (err) {
           console.error('❌ خطأ في إنشاء الكوبون:', err);
           return res.status(500).json({
@@ -3046,7 +3046,7 @@ app.put('/api/coupons/:id', (req, res) => {
   } = req.body;
 
   const checkCodeQuery = 'SELECT id FROM coupons WHERE code = ? AND id != ?';
-  
+
   db.get(checkCodeQuery, [code, id], (err, existingCoupon) => {
     if (err) {
       console.error('❌ خطأ في التحقق من الكود:', err);
@@ -3089,7 +3089,7 @@ app.put('/api/coupons/:id', (req, res) => {
         used_count,
         id
       ],
-      function(err) {
+      function (err) {
         if (err) {
           console.error('❌ خطأ في تحديث الكوبون:', err);
           return res.status(500).json({
@@ -3121,7 +3121,7 @@ app.put('/api/coupons/:id', (req, res) => {
 app.delete('/api/coupons/:id', (req, res) => {
   const { id } = req.params;
 
-  db.run('DELETE FROM coupons WHERE id = ?', [id], function(err) {
+  db.run('DELETE FROM coupons WHERE id = ?', [id], function (err) {
     if (err) {
       console.error('❌ خطأ في حذف الكوبون:', err);
       return res.status(500).json({
@@ -3149,454 +3149,454 @@ app.delete('/api/coupons/:id', (req, res) => {
 
 // ======== واجهات تصدير المبيعات ========
 function getOrderStatusText(status) {
-    const statusMap = {
-        'pending': 'قيد الانتظار',
-        'completed': 'مكتمل',
-        'cancelled': 'ملغي'
-    };
-    return statusMap[status] || status;
+  const statusMap = {
+    'pending': 'قيد الانتظار',
+    'completed': 'مكتمل',
+    'cancelled': 'ملغي'
+  };
+  return statusMap[status] || status;
 }
 
 function getPaymentMethodText(method) {
-    const methodMap = {
-        'online': 'دفع إلكتروني',
-        'cash': 'الدفع عند الاستلام',
-        'mobicash': 'موبي كاش',
-        'yemenwallet': 'محفظة جيب',
-        'bank_babalmandab': 'حوالة بنكية - باب المندب',
-        'khameri': 'الكريمي'
-    };
-    return methodMap[method] || method;
+  const methodMap = {
+    'online': 'دفع إلكتروني',
+    'cash': 'الدفع عند الاستلام',
+    'mobicash': 'موبي كاش',
+    'yemenwallet': 'محفظة جيب',
+    'bank_babalmandab': 'حوالة بنكية - باب المندب',
+    'khameri': 'الكريمي'
+  };
+  return methodMap[method] || method;
 }
 
 app.get('/api/export-sales', async (req, res) => {
-    try {
-        const { 
-            start_date, 
-            end_date, 
-            export_type = 'all',
-            customer_name,
-            order_status 
-        } = req.query;
+  try {
+    const {
+      start_date,
+      end_date,
+      export_type = 'all',
+      customer_name,
+      order_status
+    } = req.query;
 
-        console.log('📊 طلب تصدير المبيعات:', { 
-            start_date, 
-            end_date, 
-            export_type,
-            customer_name,
-            order_status 
-        });
+    console.log('📊 طلب تصدير المبيعات:', {
+      start_date,
+      end_date,
+      export_type,
+      customer_name,
+      order_status
+    });
 
-        let sqlQuery = `
+    let sqlQuery = `
             SELECT o.*,
                    json_extract(o.cart_items, '$') as cart_items_json
             FROM orders o
         `;
-        
-        const conditions = [];
-        const params = [];
 
-        if (start_date && end_date) {
-            conditions.push('o.order_date BETWEEN ? AND ?');
-            params.push(start_date, end_date);
-        } else if (start_date) {
-            conditions.push('o.order_date >= ?');
-            params.push(start_date);
-        } else if (end_date) {
-            conditions.push('o.order_date <= ?');
-            params.push(end_date);
-        }
+    const conditions = [];
+    const params = [];
 
-        if (customer_name) {
-            conditions.push('o.customer_name LIKE ?');
-            params.push(`%${customer_name}%`);
-        }
-
-        if (order_status && order_status !== 'all') {
-            conditions.push('o.order_status = ?');
-            params.push(order_status);
-        }
-
-        if (conditions.length > 0) {
-            sqlQuery += ' WHERE ' + conditions.join(' AND ');
-        }
-
-        sqlQuery += ' ORDER BY o.created_at DESC';
-
-        const orders = await new Promise((resolve, reject) => {
-            db.all(sqlQuery, params, (err, rows) => {
-                if (err) {
-                    reject(err);
-                    return;
-                }
-                
-               const processedOrders = rows.map(order => ({
-    ...order,
-    cart_items: JSON.parse(order.cart_items_json)
-}));
-                
-                resolve(processedOrders);
-            });
-        });
-
-        if (orders.length === 0) {
-            return res.status(404).json({
-                status: 'error',
-                message: 'لا توجد بيانات للتصدير في الفترة المحددة'
-            });
-        }
-
-        const workbook = new ExcelJS.Workbook();
-        workbook.creator = 'نظام المبيعات';
-        workbook.created = new Date();
-
-        // ورقة الملخص
-        const summarySheet = workbook.addWorksheet('ملخص المبيعات');
-        
-        summarySheet.mergeCells('A1:I1');
-        const titleCell = summarySheet.getCell('A1');
-        titleCell.value = 'تقرير المبيعات - نظام المتجر';
-        titleCell.font = { bold: true, size: 16, color: { argb: 'FFFFFF' } };
-        titleCell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: '2E7D32' }
-        };
-        titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
-
-        summarySheet.mergeCells('A2:I2');
-        const periodCell = summarySheet.getCell('A2');
-        const periodText = start_date && end_date 
-            ? `الفترة: من ${start_date} إلى ${end_date}`
-            : 'جميع الفترات';
-        periodCell.value = periodText;
-        periodCell.font = { bold: true, size: 12 };
-        periodCell.alignment = { horizontal: 'center', vertical: 'middle' };
-
-        const totalSales = orders.reduce((sum, order) => sum + parseFloat(order.total_amount), 0);
-        const totalDiscounts = orders.reduce((sum, order) => sum + parseFloat(order.discount_amount), 0);
-        const totalGiftCards = orders.reduce((sum, order) => sum + parseFloat(order.gift_card_amount), 0);
-        const totalShipping = orders.reduce((sum, order) => sum + parseFloat(order.shipping_fee || 0), 0);
-        const netSales = totalSales - totalDiscounts - totalGiftCards + totalShipping;
-        const totalOrders = orders.length;
-        const completedOrders = orders.filter(order => order.order_status === 'completed').length;
-        const pendingOrders = orders.filter(order => order.order_status === 'pending').length;
-
-        summarySheet.addRow([]);
-        summarySheet.addRow(['إحصائيات المبيعات', '', '', '', '', '', '', '', '']);
-        summarySheet.addRow(['إجمالي المبيعات', `${totalSales.toFixed(2)} ر.س`, '', '', '', '', '', '', '']);
-        summarySheet.addRow(['إجمالي الخصومات', `${totalDiscounts.toFixed(2)} ر.س`, '', '', '', '', '', '', '']);
-        summarySheet.addRow(['إجمالي القسائم', `${totalGiftCards.toFixed(2)} ر.س`, '', '', '', '', '', '', '']);
-        summarySheet.addRow(['إجمالي التوصيل', `${totalShipping.toFixed(2)} ر.س`, '', '', '', '', '', '', '']);
-        summarySheet.addRow(['صافي المبيعات', `${netSales.toFixed(2)} ر.س`, '', '', '', '', '', '', '']);
-        summarySheet.addRow(['إجمالي الطلبات', totalOrders, '', '', '', '', '', '', '']);
-        summarySheet.addRow(['الطلبات المكتملة', completedOrders, '', '', '', '', '', '', '']);
-        summarySheet.addRow(['الطلبات قيد الانتظار', pendingOrders, '', '', '', '', '', '', '']);
-
-        // ورقة التفاصيل
-        const detailsSheet = workbook.addWorksheet('تفاصيل الطلبات');
-
-        detailsSheet.columns = [
-            { header: 'رقم الطلب', key: 'order_number', width: 15 },
-            { header: 'تاريخ الطلب', key: 'order_date', width: 20 },
-            { header: 'اسم العميل', key: 'customer_name', width: 20 },
-            { header: 'هاتف العميل', key: 'customer_phone', width: 15 },
-            { header: 'هاتف إضافي', key: 'customer_secondary_phone', width: 15 },
-            { header: 'بريد العميل', key: 'customer_email', width: 25 },
-            { header: 'المدينة', key: 'address_city', width: 15 },
-            { header: 'المنطقة', key: 'address_area', width: 15 },
-            { header: 'العنوان التفصيلي', key: 'address_detail', width: 25 },
-            { header: 'العنوان الكامل', key: 'customer_address', width: 30 },
-            { header: 'حالة الطلب', key: 'order_status', width: 15 },
-            { header: 'طريقة الدفع', key: 'payment_method', width: 15 },
-            { header: 'اسم المرسل', key: 'transfer_name', width: 15 },
-            { header: 'رقم الحوالة', key: 'transfer_number', width: 15 },
-            { header: 'إجمالي الطلب', key: 'total_amount', width: 15 },
-            { header: 'قيمة الخصم', key: 'discount_amount', width: 15 },
-            { header: 'قسيمة شرائية', key: 'gift_card_amount', width: 15 },
-            { header: 'رسوم التوصيل', key: 'shipping_fee', width: 15 },
-            { header: 'الصافي', key: 'net_amount', width: 15 },
-            { header: 'كود الخصم', key: 'coupon_code', width: 15 },
-            { header: 'رقم القسيمة', key: 'gift_card_number', width: 15 },
-            { header: 'عدد المنتجات', key: 'items_count', width: 15 },
-            { header: 'المنتجات', key: 'products', width: 40 },
-            { header: 'روابط المنتجات', key: 'product_urls', width: 50 }
-        ];
-
-        const headerRow = detailsSheet.getRow(1);
-        headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
-        headerRow.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: '2196F3' }
-        };
-        headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
-
-        orders.forEach(order => {
-            const netAmount = parseFloat(order.total_amount) - parseFloat(order.discount_amount) - parseFloat(order.gift_card_amount) + parseFloat(order.shipping_fee || 0);
-            const productsText = order.cart_items.map(item => 
-                `${item.name} (${item.quantity}x)`
-            ).join('، ');
-
-            // جلب روابط المنتجات من جدول order_items
-            const productUrls = [];
-            order.cart_items.forEach(item => {
-                if (item.productUrl) {
-                    productUrls.push(`${item.name}: ${item.productUrl}`);
-                }
-            });
-            const productUrlsText = productUrls.join('\n');
-
-            detailsSheet.addRow({
-                order_number: order.order_number,
-                order_date: new Date(order.order_date).toLocaleString('ar-SA'),
-                customer_name: order.customer_name,
-                customer_phone: order.customer_phone,
-                customer_secondary_phone: order.customer_secondary_phone || '',
-                customer_email: order.customer_email,
-                address_city: order.address_city || '',
-                address_area: order.address_area || '',
-                address_detail: order.address_detail || '',
-                customer_address: order.customer_address || '',
-                order_status: getOrderStatusText(order.order_status),
-                payment_method: getPaymentMethodText(order.payment_method),
-                transfer_name: order.transfer_name || '',
-                transfer_number: order.transfer_number || '',
-                total_amount: `${parseFloat(order.total_amount).toFixed(2)} ر.س`,
-                discount_amount: `${parseFloat(order.discount_amount).toFixed(2)} ر.س`,
-                gift_card_amount: `${parseFloat(order.gift_card_amount).toFixed(2)} ر.س`,
-                shipping_fee: `${parseFloat(order.shipping_fee || 0).toFixed(2)} ر.س`,
-                net_amount: `${netAmount.toFixed(2)} ر.س`,
-                coupon_code: order.coupon_code || 'لا يوجد',
-                gift_card_number: order.gift_card_number || 'لا يوجد',
-                items_count: order.cart_items.length,
-                products: productsText,
-                product_urls: productUrlsText || 'لا توجد روابط'
-            });
-        });
-
-        detailsSheet.eachRow((row, rowNumber) => {
-            if (rowNumber > 1) {
-                row.alignment = { horizontal: 'right', vertical: 'middle' };
-            }
-        });
-
-        // ورقة تحليل المنتجات
-        const productsSheet = workbook.addWorksheet('تحليل المنتجات');
-
-        const productAnalysis = {};
-        orders.forEach(order => {
-            order.cart_items.forEach(item => {
-                const productName = item.name || 'منتج غير معروف';
-                const quantity = item.quantity || 1;
-                const price = parseFloat(item.price) || 0;
-                const total = quantity * price;
-
-                if (!productAnalysis[productName]) {
-                    productAnalysis[productName] = {
-                        quantity: 0,
-                        totalSales: 0,
-                        ordersCount: 0,
-                        productUrl: item.productUrl || ''
-                    };
-                }
-
-                productAnalysis[productName].quantity += quantity;
-                productAnalysis[productName].totalSales += total;
-                productAnalysis[productName].ordersCount += 1;
-                if (item.productUrl && !productAnalysis[productName].productUrl) {
-                    productAnalysis[productName].productUrl = item.productUrl;
-                }
-            });
-        });
-
-        productsSheet.columns = [
-            { header: 'اسم المنتج', key: 'product_name', width: 30 },
-            { header: 'الكمية المباعة', key: 'quantity', width: 15 },
-            { header: 'إجمالي المبيعات', key: 'total_sales', width: 20 },
-            { header: 'عدد الطلبات', key: 'orders_count', width: 15 },
-            { header: 'متوسط السعر', key: 'avg_price', width: 15 },
-            { header: 'رابط المنتج', key: 'product_url', width: 40 }
-        ];
-
-        const productsHeader = productsSheet.getRow(1);
-        productsHeader.font = { bold: true, color: { argb: 'FFFFFF' } };
-        productsHeader.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FF9800' }
-        };
-        productsHeader.alignment = { horizontal: 'center', vertical: 'middle' };
-
-        Object.entries(productAnalysis).forEach(([productName, data]) => {
-            const avgPrice = data.totalSales / data.quantity;
-            
-            productsSheet.addRow({
-                product_name: productName,
-                quantity: data.quantity,
-                total_sales: `${data.totalSales.toFixed(2)} ر.س`,
-                orders_count: data.ordersCount,
-                avg_price: `${avgPrice.toFixed(2)} ر.س`,
-                product_url: data.productUrl || 'لا يوجد رابط'
-            });
-        });
-
-        [summarySheet, detailsSheet, productsSheet].forEach(sheet => {
-            sheet.eachRow((row, rowNumber) => {
-                row.alignment = { horizontal: 'right', vertical: 'middle' };
-            });
-        });
-
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const filename = `sales-report-${timestamp}.xlsx`;
-        const filepath = path.join(exportsDir, filename);
-
-        await workbook.xlsx.writeFile(filepath);
-
-        console.log('✅ تم تصدير المبيعات إلى Excel:', {
-            filename,
-            orders_count: orders.length,
-            file_size: `${(fs.statSync(filepath).size / 1024 / 1024).toFixed(2)} MB`
-        });
-
-        res.download(filepath, filename, (err) => {
-            if (err) {
-                console.error('❌ خطأ في إرسال الملف:', err);
-                return res.status(500).json({
-                    status: 'error',
-                    message: 'فشل في تحميل الملف'
-                });
-            }
-
-            setTimeout(() => {
-                fs.unlink(filepath, (unlinkErr) => {
-                    if (unlinkErr) {
-                        console.error('❌ خطأ في حذف الملف:', unlinkErr);
-                    } else {
-                        console.log('✅ تم حذف الملف المؤقت:', filename);
-                    }
-                });
-            }, 30000);
-        });
-
-    } catch (error) {
-        console.error('❌ خطأ في تصدير المبيعات:', error);
-        res.status(500).json({
-            status: 'error',
-            message: 'فشل في تصدير البيانات: ' + error.message
-        });
+    if (start_date && end_date) {
+      conditions.push('o.order_date BETWEEN ? AND ?');
+      params.push(start_date, end_date);
+    } else if (start_date) {
+      conditions.push('o.order_date >= ?');
+      params.push(start_date);
+    } else if (end_date) {
+      conditions.push('o.order_date <= ?');
+      params.push(end_date);
     }
+
+    if (customer_name) {
+      conditions.push('o.customer_name LIKE ?');
+      params.push(`%${customer_name}%`);
+    }
+
+    if (order_status && order_status !== 'all') {
+      conditions.push('o.order_status = ?');
+      params.push(order_status);
+    }
+
+    if (conditions.length > 0) {
+      sqlQuery += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    sqlQuery += ' ORDER BY o.created_at DESC';
+
+    const orders = await new Promise((resolve, reject) => {
+      db.all(sqlQuery, params, (err, rows) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        const processedOrders = rows.map(order => ({
+          ...order,
+          cart_items: JSON.parse(order.cart_items_json)
+        }));
+
+        resolve(processedOrders);
+      });
+    });
+
+    if (orders.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'لا توجد بيانات للتصدير في الفترة المحددة'
+      });
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'نظام المبيعات';
+    workbook.created = new Date();
+
+    // ورقة الملخص
+    const summarySheet = workbook.addWorksheet('ملخص المبيعات');
+
+    summarySheet.mergeCells('A1:I1');
+    const titleCell = summarySheet.getCell('A1');
+    titleCell.value = 'تقرير المبيعات - نظام المتجر';
+    titleCell.font = { bold: true, size: 16, color: { argb: 'FFFFFF' } };
+    titleCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: '2E7D32' }
+    };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    summarySheet.mergeCells('A2:I2');
+    const periodCell = summarySheet.getCell('A2');
+    const periodText = start_date && end_date
+      ? `الفترة: من ${start_date} إلى ${end_date}`
+      : 'جميع الفترات';
+    periodCell.value = periodText;
+    periodCell.font = { bold: true, size: 12 };
+    periodCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    const totalSales = orders.reduce((sum, order) => sum + parseFloat(order.total_amount), 0);
+    const totalDiscounts = orders.reduce((sum, order) => sum + parseFloat(order.discount_amount), 0);
+    const totalGiftCards = orders.reduce((sum, order) => sum + parseFloat(order.gift_card_amount), 0);
+    const totalShipping = orders.reduce((sum, order) => sum + parseFloat(order.shipping_fee || 0), 0);
+    const netSales = totalSales - totalDiscounts - totalGiftCards + totalShipping;
+    const totalOrders = orders.length;
+    const completedOrders = orders.filter(order => order.order_status === 'completed').length;
+    const pendingOrders = orders.filter(order => order.order_status === 'pending').length;
+
+    summarySheet.addRow([]);
+    summarySheet.addRow(['إحصائيات المبيعات', '', '', '', '', '', '', '', '']);
+    summarySheet.addRow(['إجمالي المبيعات', `${totalSales.toFixed(2)} ر.س`, '', '', '', '', '', '', '']);
+    summarySheet.addRow(['إجمالي الخصومات', `${totalDiscounts.toFixed(2)} ر.س`, '', '', '', '', '', '', '']);
+    summarySheet.addRow(['إجمالي القسائم', `${totalGiftCards.toFixed(2)} ر.س`, '', '', '', '', '', '', '']);
+    summarySheet.addRow(['إجمالي التوصيل', `${totalShipping.toFixed(2)} ر.س`, '', '', '', '', '', '', '']);
+    summarySheet.addRow(['صافي المبيعات', `${netSales.toFixed(2)} ر.س`, '', '', '', '', '', '', '']);
+    summarySheet.addRow(['إجمالي الطلبات', totalOrders, '', '', '', '', '', '', '']);
+    summarySheet.addRow(['الطلبات المكتملة', completedOrders, '', '', '', '', '', '', '']);
+    summarySheet.addRow(['الطلبات قيد الانتظار', pendingOrders, '', '', '', '', '', '', '']);
+
+    // ورقة التفاصيل
+    const detailsSheet = workbook.addWorksheet('تفاصيل الطلبات');
+
+    detailsSheet.columns = [
+      { header: 'رقم الطلب', key: 'order_number', width: 15 },
+      { header: 'تاريخ الطلب', key: 'order_date', width: 20 },
+      { header: 'اسم العميل', key: 'customer_name', width: 20 },
+      { header: 'هاتف العميل', key: 'customer_phone', width: 15 },
+      { header: 'هاتف إضافي', key: 'customer_secondary_phone', width: 15 },
+      { header: 'بريد العميل', key: 'customer_email', width: 25 },
+      { header: 'المدينة', key: 'address_city', width: 15 },
+      { header: 'المنطقة', key: 'address_area', width: 15 },
+      { header: 'العنوان التفصيلي', key: 'address_detail', width: 25 },
+      { header: 'العنوان الكامل', key: 'customer_address', width: 30 },
+      { header: 'حالة الطلب', key: 'order_status', width: 15 },
+      { header: 'طريقة الدفع', key: 'payment_method', width: 15 },
+      { header: 'اسم المرسل', key: 'transfer_name', width: 15 },
+      { header: 'رقم الحوالة', key: 'transfer_number', width: 15 },
+      { header: 'إجمالي الطلب', key: 'total_amount', width: 15 },
+      { header: 'قيمة الخصم', key: 'discount_amount', width: 15 },
+      { header: 'قسيمة شرائية', key: 'gift_card_amount', width: 15 },
+      { header: 'رسوم التوصيل', key: 'shipping_fee', width: 15 },
+      { header: 'الصافي', key: 'net_amount', width: 15 },
+      { header: 'كود الخصم', key: 'coupon_code', width: 15 },
+      { header: 'رقم القسيمة', key: 'gift_card_number', width: 15 },
+      { header: 'عدد المنتجات', key: 'items_count', width: 15 },
+      { header: 'المنتجات', key: 'products', width: 40 },
+      { header: 'روابط المنتجات', key: 'product_urls', width: 50 }
+    ];
+
+    const headerRow = detailsSheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: '2196F3' }
+    };
+    headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    orders.forEach(order => {
+      const netAmount = parseFloat(order.total_amount) - parseFloat(order.discount_amount) - parseFloat(order.gift_card_amount) + parseFloat(order.shipping_fee || 0);
+      const productsText = order.cart_items.map(item =>
+        `${item.name} (${item.quantity}x)`
+      ).join('، ');
+
+      // جلب روابط المنتجات من جدول order_items
+      const productUrls = [];
+      order.cart_items.forEach(item => {
+        if (item.productUrl) {
+          productUrls.push(`${item.name}: ${item.productUrl}`);
+        }
+      });
+      const productUrlsText = productUrls.join('\n');
+
+      detailsSheet.addRow({
+        order_number: order.order_number,
+        order_date: new Date(order.order_date).toLocaleString('ar-SA'),
+        customer_name: order.customer_name,
+        customer_phone: order.customer_phone,
+        customer_secondary_phone: order.customer_secondary_phone || '',
+        customer_email: order.customer_email,
+        address_city: order.address_city || '',
+        address_area: order.address_area || '',
+        address_detail: order.address_detail || '',
+        customer_address: order.customer_address || '',
+        order_status: getOrderStatusText(order.order_status),
+        payment_method: getPaymentMethodText(order.payment_method),
+        transfer_name: order.transfer_name || '',
+        transfer_number: order.transfer_number || '',
+        total_amount: `${parseFloat(order.total_amount).toFixed(2)} ر.س`,
+        discount_amount: `${parseFloat(order.discount_amount).toFixed(2)} ر.س`,
+        gift_card_amount: `${parseFloat(order.gift_card_amount).toFixed(2)} ر.س`,
+        shipping_fee: `${parseFloat(order.shipping_fee || 0).toFixed(2)} ر.س`,
+        net_amount: `${netAmount.toFixed(2)} ر.س`,
+        coupon_code: order.coupon_code || 'لا يوجد',
+        gift_card_number: order.gift_card_number || 'لا يوجد',
+        items_count: order.cart_items.length,
+        products: productsText,
+        product_urls: productUrlsText || 'لا توجد روابط'
+      });
+    });
+
+    detailsSheet.eachRow((row, rowNumber) => {
+      if (rowNumber > 1) {
+        row.alignment = { horizontal: 'right', vertical: 'middle' };
+      }
+    });
+
+    // ورقة تحليل المنتجات
+    const productsSheet = workbook.addWorksheet('تحليل المنتجات');
+
+    const productAnalysis = {};
+    orders.forEach(order => {
+      order.cart_items.forEach(item => {
+        const productName = item.name || 'منتج غير معروف';
+        const quantity = item.quantity || 1;
+        const price = parseFloat(item.price) || 0;
+        const total = quantity * price;
+
+        if (!productAnalysis[productName]) {
+          productAnalysis[productName] = {
+            quantity: 0,
+            totalSales: 0,
+            ordersCount: 0,
+            productUrl: item.productUrl || ''
+          };
+        }
+
+        productAnalysis[productName].quantity += quantity;
+        productAnalysis[productName].totalSales += total;
+        productAnalysis[productName].ordersCount += 1;
+        if (item.productUrl && !productAnalysis[productName].productUrl) {
+          productAnalysis[productName].productUrl = item.productUrl;
+        }
+      });
+    });
+
+    productsSheet.columns = [
+      { header: 'اسم المنتج', key: 'product_name', width: 30 },
+      { header: 'الكمية المباعة', key: 'quantity', width: 15 },
+      { header: 'إجمالي المبيعات', key: 'total_sales', width: 20 },
+      { header: 'عدد الطلبات', key: 'orders_count', width: 15 },
+      { header: 'متوسط السعر', key: 'avg_price', width: 15 },
+      { header: 'رابط المنتج', key: 'product_url', width: 40 }
+    ];
+
+    const productsHeader = productsSheet.getRow(1);
+    productsHeader.font = { bold: true, color: { argb: 'FFFFFF' } };
+    productsHeader.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF9800' }
+    };
+    productsHeader.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    Object.entries(productAnalysis).forEach(([productName, data]) => {
+      const avgPrice = data.totalSales / data.quantity;
+
+      productsSheet.addRow({
+        product_name: productName,
+        quantity: data.quantity,
+        total_sales: `${data.totalSales.toFixed(2)} ر.س`,
+        orders_count: data.ordersCount,
+        avg_price: `${avgPrice.toFixed(2)} ر.س`,
+        product_url: data.productUrl || 'لا يوجد رابط'
+      });
+    });
+
+    [summarySheet, detailsSheet, productsSheet].forEach(sheet => {
+      sheet.eachRow((row, rowNumber) => {
+        row.alignment = { horizontal: 'right', vertical: 'middle' };
+      });
+    });
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `sales-report-${timestamp}.xlsx`;
+    const filepath = path.join(exportsDir, filename);
+
+    await workbook.xlsx.writeFile(filepath);
+
+    console.log('✅ تم تصدير المبيعات إلى Excel:', {
+      filename,
+      orders_count: orders.length,
+      file_size: `${(fs.statSync(filepath).size / 1024 / 1024).toFixed(2)} MB`
+    });
+
+    res.download(filepath, filename, (err) => {
+      if (err) {
+        console.error('❌ خطأ في إرسال الملف:', err);
+        return res.status(500).json({
+          status: 'error',
+          message: 'فشل في تحميل الملف'
+        });
+      }
+
+      setTimeout(() => {
+        fs.unlink(filepath, (unlinkErr) => {
+          if (unlinkErr) {
+            console.error('❌ خطأ في حذف الملف:', unlinkErr);
+          } else {
+            console.log('✅ تم حذف الملف المؤقت:', filename);
+          }
+        });
+      }, 30000);
+    });
+
+  } catch (error) {
+    console.error('❌ خطأ في تصدير المبيعات:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'فشل في تصدير البيانات: ' + error.message
+    });
+  }
 });
 
 app.get('/api/export-all-sales', async (req, res) => {
-    try {
-        const orders = await new Promise((resolve, reject) => {
-            db.all(`
+  try {
+    const orders = await new Promise((resolve, reject) => {
+      db.all(`
                 SELECT o.*, 
                        json_extract(o.cart_items, '$') as cart_items_json
                 FROM orders o 
                 ORDER BY o.created_at DESC
             `, (err, rows) => {
-                if (err) {
-                    reject(err);
-                    return;
-                }
-                
-                const processedOrders = rows.map(order => ({
-    ...order,
-    cart_items: JSON.parse(order.cart_items_json)
-}));
-                
-                resolve(processedOrders);
-            });
-        });
-
-        if (orders.length === 0) {
-            return res.status(404).json({
-                status: 'error',
-                message: 'لا توجد طلبات للتصدير'
-            });
+        if (err) {
+          reject(err);
+          return;
         }
 
-        const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('المبيعات');
+        const processedOrders = rows.map(order => ({
+          ...order,
+          cart_items: JSON.parse(order.cart_items_json)
+        }));
 
-        worksheet.columns = [
-            { header: 'رقم الطلب', key: 'order_number', width: 15 },
-            { header: 'التاريخ', key: 'order_date', width: 20 },
-            { header: 'العميل', key: 'customer_name', width: 20 },
-            { header: 'الهاتف', key: 'customer_phone', width: 15 },
-            { header: 'المدينة', key: 'address_city', width: 15 },
-            { header: 'المنطقة', key: 'address_area', width: 15 },
-            { header: 'طريقة الدفع', key: 'payment_method', width: 15 },
-            { header: 'الإجمالي', key: 'total_amount', width: 15 },
-            { header: 'الخصم', key: 'discount_amount', width: 15 },
-            { header: 'القسيمة', key: 'gift_card_amount', width: 15 },
-            { header: 'التوصيل', key: 'shipping_fee', width: 15 },
-            { header: 'الصافي', key: 'net_amount', width: 15 },
-            { header: 'الحالة', key: 'order_status', width: 15 },
-            { header: 'روابط المنتجات', key: 'product_urls', width: 50 }
-        ];
+        resolve(processedOrders);
+      });
+    });
 
-        const headerRow = worksheet.getRow(1);
-        headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
-        headerRow.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: '4CAF50' }
-        };
-
-        orders.forEach(order => {
-            const netAmount = parseFloat(order.total_amount) - parseFloat(order.discount_amount) - parseFloat(order.gift_card_amount) + parseFloat(order.shipping_fee || 0);
-            
-            // جلب روابط المنتجات
-            const productUrls = [];
-            order.cart_items.forEach(item => {
-                if (item.productUrl) {
-                    productUrls.push(`${item.name}: ${item.productUrl}`);
-                }
-            });
-            const productUrlsText = productUrls.join('\n');
-
-            worksheet.addRow({
-                order_number: order.order_number,
-                order_date: new Date(order.order_date).toLocaleString('ar-SA'),
-                customer_name: order.customer_name,
-                customer_phone: order.customer_phone,
-                address_city: order.address_city || '',
-                address_area: order.address_area || '',
-                payment_method: getPaymentMethodText(order.payment_method),
-                total_amount: `${parseFloat(order.total_amount).toFixed(2)} ر.س`,
-                discount_amount: `${parseFloat(order.discount_amount).toFixed(2)} ر.س`,
-                gift_card_amount: `${parseFloat(order.gift_card_amount).toFixed(2)} ر.س`,
-                shipping_fee: `${parseFloat(order.shipping_fee || 0).toFixed(2)} ر.س`,
-                net_amount: `${netAmount.toFixed(2)} ر.س`,
-                order_status: getOrderStatusText(order.order_status),
-                product_urls: productUrlsText || 'لا توجد روابط'
-            });
-        });
-
-        worksheet.eachRow((row, rowNumber) => {
-            if (rowNumber > 1) {
-                row.alignment = { horizontal: 'right', vertical: 'middle' };
-            }
-        });
-
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const filename = `all-sales-${timestamp}.xlsx`;
-        const filepath = path.join(exportsDir, filename);
-
-        await workbook.xlsx.writeFile(filepath);
-
-        res.download(filepath, filename);
-
-    } catch (error) {
-        console.error('❌ خطأ في التصدير السريع:', error);
-        res.status(500).json({
-            status: 'error',
-            message: 'فشل في التصدير: ' + error.message
-        });
+    if (orders.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'لا توجد طلبات للتصدير'
+      });
     }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('المبيعات');
+
+    worksheet.columns = [
+      { header: 'رقم الطلب', key: 'order_number', width: 15 },
+      { header: 'التاريخ', key: 'order_date', width: 20 },
+      { header: 'العميل', key: 'customer_name', width: 20 },
+      { header: 'الهاتف', key: 'customer_phone', width: 15 },
+      { header: 'المدينة', key: 'address_city', width: 15 },
+      { header: 'المنطقة', key: 'address_area', width: 15 },
+      { header: 'طريقة الدفع', key: 'payment_method', width: 15 },
+      { header: 'الإجمالي', key: 'total_amount', width: 15 },
+      { header: 'الخصم', key: 'discount_amount', width: 15 },
+      { header: 'القسيمة', key: 'gift_card_amount', width: 15 },
+      { header: 'التوصيل', key: 'shipping_fee', width: 15 },
+      { header: 'الصافي', key: 'net_amount', width: 15 },
+      { header: 'الحالة', key: 'order_status', width: 15 },
+      { header: 'روابط المنتجات', key: 'product_urls', width: 50 }
+    ];
+
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: '4CAF50' }
+    };
+
+    orders.forEach(order => {
+      const netAmount = parseFloat(order.total_amount) - parseFloat(order.discount_amount) - parseFloat(order.gift_card_amount) + parseFloat(order.shipping_fee || 0);
+
+      // جلب روابط المنتجات
+      const productUrls = [];
+      order.cart_items.forEach(item => {
+        if (item.productUrl) {
+          productUrls.push(`${item.name}: ${item.productUrl}`);
+        }
+      });
+      const productUrlsText = productUrls.join('\n');
+
+      worksheet.addRow({
+        order_number: order.order_number,
+        order_date: new Date(order.order_date).toLocaleString('ar-SA'),
+        customer_name: order.customer_name,
+        customer_phone: order.customer_phone,
+        address_city: order.address_city || '',
+        address_area: order.address_area || '',
+        payment_method: getPaymentMethodText(order.payment_method),
+        total_amount: `${parseFloat(order.total_amount).toFixed(2)} ر.س`,
+        discount_amount: `${parseFloat(order.discount_amount).toFixed(2)} ر.س`,
+        gift_card_amount: `${parseFloat(order.gift_card_amount).toFixed(2)} ر.س`,
+        shipping_fee: `${parseFloat(order.shipping_fee || 0).toFixed(2)} ر.س`,
+        net_amount: `${netAmount.toFixed(2)} ر.س`,
+        order_status: getOrderStatusText(order.order_status),
+        product_urls: productUrlsText || 'لا توجد روابط'
+      });
+    });
+
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber > 1) {
+        row.alignment = { horizontal: 'right', vertical: 'middle' };
+      }
+    });
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `all-sales-${timestamp}.xlsx`;
+    const filepath = path.join(exportsDir, filename);
+
+    await workbook.xlsx.writeFile(filepath);
+
+    res.download(filepath, filename);
+
+  } catch (error) {
+    console.error('❌ خطأ في التصدير السريع:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'فشل في التصدير: ' + error.message
+    });
+  }
 });
 
 // ======== صفحات الإدارة ========
@@ -4030,7 +4030,7 @@ app.get('/admin/orders', (req, res) => {
           'completed': 'مكتمل',
           'cancelled': 'ملغي'
         }[order.order_status] || order.order_status;
-        
+
         const paymentMethodText = {
           'mobicash': 'موبي كاش',
           'yemenwallet': 'محفظة جيب',
@@ -4038,7 +4038,7 @@ app.get('/admin/orders', (req, res) => {
           'khameri': 'الكريمي',
           'online': 'دفع إلكتروني'
         }[order.payment_method] || order.payment_method;
-        
+
         html += `
             <div class="order-card">
                 <div class="order-header">
@@ -4289,10 +4289,10 @@ app.get('/admin/coupons', (req, res) => {
         const now = new Date();
         const validUntil = new Date(coupon.valid_until);
         const validFrom = new Date(coupon.valid_from);
-        
+
         let statusClass = 'status-inactive';
         let statusText = 'غير نشط';
-        
+
         if (coupon.is_active) {
           if (now > validUntil) {
             statusClass = 'status-expired';
@@ -4787,10 +4787,10 @@ app.get('/admin/gift-cards', (req, res) => {
       rows.forEach(giftCard => {
         const now = new Date();
         const validUntil = new Date(giftCard.valid_until);
-        
+
         let statusClass = 'status-inactive';
         let statusText = 'غير نشط';
-        
+
         if (giftCard.is_active) {
           if (now > validUntil) {
             statusClass = 'status-expired';
@@ -5390,7 +5390,7 @@ app.get('/admin/settings', (req, res) => {
 // API مسح جميع البيانات
 app.delete('/api/clear-all-data', (req, res) => {
   db.serialize(() => {
-    db.run('DELETE FROM test_users', function(err) {
+    db.run('DELETE FROM test_users', function (err) {
       if (err) {
         console.error('❌ خطأ في مسح بيانات المستخدمين:', err);
         return res.status(500).json({
@@ -5399,7 +5399,7 @@ app.delete('/api/clear-all-data', (req, res) => {
         });
       }
 
-      db.run('DELETE FROM orders', function(err) {
+      db.run('DELETE FROM orders', function (err) {
         if (err) {
           console.error('❌ خطأ في مسح الطلبات:', err);
           return res.status(500).json({
@@ -5408,7 +5408,7 @@ app.delete('/api/clear-all-data', (req, res) => {
           });
         }
 
-        db.run('DELETE FROM order_items', function(err) {
+        db.run('DELETE FROM order_items', function (err) {
           if (err) {
             console.error('❌ خطأ في مسح تفاصيل الطلبات:', err);
             return res.status(500).json({
@@ -5451,10 +5451,10 @@ function startServer() {
   if (useSSL && sslOptions) {
     const https = require('https');
     const server = https.createServer(sslOptions, app);
-    
+
     server.listen(PORT, HOST, () => {
       console.log('🚀 الخادم يعمل بنجاح مع SSL!');
-      console.log(`🌐 النطاق الآمن: https://redshe.shop:${PORT}`);
+      console.log(`🌐 النطاق الآمن: https://redme.cfd:${PORT}`);
       console.log(`🔒 تم تفعيل HTTPS بنجاح`);
     });
 
@@ -5462,7 +5462,7 @@ function startServer() {
     const http = require('http');
     const httpApp = express();
     httpApp.use((req, res) => {
-      res.redirect(301, `https://redshe.shop${req.url}`);
+      res.redirect(301, `https://redme.cfd${req.url}`);
     });
     http.createServer(httpApp).listen(80, () => {
       console.log('🔄 خادم إعادة التوجيه يعمل على المنفذ 80');
@@ -5473,7 +5473,7 @@ function startServer() {
     // تشغيل بدون SSL
     return app.listen(PORT, HOST, () => {
       console.log('🚀 الخادم يعمل بنجاح!');
-      console.log(`🌐 النطاق: http://redshe.shop:${PORT}`);
+      console.log(`🌐 النطاق: http://redme.cfd:${PORT}`);
       console.log('💡 ملاحظة: الخادم يعمل بدون SSL');
       console.log('   للحصول على SSL، قم بتثبيت شهادة Let\'s Encrypt');
     });
