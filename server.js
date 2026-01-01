@@ -135,9 +135,7 @@ function isLocalRequest(req) {
 }
 
 // ======== إنشاء مجلد التصدير ========
-const exportsDir = process.env.NODE_ENV === 'production'
-  ? '/var/www/redshe/exports'
-  : path.join(__dirname, 'exports');
+const exportsDir = path.join(__dirname, 'exports');
 if (!fs.existsSync(exportsDir)) {
   fs.mkdirSync(exportsDir, { recursive: true });
   console.log('✅ تم إنشاء مجلد التصدير:', exportsDir);
