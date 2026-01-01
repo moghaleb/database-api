@@ -494,7 +494,7 @@ function renderLoginPageHTML(req, res, message = '') {
     <body>
       <div class="card">
         <h3 style="text-align:center;margin:0 0 12px 0">تسجيل الدخول إلى لوحة الإدارة</h3>
-        <form method="post" action="/login">
+        <form method="post" action="/admin/login">
           <label for="username">اسم المستخدم</label>
           <input id="username" name="username" type="text" required>
           <label for="password">كلمة المرور</label>
