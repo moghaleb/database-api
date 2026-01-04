@@ -92,7 +92,8 @@ app.use(cors({
     'https://www.redme.cfd',
     'http://www.redme.cfd',
     'http://localhost:3000',
-    'http://127.0.0.1:3000'
+    'http://127.0.0.1:3000',
+    '*', // السماح بالاتصال من أي أصل مؤقتًا
   ],
   credentials: true
 }))
