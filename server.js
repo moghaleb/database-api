@@ -135,7 +135,7 @@ function isLocalRequest(req) {
   }
 }
 
-// ======== إنشاء مجلد التصدير ========
+// ======== شاء مجلد التصدير ========
 const exportsDir = path.join(__dirname, 'exports');
 if (!fs.existsSync(exportsDir)) {
   fs.mkdirSync(exportsDir, { recursive: true });
@@ -2451,6 +2451,14 @@ app.delete('/api/gift-cards/:id', (req, res) => {
 });
 
 // ======== API معالجة الدفع - محدث بدعم طرق الدفع المختلفة ========
+// Route for handling GET requests to process-payment (Debugging only)
+app.get('/api/process-payment', (req, res) => {
+  res.status(405).json({
+    status: 'error',
+    message: 'خطأ: وصلت الطريقة GET بدلاً من POST. ربما حدث إعادة توجيه (Redirect). تأكد من استخدام الرابط الصحيح: https://www.redme.cfd'
+  });
+});
+
 app.post('/api/process-payment', (req, res) => {
   const {
     cart_items,
