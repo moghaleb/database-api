@@ -16,6 +16,9 @@ let useSSL = false;
 
 // المسارات المحتملة لملفات SSL
 const possibleSSLCertPaths = [
+  '/etc/letsencrypt/live/database-api-kvxr.onrender.com/fullchain.pem',
+  // ... قم بتحديث مسارات الشهادات
+
   '/etc/letsencrypt/live/redme.cfd/fullchain.pem',
   '/etc/letsencrypt/live/redme.cfd/cert.pem',
   '/etc/ssl/certs/redme.cfd.crt',
@@ -79,7 +82,9 @@ useSSL = sslOptions !== null;
 if (!useSSL) {
   console.log('⚠️  لم يتم العثور على شهادات SSL. سيتم استخدام HTTP.');
   console.log('💡 للحصول على شهادة SSL مجانية، قم بتشغيل:');
-  console.log('   sudo certbot --nginx -d redme.cfd -d www.redme.cfd');
+  //console.log('   sudo certbot --nginx -d redme.cfd -d www.redme.cfd');
+  console.log('   sudo certbot --nginx -d database-api-kvxr.onrender.com');
+
 } else {
   console.log('🔐 تم تحميل شهادات SSL بنجاح!');
 }
@@ -87,12 +92,14 @@ if (!useSSL) {
 // ======== Middleware ========
 app.use(cors({
   origin: [
-    'https://redme.cfd',
-    'http://redme.cfd',
-    'https://www.redme.cfd',
-    'http://www.redme.cfd',
-    'http://localhost:3000',
-    'http://127.0.0.1:3000'
+   // 'https://redme.cfd',
+    //'http://redme.cfd',
+    //'https://www.redme.cfd',
+    //'http://www.redme.cfd',
+    //'http://localhost:3000',
+    //'http://127.0.0.1:3000'
+    'https://database-api-kvxr.onrender.com',
+    'http://database-api-kvxr.onrender.com',
   ],
   credentials: true
 }))
@@ -464,8 +471,10 @@ function handleLoginRequest(req, res) {
       signed: true,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      domain: process.env.NODE_ENV === 'production' ? '.redme.cfd' : undefined,
+      //domain: process.env.NODE_ENV === 'production' ? '.redme.cfd' : undefined,
       maxAge: 12 * 60 * 60 * 1000,
+      domain: process.env.NODE_ENV === 'production' ? '.database-api-kvxr.onrender.com' : undefined,
+
       sameSite: 'lax'
     });
 
@@ -5452,7 +5461,11 @@ function startServer() {
 
     server.listen(PORT, HOST, () => {
       console.log('🚀 الخادم يعمل بنجاح مع SSL!');
-      console.log(`🌐 النطاق الآمن: https://redme.cfd:${PORT}`);
+      //console.log(`🌐 النطاق الآمن: https://redme.cfd:${PORT}`);
+      console.log(`🌐 النطاق الآمن: https://database-api-kvxr.onrender.com:${PORT}`);
+
+
+
       console.log(`🔒 تم تفعيل HTTPS بنجاح`);
     });
 
@@ -5460,7 +5473,9 @@ function startServer() {
     const http = require('http');
     const httpApp = express();
     httpApp.use((req, res) => {
-      res.redirect(301, `https://redme.cfd${req.url}`);
+      //res.redirect(301, `https://redme.cfd${req.url}`);
+      res.redirect(301, `https://database-api-kvxr.onrender.com${req.url}`);
+
     });
     http.createServer(httpApp).listen(80, () => {
       console.log('🔄 خادم إعادة التوجيه يعمل على المنفذ 80');
@@ -5471,7 +5486,10 @@ function startServer() {
     // تشغيل بدون SSL
     return app.listen(PORT, HOST, () => {
       console.log('🚀 الخادم يعمل بنجاح!');
-      console.log(`🌐 النطاق: http://redme.cfd:${PORT}`);
+     // console.log(`🌐 النطاق: http://redme.cfd:${PORT}`);
+     console.log(`🌐 النطاق: http://database-api-kvxr.onrender.com:${PORT}`);
+
+
       console.log('💡 ملاحظة: الخادم يعمل بدون SSL');
       console.log('   للحصول على SSL، قم بتثبيت شهادة Let\'s Encrypt');
     });
