@@ -10,8 +10,79 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
 
-// SSL configuration removed to fix 502 Bad Gateway (Handled by Nginx/Cloudflare)
-// const sslOptions = findSSLCertificates(); ...
+// ======== إعدادات SSL الذكية ========
+let sslOptions = null;
+let useSSL = false;
+
+// المسارات المحتملة لملفات SSL
+const possibleSSLCertPaths = [
+  '/etc/letsencrypt/live/redme.cfd/fullchain.pem',
+  '/etc/letsencrypt/live/redme.cfd/cert.pem',
+  '/etc/ssl/certs/redme.cfd.crt',
+  '/path/to/your/ssl/certificate.crt' // مسار مخصص
+];
+
+const possibleSSLKeyPaths = [
+  '/etc/letsencrypt/live/redme.cfd/privkey.pem',
+  '/etc/ssl/private/redme.cfd.key',
+  '/path/to/your/ssl/private.key' // مسار مخصص
+];
+
+// البحث عن ملفات SSL
+function findSSLCertificates() {
+  let certPath = null;
+  let keyPath = null;
+
+  // البحث عن الشهادة
+  for (const path of possibleSSLCertPaths) {
+    if (fs.existsSync(path)) {
+      certPath = path;
+      console.log(`✅ تم العثور على الشهادة في: ${path}`);
+      break;
+    }
+  }
+
+  // البحث عن المفتاح
+  for (const path of possibleSSLKeyPaths) {
+    if (fs.existsSync(path)) {
+      keyPath = path;
+      console.log(`✅ تم العثور على المفتاح في: ${path}`);
+      break;
+    }
+  }
+
+  if (certPath && keyPath) {
+    try {
+      return {
+        key: fs.readFileSync(keyPath),
+        cert: fs.readFileSync(certPath),
+        secureProtocol: 'TLSv1_2_method',
+        ciphers: [
+          'ECDHE-RSA-AES128-GCM-SHA256',
+          'ECDHE-RSA-AES256-GCM-SHA384'
+        ].join(':'),
+        honorCipherOrder: true
+      };
+    } catch (error) {
+      console.error('❌ خطأ في قراءة ملفات SSL:', error.message);
+      return null;
+    }
+  }
+
+  return null;
+}
+
+// محاولة تحميل SSL
+sslOptions = findSSLCertificates();
+useSSL = sslOptions !== null;
+
+if (!useSSL) {
+  console.log('⚠️  لم يتم العثور على شهادات SSL. سيتم استخدام HTTP.');
+  console.log('💡 للحصول على شهادة SSL مجانية، قم بتشغيل:');
+  console.log('   sudo certbot --nginx -d redme.cfd -d www.redme.cfd');
+} else {
+  console.log('🔐 تم تحميل شهادات SSL بنجاح!');
+}
 
 // ======== Middleware ========
 app.use(cors({
@@ -5374,10 +5445,39 @@ app.use((req, res) => {
   });
 });
 
-// بدء الخادم - نمط مبسط (Simplified Startup)
-// نعتمد على Nginx/Cloudflare لمعالجة SSL
-const server = app.listen(PORT, HOST, () => {
-  console.log('🚀 الخادم يعمل بنجاح!');
-  console.log(`🌐 النطاق: http://${HOST}:${PORT}`);
-  console.log('✅ Status: Ready to receive requests via Nginx');
-});
+// بدء الخادم
+function startServer() {
+  if (useSSL && sslOptions) {
+    const https = require('https');
+    const server = https.createServer(sslOptions, app);
+
+    server.listen(PORT, HOST, () => {
+      console.log('🚀 الخادم يعمل بنجاح مع SSL!');
+      console.log(`🌐 النطاق الآمن: https://redme.cfd:${PORT}`);
+      console.log(`🔒 تم تفعيل HTTPS بنجاح`);
+    });
+
+    // إعادة توجيه HTTP إلى HTTPS
+    const http = require('http');
+    const httpApp = express();
+    httpApp.use((req, res) => {
+      res.redirect(301, `https://redme.cfd${req.url}`);
+    });
+    http.createServer(httpApp).listen(80, () => {
+      console.log('🔄 خادم إعادة التوجيه يعمل على المنفذ 80');
+    });
+
+    return server;
+  } else {
+    // تشغيل بدون SSL
+    return app.listen(PORT, HOST, () => {
+      console.log('🚀 الخادم يعمل بنجاح!');
+      console.log(`🌐 النطاق: http://redme.cfd:${PORT}`);
+      console.log('💡 ملاحظة: الخادم يعمل بدون SSL');
+      console.log('   للحصول على SSL، قم بتثبيت شهادة Let\'s Encrypt');
+    });
+  }
+}
+
+// بدء الخادم
+const server = startServer();
