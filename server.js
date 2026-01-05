@@ -92,8 +92,7 @@ app.use(cors({
     'https://www.redme.cfd',
     'http://www.redme.cfd',
     'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    '*', // السماح بالاتصال من أي أصل مؤقتًا
+    'http://127.0.0.1:3000'
   ],
   credentials: true
 }))
@@ -135,7 +134,7 @@ function isLocalRequest(req) {
   }
 }
 
-// ======== شاء مجلد التصدير ========
+// ======== إنشاء مجلد التصدير ========
 const exportsDir = path.join(__dirname, 'exports');
 if (!fs.existsSync(exportsDir)) {
   fs.mkdirSync(exportsDir, { recursive: true });
@@ -495,7 +494,7 @@ function renderLoginPageHTML(req, res, message = '') {
     <body>
       <div class="card">
         <h3 style="text-align:center;margin:0 0 12px 0">تسجيل الدخول إلى لوحة الإدارة</h3>
-        <form method="post" action="/admin/login">
+        <form method="post" action="/login">
           <label for="username">اسم المستخدم</label>
           <input id="username" name="username" type="text" required>
           <label for="password">كلمة المرور</label>
@@ -2451,14 +2450,6 @@ app.delete('/api/gift-cards/:id', (req, res) => {
 });
 
 // ======== API معالجة الدفع - محدث بدعم طرق الدفع المختلفة ========
-// Route for handling GET requests to process-payment (Debugging only)
-app.get('/api/process-payment', (req, res) => {
-  res.status(405).json({
-    status: 'error',
-    message: 'خطأ: وصلت الطريقة GET بدلاً من POST. ربما حدث إعادة توجيه (Redirect). تأكد من استخدام الرابط الصحيح: https://www.redme.cfd'
-  });
-});
-
 app.post('/api/process-payment', (req, res) => {
   const {
     cart_items,
