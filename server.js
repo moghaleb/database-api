@@ -5428,6 +5428,103 @@ app.delete('/api/clear-all-data', (req, res) => {
   });
 });
 
+// ======== مسارات الدفع والطلبات الجديدة ========
+
+// معالجة الدفع وإنشاء طلب جديد
+app.post('/api/process-payment', (req, res) => {
+  const {
+    items,
+    totalAmount,
+    discountAmount,
+    couponCode,
+    couponType,
+    giftCardNumber,
+    giftCardAmount,
+    customerName,
+    customerPhone,
+    customerEmail,
+    paymentMethod,
+    address,
+    transactionId
+  } = req.body;
+
+  const orderNumber = 'ORD-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+  const orderDate = new Date().toISOString();
+  const status = 'pending';
+
+  // التحقق من البيانات
+  if (!items || items.length === 0) {
+    return res.status(400).json({ status: 'error', message: 'السلة فارغة' });
+  }
+
+  const cartItemsStr = JSON.stringify(items);
+  const addressStr = typeof address === 'object' ? JSON.stringify(address) : address;
+
+  db.run(`INSERT INTO orders (
+      order_number, cart_items, total_amount, discount_amount, coupon_code,
+      coupon_type, gift_card_number, gift_card_amount, gift_card_type, order_date, order_status,
+      customer_name, customer_phone, customer_email, payment_method, 
+      customer_address, transfer_number
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      orderNumber,
+      cartItemsStr,
+      totalAmount,
+      discountAmount || 0,
+      couponCode || null,
+      couponType || null,
+      giftCardNumber || null,
+      giftCardAmount || 0,
+      giftCardNumber ? 'gift_card' : null,
+      orderDate,
+      status,
+      customerName || 'عميل',
+      customerPhone || '',
+      customerEmail || '',
+      paymentMethod || 'online',
+      addressStr || '',
+      transactionId || ''
+    ], function (err) {
+      if (err) {
+        console.error('❌ خطأ في إنشاء الطلب:', err);
+        return res.status(500).json({ status: 'error', message: err.message });
+      }
+
+      const orderId = this.lastID;
+
+      console.log('✅ تم إنشاء طلب جديد:', orderId, orderNumber);
+      res.json({
+        status: 'success',
+        message: 'تم إنشاء الطلب بنجاح',
+        order_id: orderId,
+        order_number: orderNumber
+      });
+    });
+});
+
+// جلب جميع الطلبات
+app.get('/api/orders', (req, res) => {
+  db.all('SELECT * FROM orders ORDER BY created_at DESC', (err, rows) => {
+    if (err) {
+      return res.status(500).json({ status: 'error', message: err.message });
+    }
+    res.json({ status: 'success', orders: rows });
+  });
+});
+
+// تحديث حالة الطلب
+app.put('/api/orders/:id/status', (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  db.run('UPDATE orders SET order_status = ? WHERE id = ?', [status, id], function (err) {
+    if (err) {
+      return res.status(500).json({ status: 'error', message: err.message });
+    }
+    res.json({ status: 'success', message: 'تم تحديث حالة الطلب' });
+  });
+});
+
 // معالجة الأخطاء
 app.use((err, req, res, next) => {
   console.error('❌ خطأ غير متوقع:', err);
