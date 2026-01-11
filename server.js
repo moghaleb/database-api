@@ -5605,37 +5605,15 @@ app.use((req, res) => {
 });
 
 // بدء الخادم
+// بدء الخادم
 function startServer() {
-  if (useSSL && sslOptions) {
-    const https = require('https');
-    const server = https.createServer(sslOptions, app);
-
-    server.listen(PORT, HOST, () => {
-      console.log('🚀 الخادم يعمل بنجاح مع SSL!');
-      console.log(`🌐 النطاق الآمن: https://redme.cfd:${PORT}`);
-      console.log(`🔒 تم تفعيل HTTPS بنجاح`);
-    });
-
-    // إعادة توجيه HTTP إلى HTTPS
-    const http = require('http');
-    const httpApp = express();
-    httpApp.use((req, res) => {
-      res.redirect(301, `https://redme.cfd${req.url}`);
-    });
-    http.createServer(httpApp).listen(80, () => {
-      console.log('🔄 خادم إعادة التوجيه يعمل على المنفذ 80');
-    });
-
-    return server;
-  } else {
-    // تشغيل بدون SSL
-    return app.listen(PORT, HOST, () => {
-      console.log('🚀 الخادم يعمل بنجاح!');
-      console.log(`🌐 النطاق: http://redme.cfd:${PORT}`);
-      console.log('💡 ملاحظة: الخادم يعمل بدون SSL');
-      console.log('   للحصول على SSL، قم بتثبيت شهادة Let\'s Encrypt');
-    });
-  }
+  // تشغيل الخادم على المنفذ المحدد (عادةً 3000)
+  // نترك مهمة SSL و HTTPS لـ Nginx فقط
+  return app.listen(PORT, HOST, () => {
+    console.log('🚀 الخادم يعمل بنجاح!');
+    console.log(`🌐 النطاق الداخلي: http://${HOST}:${PORT}`);
+    console.log('🔒 ملاحظة: الأمان (SSL) يتم إدارته بواسطة Nginx.');
+  });
 }
 
 // بدء الخادم
