@@ -1327,7 +1327,464 @@ app.post('/api/rebuild-products-tables', (req, res) => {
   });
 });
 
-// ======== صفحة إدارة المنتجات تم حذفها بناء على الطلب ========
+// ======== صفحة إدارة المنتجات المحدثة ========
+app.get('/admin/products', (req, res) => {
+  // التحقق من المصادقة أولاً
+  if (!isAuthenticated(req)) {
+    return res.redirect('/admin/login');
+  }
+
+  const html = `
+  <!DOCTYPE html>
+  <html dir="rtl">
+  <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>إدارة الفئات والعطور - نظام المتجر</title>
+      <style>
+          body { 
+              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+              margin: 0; 
+              padding: 20px; 
+              background: #f0f2f5; 
+              min-height: 100vh; 
+          }
+          .container { 
+              max-width: 1400px; 
+              margin: 0 auto; 
+          }
+          .header { 
+              background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%); 
+              color: white; 
+              padding: 30px; 
+              border-radius: 15px; 
+              margin-bottom: 20px; 
+              text-align: center; 
+              position: relative; 
+          }
+          .nav { 
+              display: flex; 
+              gap: 10px; 
+              margin-bottom: 20px; 
+              flex-wrap: wrap; 
+          }
+          .nav-btn { 
+              background: #fff; 
+              padding: 10px 20px; 
+              border: none; 
+              border-radius: 25px; 
+              text-decoration: none; 
+              color: #333; 
+              box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
+              transition: all 0.3s; 
+          }
+          .nav-btn:hover { 
+              background: #2196F3; 
+              color: white; 
+              transform: translateY(-2px); 
+          }
+          .logout-btn { 
+              position: absolute; 
+              left: 20px; 
+              top: 20px; 
+              background: #f44336; 
+              color: white; 
+              padding: 10px 20px; 
+              border: none; 
+              border-radius: 25px; 
+              text-decoration: none; 
+          }
+          .loading { 
+              text-align: center; 
+              padding: 50px; 
+              color: #666; 
+          }
+          .error { 
+              background: #ffebee; 
+              color: #c62828; 
+              padding: 15px; 
+              border-radius: 8px; 
+              margin: 10px 0; 
+          }
+          .stats-grid { 
+              display: grid; 
+              grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+              gap: 15px; 
+              margin-bottom: 20px; 
+          }
+          .stat-card { 
+              background: white; 
+              padding: 20px; 
+              border-radius: 10px; 
+              text-align: center; 
+              box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
+          }
+          .category-grid { 
+              display: grid; 
+              grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); 
+              gap: 15px; 
+              margin-bottom: 20px;
+          }
+          .category-card { 
+              background: white; 
+              padding: 20px; 
+              border-radius: 10px; 
+              box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+              border-left: 4px solid #2196F3;
+          }
+          .btn { 
+              padding: 8px 16px; 
+              border: none; 
+              border-radius: 8px; 
+              cursor: pointer; 
+              text-decoration: none; 
+              display: inline-flex; 
+              align-items: center; 
+              gap: 8px; 
+              transition: all 0.3s; 
+              font-weight: 500; 
+              margin: 5px;
+          }
+          .btn-primary { 
+              background: #2196F3; 
+              color: white; 
+          }
+          .btn-success { 
+              background: #4CAF50; 
+              color: white; 
+          }
+          .modal { 
+              position: fixed; 
+              top: 0; 
+              left: 0; 
+              width: 100%; 
+              height: 100%; 
+              background: rgba(0,0,0,0.5); 
+              display: none; 
+              align-items: center; 
+              justify-content: center; 
+              z-index: 1000; 
+          }
+          .modal-content { 
+              background: white; 
+              padding: 30px; 
+              border-radius: 15px; 
+              width: 90%; 
+              max-width: 600px; 
+              max-height: 80vh; 
+              overflow-y: auto; 
+          }
+          .form-group { 
+              margin-bottom: 15px; 
+          }
+          .form-label { 
+              display: block; 
+              margin-bottom: 5px; 
+              font-weight: bold; 
+              color: #333; 
+          }
+          .form-control { 
+              width: 100%; 
+              padding: 8px 12px; 
+              border: 1px solid #ddd; 
+              border-radius: 5px; 
+              font-size: 14px; 
+          }
+      </style>
+  </head>
+  <body>
+      <div class="container">
+          <div class="header">
+              <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
+              <h1 style="margin: 0;">🛍️ إدارة الفئات والعطور</h1>
+              <p style="margin: 10px 0 0 0; opacity: 0.9;">إدارة كتالوج المنتجات والعطور</p>
+          </div>
+
+          <div class="nav">
+              <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
+              <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
+              <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
+              <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
+              <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
+              <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
+              <a href="/" class="nav-btn">🏠 الرئيسية</a>
+          </div>
+
+          <div id="app">
+              <div class="loading">
+                  <h3>🔄 جاري تحميل البيانات...</h3>
+                  <p>يرجى الانتظار أثناء تحميل صفحة إدارة المنتجات</p>
+              </div>
+          </div>
+      </div>
+
+      <!-- Modal إضافة فئة -->
+      <div id="addCategoryModal" class="modal">
+          <div class="modal-content">
+              <span class="close" onclick="closeModal('addCategoryModal')" style="float: left; font-size: 28px; cursor: pointer; color: #666;">&times;</span>
+              <h2>إضافة فئة جديدة</h2>
+              <form id="addCategoryForm">
+                  <div class="form-group">
+                      <label class="form-label">الاسم بالعربية *</label>
+                      <input type="text" name="name_ar" class="form-control" required>
+                  </div>
+                  <div class="form-group">
+                      <label class="form-label">الاسم بالإنجليزية *</label>
+                      <input type="text" name="name_en" class="form-control" required>
+                  </div>
+                  <div class="form-group">
+                      <label class="form-label">الوصف</label>
+                      <textarea name="description" class="form-control" rows="3"></textarea>
+                  </div>
+                  <div class="form-group">
+                      <label class="form-label">رابط الصورة</label>
+                      <input type="text" name="image" class="form-control">
+                  </div>
+                  <div class="form-group">
+                      <label class="form-label">ترتيب العرض</label>
+                      <input type="number" name="sort_order" class="form-control" value="0">
+                  </div>
+                  <div class="form-group">
+                      <label style="display: flex; align-items: center; gap: 8px;">
+                          <input type="checkbox" name="is_active" checked>
+                          <span>تفعيل الفئة</span>
+                      </label>
+                  </div>
+                  <div style="display: flex; gap: 10px;">
+                      <button type="submit" class="btn btn-success" style="flex: 1;">💾 حفظ</button>
+                      <button type="button" class="btn" style="background: #6c757d; color: white;" onclick="closeModal('addCategoryModal')">إلغاء</button>
+                  </div>
+              </form>
+          </div>
+      </div>
+
+      <script>
+          async function loadPage() {
+              try {
+                  // تحميل الإحصائيات
+                  const statsResponse = await fetch('/api/perfumes-stats');
+                  const statsData = await statsResponse.json();
+                  
+                  // تحميل الفئات
+                  const categoriesResponse = await fetch('/api/categories');
+                  const categoriesData = await categoriesResponse.json();
+                  
+                  if (statsData.status === 'success' && categoriesData.status === 'success') {
+                      renderPage(statsData.stats, categoriesData.categories);
+                  } else {
+                      showError('فشل في تحميل البيانات');
+                  }
+              } catch (error) {
+                  console.error('Error loading page:', error);
+                  showError('حدث خطأ في تحميل الصفحة: ' + error.message);
+              }
+          }
+
+          function renderPage(stats, categories) {
+              const app = document.getElementById('app');
+              app.innerHTML = \`
+                  <div class="stats-grid">
+                      <div class="stat-card">
+                          <div style="font-size: 24px; font-weight: bold; color: #2196F3;">\${stats.total || 0}</div>
+                          <div style="font-size: 14px; color: #666;">إجمالي العطور</div>
+                      </div>
+                      <div class="stat-card">
+                          <div style="font-size: 24px; font-weight: bold; color: #4CAF50;">\${stats.active || 0}</div>
+                          <div style="font-size: 14px; color: #666;">عطور نشطة</div>
+                      </div>
+                      <div class="stat-card">
+                          <div style="font-size: 24px; font-weight: bold; color: #FF9800;">\${stats.in_stock || 0}</div>
+                          <div style="font-size: 14px; color: #666;">متوفرة بالمخزون</div>
+                      </div>
+                      <div class="stat-card">
+                          <div style="font-size: 24px; font-weight: bold; color: #9C27B0;">\${stats.total_stock || 0}</div>
+                          <div style="font-size: 14px; color: #666;">إجمالي المخزون</div>
+                      </div>
+                  </div>
+
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                      <h2 style="margin: 0;">الفئات المتاحة (\${categories.length})</h2>
+                      <button class="btn btn-success" onclick="showAddCategoryModal()">+ إضافة فئة جديدة</button>
+                  </div>
+
+                  <div class="category-grid">
+                      \${categories.map(category => \`
+                          <div class="category-card">
+                              <h3 style="margin: 0 0 10px 0;">\${category.name_ar}</h3>
+                              <p style="margin: 0; color: #666;">\${category.name_en}</p>
+                              \${category.description ? \`<p style="margin: 10px 0; color: #888;">\${category.description}</p>\` : ''}
+                              
+                              <div style="display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap;">
+                                  <button class="btn btn-primary" onclick="viewCategoryPerfumes(\${category.id})">عرض العطور</button>
+                                  <button class="btn" style="background: \${category.is_active ? '#ff9800' : '#4CAF50'}; color: white;" 
+                                          onclick="toggleCategoryStatus(\${category.id}, \${category.is_active ? 0 : 1})">
+                                      \${category.is_active ? '❌ إيقاف' : '✅ تفعيل'}
+                                  </button>
+                                  <button class="btn" style="background: #f44336; color: white;" 
+                                          onclick="deleteCategory(\${category.id})">🗑️ حذف</button>
+                              </div>
+                              
+                              <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                                  <span style="background: #e3f2fd; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
+                                      الترتيب: \${category.sort_order}
+                                  </span>
+                                  <span style="background: \${category.is_active ? '#e8f5e8' : '#ffebee'}; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
+                                      \${category.is_active ? '✅ نشط' : '❌ غير نشط'}
+                                  </span>
+                              </div>
+                          </div>
+                      \`).join('')}
+                  </div>
+
+                  <div style="text-align: center; margin-top: 30px;">
+                      <button class="btn btn-primary" onclick="loadAllPerfumes()" style="padding: 12px 30px; font-size: 16px;">
+                          🛍️ عرض جميع العطور
+                      </button>
+                      <button class="btn" style="background: #607d8b; color: white;" onclick="checkDatabase()">
+                          🔍 فحص قاعدة البيانات
+                      </button>
+                  </div>
+              \`;
+          }
+
+          function showError(message) {
+              const app = document.getElementById('app');
+              app.innerHTML = \`<div class="error">\${message}</div>\`;
+          }
+
+          function showAddCategoryModal() {
+              document.getElementById('addCategoryModal').style.display = 'flex';
+          }
+
+          function closeModal(modalId) {
+              document.getElementById(modalId).style.display = 'none';
+          }
+
+          async function viewCategoryPerfumes(categoryId) {
+              try {
+                  const response = await fetch(\`/api/categories/\${categoryId}/perfumes\`);
+                  const data = await response.json();
+                  
+                  if (data.status === 'success') {
+                      const perfumesList = data.perfumes.map(perfume => \`
+                          <div style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 8px;">
+                              <h4>\${perfume.name_ar}</h4>
+                              <p>السعر: \${perfume.price} ر.س</p>
+                              <p>المخزون: \${perfume.stock_quantity}</p>
+                              <button class="btn btn-primary" onclick="editPerfume(\${perfume.id})">تعديل</button>
+                          </div>
+                      \`).join('');
+                      
+                      alert('عطور الفئة: \\n' + data.perfumes.map(p => p.name_ar).join('\\n'));
+                  }
+              } catch (error) {
+                  alert('خطأ في تحميل العطور: ' + error.message);
+              }
+          }
+
+          function loadAllPerfumes() {
+              // تنفيذ عرض جميع العطور
+              window.location.href = '/admin/products?view=all';
+          }
+
+          async function checkDatabase() {
+              try {
+                  const response = await fetch('/api/check-products-tables');
+                  const data = await response.json();
+                  alert('حالة الجداول: ' + JSON.stringify(data.tables, null, 2));
+              } catch (error) {
+                  alert('خطأ في فحص قاعدة البيانات: ' + error.message);
+              }
+          }
+
+          // إدارة الفئات
+          document.getElementById('addCategoryForm').addEventListener('submit', async function(e) {
+              e.preventDefault();
+              const formData = new FormData(this);
+              const data = Object.fromEntries(formData.entries());
+              
+              data.is_active = data.is_active ? 1 : 0;
+              data.sort_order = parseInt(data.sort_order);
+              
+              try {
+                  const response = await fetch('/api/categories', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(data)
+                  });
+                  
+                  const result = await response.json();
+                  
+                  if (result.status === 'success') {
+                      alert('✅ ' + result.message);
+                      closeModal('addCategoryModal');
+                      loadPage();
+                  } else {
+                      alert('❌ ' + result.message);
+                  }
+              } catch (error) {
+                  alert('❌ حدث خطأ: ' + error);
+              }
+          });
+
+          async function toggleCategoryStatus(id, newStatus) {
+              try {
+                  const response = await fetch(\`/api/categories/\${id}\`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ is_active: newStatus })
+                  });
+                  
+                  const result = await response.json();
+                  
+                  if (result.status === 'success') {
+                      alert('✅ ' + result.message);
+                      loadPage();
+                  } else {
+                      alert('❌ ' + result.message);
+                  }
+              } catch (error) {
+                  alert('❌ حدث خطأ: ' + error);
+              }
+          }
+
+          async function deleteCategory(id) {
+              if (confirm('⚠️ هل أنت متأكد من حذف هذه الفئة؟')) {
+                  try {
+                      const response = await fetch(\`/api/categories/\${id}\`, { 
+                          method: 'DELETE' 
+                      });
+                      
+                      const result = await response.json();
+                      
+                      if (result.status === 'success') {
+                          alert('✅ ' + result.message);
+                          loadPage();
+                      } else {
+                          alert('❌ ' + result.message);
+                      }
+                  } catch (error) {
+                      alert('❌ حدث خطأ: ' + error);
+                  }
+              }
+          }
+
+          // تحميل الصفحة عند البدء
+          loadPage();
+
+          // إغلاق المودال عند النقر خارج المحتوى
+          window.onclick = function(event) {
+              if (event.target.classList.contains('modal')) {
+                  event.target.style.display = 'none';
+              }
+          }
+      </script>
+  </body>
+  </html>
+  `;
+
+  res.send(html);
+});
 
 // ======== باقي الـ APIs والمسارات (بدون تغيير) ========
 
@@ -4971,100 +5428,161 @@ app.delete('/api/clear-all-data', (req, res) => {
   });
 });
 
-// ======== مسارات الدفع والطلبات الجديدة ========
-
-// معالجة الدفع وإنشاء طلب جديد
+// ======== API معالجة الدفع ========
 app.post('/api/process-payment', (req, res) => {
+  console.log('📝 استلام طلب دفع جديد:', req.body);
+
+  // استخراج البيانات من الطلب
   const {
-    items,
-    totalAmount,
-    discountAmount,
-    couponCode,
-    couponType,
-    giftCardNumber,
-    giftCardAmount,
-    customerName,
-    customerPhone,
-    customerEmail,
-    paymentMethod,
-    address,
-    transactionId
+    cart_items,
+    total_amount,
+    coupon_code,
+    coupon_type,
+    discount_amount,
+    gift_card_number,
+    gift_card_type,
+    gift_card_amount,
+    customer_name,
+    customer_phone,
+    customer_email,
+    customer_secondary_phone,
+    payment_method,
+    transfer_name,
+    transfer_number,
+    customer_address,
+    address_city,
+    address_area,
+    address_detail,
+    shipping_city,
+    shipping_area,
+    shipping_fee,
+    final_amount,
+    order_notes,
+    expected_delivery,
+    items_count,
+    shipping_type
   } = req.body;
 
-  const orderNumber = 'ORD-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-  const orderDate = new Date().toISOString();
-  const status = 'pending';
-
-  // التحقق من البيانات
-  if (!items || items.length === 0) {
-    return res.status(400).json({ status: 'error', message: 'السلة فارغة' });
+  // التحقق من البيانات الأساسية
+  if (!cart_items || cart_items.length === 0) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'سلة المشتريات فارغة'
+    });
   }
 
-  const cartItemsStr = JSON.stringify(items);
-  const addressStr = typeof address === 'object' ? JSON.stringify(address) : address;
+  // إنشاء رقم طلب فريد
+  const order_number = 'ORD-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+  const order_date = new Date().toISOString();
 
-  db.run(`INSERT INTO orders (
-      order_number, cart_items, total_amount, discount_amount, coupon_code,
-      coupon_type, gift_card_number, gift_card_amount, gift_card_type, order_date, order_status,
-      customer_name, customer_phone, customer_email, payment_method, 
-      customer_address, transfer_number
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      orderNumber,
-      cartItemsStr,
-      totalAmount,
-      discountAmount || 0,
-      couponCode || null,
-      couponType || null,
-      giftCardNumber || null,
-      giftCardAmount || 0,
-      giftCardNumber ? 'gift_card' : null,
-      orderDate,
-      status,
-      customerName || 'عميل',
-      customerPhone || '',
-      customerEmail || '',
-      paymentMethod || 'online',
-      addressStr || '',
-      transactionId || ''
-    ], function (err) {
-      if (err) {
-        console.error('❌ خطأ في إنشاء الطلب:', err);
-        return res.status(500).json({ status: 'error', message: err.message });
-      }
+  // تجهيز بيانات الطلب للإدراج
+  const orderData = [
+    order_number,
+    JSON.stringify(cart_items),
+    total_amount || 0,
+    discount_amount || 0,
+    coupon_code || null,
+    coupon_type || null,
+    gift_card_number || null,
+    gift_card_type || null,
+    gift_card_amount || 0,
+    order_date,
+    'pending', // حالة الطلب الأولية
+    customer_name,
+    customer_phone,
+    customer_email,
+    customer_secondary_phone,
+    payment_method || 'online',
+    transfer_name,
+    transfer_number,
+    customer_address,
+    address_city,
+    address_area,
+    address_detail,
+    shipping_city,
+    shipping_area,
+    shipping_fee || 0,
+    final_amount || total_amount,
+    order_notes,
+    expected_delivery,
+    items_count || cart_items.length,
+    shipping_type || 'home_delivery'
+  ];
 
-      const orderId = this.lastID;
+  // إدراج الطلب في قاعدة البيانات
+  const sql = `
+        INSERT INTO orders (
+            order_number, cart_items, total_amount, discount_amount, 
+            coupon_code, coupon_type, gift_card_number, gift_card_type, gift_card_amount,
+            order_date, order_status, customer_name, customer_phone, customer_email, 
+            customer_secondary_phone, payment_method, transfer_name, transfer_number,
+            customer_address, address_city, address_area, address_detail,
+            shipping_city, shipping_area, shipping_fee, final_amount,
+            order_notes, expected_delivery, items_count, shipping_type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
 
-      console.log('✅ تم إنشاء طلب جديد:', orderId, orderNumber);
-      res.json({
-        status: 'success',
-        message: 'تم إنشاء الطلب بنجاح',
-        order_id: orderId,
-        order_number: orderNumber
+  db.run(sql, orderData, function (err) {
+    if (err) {
+      console.error('❌ خطأ في حفظ الطلب:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: 'حدث خطأ أثناء حفظ الطلب: ' + err.message
       });
+    }
+
+    const orderId = this.lastID;
+    console.log(`✅ تم حفظ الطلب بنجاح. رقم الطلب: ${order_number}, المعرف: ${orderId}`);
+
+    // حفظ تفاصيل المنتجات في جدول order_items
+    if (Array.isArray(cart_items)) {
+      const itemStmt = db.prepare(`
+                INSERT INTO order_items (
+                    order_id, product_id, product_name, quantity, price, total_price, product_url
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            `);
+
+      cart_items.forEach(item => {
+        // التعامل مع اختلاف هياكل البيانات المحتملة
+        const productId = item.id || item.product_id;
+        const name = item.name || item.title || 'منتج غير معروف';
+        const qty = item.quantity || 1;
+        const price = item.price || 0;
+        const total = item.total_price || (price * qty);
+        const url = item.product_url || item.image || '';
+
+        itemStmt.run(orderId, productId, name, qty, price, total, url);
+      });
+      itemStmt.finalize();
+    }
+
+    // تحديث عدد مرات استخدام الكوبون إذا وجد
+    if (coupon_code) {
+      db.run('UPDATE coupons SET used_count = used_count + 1 WHERE code = ?', [coupon_code]);
+    }
+
+    // تحديث رصيد القسيمة إذا وجدت
+    if (gift_card_number && gift_card_amount > 0) {
+      db.run('UPDATE gift_cards SET current_balance = current_balance - ?, used_count = used_count + 1, used_amount = used_amount + ? WHERE card_number = ?',
+        [gift_card_amount, gift_card_amount, gift_card_number]);
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'تم استلام الطلب بنجاح',
+      order_id: orderId,
+      order_number: order_number
     });
+  });
 });
 
-// جلب جميع الطلبات
+// API جلب جميع الطلبات
 app.get('/api/orders', (req, res) => {
-  db.all('SELECT * FROM orders ORDER BY created_at DESC', (err, rows) => {
+  db.all('SELECT * FROM orders ORDER BY created_at DESC', [], (err, rows) => {
     if (err) {
       return res.status(500).json({ status: 'error', message: err.message });
     }
     res.json({ status: 'success', orders: rows });
-  });
-});
-
-// تحديث حالة الطلب
-app.put('/api/orders/:id/status', (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body;
-
-  db.run('UPDATE orders SET order_status = ? WHERE id = ?', [status, id], function (err) {
-    if (err) {
-      return res.status(500).json({ status: 'error', message: err.message });
-    }
-    res.json({ status: 'success', message: 'تم تحديث حالة الطلب' });
   });
 });
 
@@ -5120,5 +5638,5 @@ function startServer() {
   }
 }
 
-// بدء الخادمبيبي
+// بدء الخادم
 const server = startServer();
