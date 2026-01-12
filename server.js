@@ -95,7 +95,7 @@ app.use(cors({
     'http://127.0.0.1:3000',
     // أضف هنا مصدر التطبيق إذا كان مختلفًا
     'capacitor://localhost',  // لتطبيقات Capacitor
-    'ionic://localhost'       # لتطبيقات Ionic
+    'ionic://localhost',       
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
