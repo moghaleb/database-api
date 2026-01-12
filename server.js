@@ -92,10 +92,16 @@ app.use(cors({
     'https://www.redme.cfd',
     'http://www.redme.cfd',
     'http://localhost:3000',
-    'http://127.0.0.1:3000'
+    'http://127.0.0.1:3000',
+    // أضف هنا مصدر التطبيق إذا كان مختلفًا
+    'capacitor://localhost',  // لتطبيقات Capacitor
+    'ionic://localhost'       # لتطبيقات Ionic
   ],
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }))
+
 app.use(express.json());
 const SESSION_SECRET = process.env.SESSION_SECRET || 'redshe_shop_production_secret_2024_change_this';
 app.use(cookieParser(SESSION_SECRET));
