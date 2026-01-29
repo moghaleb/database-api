@@ -3356,7 +3356,7 @@ app.get('/api/export-sales', async (req, res) => {
 
       detailsSheet.addRow({
         order_number: order.order_number,
-        order_date: new Date(order.order_date).toLocaleString('ar-SA'),
+        order_date: new Date(order.order_date).toLocaleString('en-GB'),
         customer_name: order.customer_name,
         customer_phone: order.customer_phone,
         customer_secondary_phone: order.customer_secondary_phone || '',
@@ -3567,7 +3567,7 @@ app.get('/api/export-all-sales', async (req, res) => {
 
       worksheet.addRow({
         order_number: order.order_number,
-        order_date: new Date(order.order_date).toLocaleString('ar-SA'),
+        order_date: new Date(order.order_date).toLocaleString('en-GB'),
         customer_name: order.customer_name,
         customer_phone: order.customer_phone,
         address_city: order.address_city || '',
