@@ -3920,6 +3920,7 @@ app.get('/admin/orders', (req, res) => {
             .empty-state { text-align: center; padding: 60px; color: #666; background: white; border-radius: 15px; }
             .customer-info { background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
             .export-section { background: white; padding: 25px; border-radius: 15px; margin-bottom: 30px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+            .orders-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; }
             .export-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px; }
             .form-group { display: flex; flex-direction: column; }
             .form-label { margin-bottom: 5px; font-weight: 600; color: #333; }
@@ -3958,6 +3959,44 @@ app.get('/admin/orders', (req, res) => {
             </div>
 
             <!-- قسم تصدير المبيعات -->
+            <!-- قسم الطلبات المكتملة -->
+            <div class="export-section" style="background: #e8f5e8; border-right: 4px solid #4CAF50;">
+                <h3 style="margin: 0 0 20px 0; color: #2e7d32;">✅ الطلبات المكتملة</h3>
+                <div id="completed-orders" class="orders-container">
+                    ${rows.filter(o => o.order_status === 'completed').map(order => {
+                        const items = JSON.parse(order.cart_items);
+                        return `
+                        <div class="order-card" style="border-right-color: #4CAF50;">
+                            <div class="order-header">
+                                <div>
+                                    <span class="order-number">${order.order_number}</span>
+                                    <span class="order-status status-completed" style="margin-right: 10px;">مكتمل</span>
+                                </div>
+                                <div style="color: #666; font-size: 14px;">
+                                    ${new Date(order.order_date).toLocaleString('ar-SA')}
+                                </div>
+                            </div>
+                            <div class="customer-info">
+                                <strong>معلومات العميل:</strong><br>
+                                الاسم: ${order.customer_name || 'غير محدد'} |
+                                الهاتف: ${order.customer_phone || 'غير محدد'}
+                            </div>
+                            <div class="order-details">
+                                <div class="detail-item">
+                                    <strong>المجموع النهائي:</strong> ${(order.final_amount || (order.total_amount - order.discount_amount - order.gift_card_amount + parseFloat(order.shipping_fee || 0))).toFixed(2)} ر.س
+                                </div>
+                                <div class="detail-item">
+                                    <strong>عدد العناصر:</strong> ${items.length}
+                                </div>
+                            </div>
+                        </div>
+                        `;
+                    }).join('')}
+                </div>
+                ${rows.filter(o => o.order_status === 'completed').length === 0 ? 
+                    '<div style="text-align: center; padding: 20px; color: #666;">لا توجد طلبات مكتملة حالياً</div>' : ''}
+            </div>
+
             <div class="export-section">
                 <h3 style="margin: 0 0 20px 0; color: #333;">📈 تصدير تقارير المبيعات</h3>
                 
@@ -4008,10 +4047,6 @@ app.get('/admin/orders', (req, res) => {
                     <div class="stat-number" style="color: #2196F3;">${rows.length}</div>
                     <div class="stat-label">إجمالي الطلبات</div>
                 </div>
-                <div class="stat-card" style="border-right: 4px solid #4CAF50;">
-                    <div class="stat-number" style="color: #4CAF50;">${rows.filter(o => o.order_status === 'completed').length}</div>
-                    <div class="stat-label">طلبات مكتملة</div>
-                </div>
                 <div class="stat-card" style="border-right: 4px solid #ff9800;">
                     <div class="stat-number" style="color: #ff9800;">${rows.filter(o => o.order_status === 'pending').length}</div>
                     <div class="stat-label">طلبات pending</div>
@@ -4019,6 +4054,10 @@ app.get('/admin/orders', (req, res) => {
                 <div class="stat-card" style="border-right: 4px solid #8e24aa;">
                     <div class="stat-number" style="color: #8e24aa;">${rows.filter(o => o.order_status === 'confirmed').length}</div>
                     <div class="stat-label">الطلبات المؤكدة</div>
+                </div>
+                <div class="stat-card" style="border-right: 4px solid #4CAF50;">
+                    <div class="stat-number" style="color: #4CAF50;">${rows.filter(o => o.order_status === 'completed').length}</div>
+                    <div class="stat-label">الطلبات المكتملة</div>
                 </div>
                 <div class="stat-card" style="border-right: 4px solid #6c757d;">
                     <div class="stat-number" style="color: #6c757d;">${rows.reduce((sum, order) => sum + parseFloat(order.total_amount), 0).toFixed(2)} ر.س</div>
