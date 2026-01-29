@@ -4042,6 +4042,12 @@ app.get('/admin/confirmed-orders', (req, res) => {
                     <div class="stat-label">إجمالي المبيعات المؤكدة</div>
                 </div>
             </div>
+
+            <div style="text-align: center; margin-bottom: 30px;">
+                <button onclick="exportConfirmedSales()" class="btn btn-success" style="padding: 12px 30px; font-size: 1.1em; box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);">
+                    📊 تصدير الطلبات المؤكدة (Excel)
+                </button>
+            </div>
     `;
 
     if (rows.length === 0) {
