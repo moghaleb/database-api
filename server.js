@@ -2840,7 +2840,41 @@ app.post('/api/process-payment', (req, res) => {
     });
 });
 
-// API جلب تفاصيل الطلب
+// API جلب تفاصيل طلب محدد (للمزامنة)
+app.get('/api/orders/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.get('SELECT * FROM orders WHERE id = ?', [id], (err, order) => {
+    if (err) {
+      console.error('❌ خطأ في جلب بيانات الطلب:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+
+    if (!order) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'الطلب غير موجود'
+      });
+    }
+
+    // تحليل عناصر الطلب
+    try {
+      order.cart_items = JSON.parse(order.cart_items);
+    } catch (e) {
+      order.cart_items = [];
+    }
+
+    res.json({
+      status: 'success',
+      order: order
+    });
+  });
+});
+
+// API جلب تفاصيل عناصر الطلب
 app.get('/api/orders/:id/items', (req, res) => {
   const { id } = req.params;
 
