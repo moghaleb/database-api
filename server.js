@@ -4522,6 +4522,7 @@ app.get('/admin/orders', (req, res) => {
       `;
     } else {
       rows.forEach(order => {
+        if (order.order_status === 'confirmed') return;
         const items = JSON.parse(order.cart_items);
         const statusClass = `status-${order.order_status}`;
         const statusText = {
