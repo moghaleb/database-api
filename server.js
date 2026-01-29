@@ -3157,6 +3157,7 @@ app.delete('/api/coupons/:id', (req, res) => {
 function getOrderStatusText(status) {
   const statusMap = {
     'pending': 'قيد الانتظار',
+    'confirmed': 'مؤكد',
     'completed': 'مكتمل',
     'cancelled': 'ملغي'
   };
@@ -3904,6 +3905,7 @@ app.get('/admin/orders', (req, res) => {
             .order-number { background: #ff6b6b; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; }
             .order-status { padding: 6px 12px; border-radius: 15px; font-size: 14px; font-weight: bold; }
             .status-pending { background: #fff3cd; color: #856404; }
+            .status-confirmed { background: #e1bee7; color: #6a1b9a; }
             .status-completed { background: #d1ecf1; color: #0c5460; }
             .status-cancelled { background: #f8d7da; color: #721c24; }
             .order-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
@@ -3977,6 +3979,7 @@ app.get('/admin/orders', (req, res) => {
                         <select name="order_status" class="form-control">
                             <option value="all">جميع الحالات</option>
                             <option value="pending">قيد الانتظار</option>
+                            <option value="confirmed">مؤكد</option>
                             <option value="completed">مكتمل</option>
                             <option value="cancelled">ملغي</option>
                         </select>
@@ -4013,6 +4016,10 @@ app.get('/admin/orders', (req, res) => {
                     <div class="stat-number" style="color: #ff9800;">${rows.filter(o => o.order_status === 'pending').length}</div>
                     <div class="stat-label">طلبات pending</div>
                 </div>
+                <div class="stat-card" style="border-right: 4px solid #8e24aa;">
+                    <div class="stat-number" style="color: #8e24aa;">${rows.filter(o => o.order_status === 'confirmed').length}</div>
+                    <div class="stat-label">الطلبات المؤكدة</div>
+                </div>
                 <div class="stat-card" style="border-right: 4px solid #6c757d;">
                     <div class="stat-number" style="color: #6c757d;">${rows.reduce((sum, order) => sum + parseFloat(order.total_amount), 0).toFixed(2)} ر.س</div>
                     <div class="stat-label">إجمالي المبيعات</div>
@@ -4033,6 +4040,7 @@ app.get('/admin/orders', (req, res) => {
         const statusClass = `status-${order.order_status}`;
         const statusText = {
           'pending': 'قيد الانتظار',
+          'confirmed': 'مؤكد',
           'completed': 'مكتمل',
           'cancelled': 'ملغي'
         }[order.order_status] || order.order_status;
@@ -4105,6 +4113,7 @@ app.get('/admin/orders', (req, res) => {
                         <strong>حالة الطلب:</strong> 
                         <select onchange="updateOrderStatus(${order.id}, this.value)" style="margin-right: 10px; padding: 4px 8px; border-radius: 5px; border: 1px solid #ddd;">
                             <option value="pending" ${order.order_status === 'pending' ? 'selected' : ''}>قيد الانتظار</option>
+                            <option value="confirmed" ${order.order_status === 'confirmed' ? 'selected' : ''}>مؤكد</option>
                             <option value="completed" ${order.order_status === 'completed' ? 'selected' : ''}>مكتمل</option>
                             <option value="cancelled" ${order.order_status === 'cancelled' ? 'selected' : ''}>ملغي</option>
                         </select>
