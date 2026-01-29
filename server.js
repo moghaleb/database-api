@@ -4167,6 +4167,10 @@ app.get('/admin/confirmed-orders', (req, res) => {
         </div>
 
         <script>
+            function exportConfirmedSales() {
+                window.open('/api/export-sales?order_status=confirmed', '_blank');
+            }
+
             function updateOrderStatus(orderId, newStatus) {
                 fetch('/api/orders/' + orderId + '/status', {
                     method: 'PUT',
