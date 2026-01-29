@@ -95,7 +95,7 @@ app.use(cors({
     'http://127.0.0.1:3000',
     // أضف هنا مصدر التطبيق إذا كان مختلفًا
     'capacitor://localhost',  // لتطبيقات Capacitor
-    'ionic://localhost',       
+    'ionic://localhost',
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -4411,8 +4411,8 @@ app.get('/admin/orders', (req, res) => {
                 <h3 style="margin: 0 0 20px 0; color: #2e7d32;">✅ الطلبات المكتملة</h3>
                 <div id="completed-orders" class="orders-container">
                     ${rows.filter(o => o.order_status === 'completed').map(order => {
-                        const items = JSON.parse(order.cart_items);
-                        return `
+      const items = JSON.parse(order.cart_items);
+      return `
                         <div class="order-card" style="border-right-color: #4CAF50;">
                             <div class="order-header">
                                 <div>
@@ -4438,10 +4438,10 @@ app.get('/admin/orders', (req, res) => {
                             </div>
                         </div>
                         `;
-                    }).join('')}
+    }).join('')}
                 </div>
-                ${rows.filter(o => o.order_status === 'completed').length === 0 ? 
-                    '<div style="text-align: center; padding: 20px; color: #666;">لا توجد طلبات مكتملة حالياً</div>' : ''}
+                ${rows.filter(o => o.order_status === 'completed').length === 0 ?
+        '<div style="text-align: center; padding: 20px; color: #666;">لا توجد طلبات مكتملة حالياً</div>' : ''}
             </div>
 
             <div class="export-section">
@@ -4540,7 +4540,7 @@ app.get('/admin/orders', (req, res) => {
         }[order.payment_method] || order.payment_method;
 
         html += `
-            <div class="order-card">
+            <div id="order-card-${order.id}" class="order-card">
                 <div class="order-header">
                     <div>
                         <span class="order-number">${order.order_number}</span>
@@ -4662,8 +4662,19 @@ app.get('/admin/orders', (req, res) => {
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
-                        alert('✅ ' + data.message);
-                        location.reload();
+                        // User request: remove element if confirmed, reload otherwise
+                        if (newStatus === 'confirmed') {
+                             const element = document.getElementById('order-card-' + orderId);
+                             if (element) {
+                                 element.remove();
+                                 alert('✅ ' + data.message);
+                             } else {
+                                 location.reload();
+                             }
+                        } else {
+                            alert('✅ ' + data.message);
+                            location.reload();
+                        }
                     } else {
                         alert('❌ ' + data.message);
                     }
