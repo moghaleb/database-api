@@ -108,37 +108,7 @@ app.use(cookieParser(SESSION_SECRET));
 app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
 
-// ======== إعداد بيانات مسؤول افتراضي ========
-const ADMIN_CREDENTIALS = {
-  username: process.env.ADMIN_USER || '0',
-  password: process.env.ADMIN_PASS || '0'
-};
 
-// ======== دوال المصادقة ========
-function isAuthenticated(req) {
-  try {
-    const auth = req.signedCookies && req.signedCookies.admin_auth;
-    if (!auth) return false;
-    return auth === ADMIN_CREDENTIALS.username;
-  } catch (e) {
-    return false;
-  }
-}
-
-function isLocalRequest(req) {
-  try {
-    const hostHeader = (req.headers && req.headers.host) ? req.headers.host : '';
-    const forwarded = req.headers && (req.headers['x-forwarded-for'] || req.headers['x-forwarded-host']);
-    const ip = (req.ip || '').toString();
-
-    if (hostHeader.includes('localhost') || hostHeader.startsWith('127.')) return true;
-    if (forwarded && forwarded.toString().includes('127.0.0.1')) return true;
-    if (ip === '::1' || ip === '127.0.0.1' || ip.startsWith('::ffff:127.0.0.1')) return true;
-    return false;
-  } catch (e) {
-    return false;
-  }
-}
 
 // ======== إنشاء مجلد التصدير ========
 //const exportsDir = process.env.NODE_ENV === 'production'
@@ -458,83 +428,13 @@ db.serialize(() => {
   });
 });
 
-// ======== دوال تسجيل الدخول ========
-function handleLoginRequest(req, res) {
-  const { username, password } = req.body;
-  if (!username || !password) {
-    if (req.is('application/x-www-form-urlencoded')) {
-      return renderLoginPageHTML(req, res, 'اسم المستخدم وكلمة المرور مطلوبان');
-    }
-    return res.status(400).json({ status: 'error', message: 'اسم المستخدم وكلمة المرور مطلوبان' });
-  }
-  if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
-    res.cookie('admin_auth', ADMIN_CREDENTIALS.username, {
-      signed: true,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      domain: process.env.NODE_ENV === 'production' ? '.redme.cfd' : undefined,
-      maxAge: 12 * 60 * 60 * 1000,
-      sameSite: 'lax'
-    });
 
-    if (req.is('application/x-www-form-urlencoded')) {
-      return res.redirect('/admin');
-    }
-    return res.json({ status: 'success', message: 'تم تسجيل الدخول بنجاح', redirect: '/admin' });
-  }
-  if (req.is('application/x-www-form-urlencoded')) {
-    return renderLoginPageHTML(req, res, 'بيانات اعتماد غير صحيحة');
-  }
-  return res.status(401).json({ status: 'error', message: 'بيانات اعتماد غير صحيحة' });
-}
 
-function renderLoginPageHTML(req, res, message = '') {
-  const msgHtml = message ? `<p style="color:#d32f2f;text-align:center;margin-top:8px">${message}</p>` : '';
-  return res.send(`
-    <!DOCTYPE html>
-    <html dir="rtl">
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width,initial-scale=1">
-      <title>تسجيل الدخول</title>
-      <style>body{font-family:Segoe UI,Arial;background:#f4f6fb;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0} .card{background:#fff;padding:24px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.08);width:360px} label{display:block;margin:8px 0 6px} input{width:100%;padding:10px;border:1px solid #ddd;border-radius:6px} button{width:100%;padding:10px;background:#1976D2;color:#fff;border:0;border-radius:6px;margin-top:12px} .help{font-size:13px;color:#666;text-align:center;margin-top:8px}</style>
-    </head>
-    <body>
-      <div class="card">
-        <h3 style="text-align:center;margin:0 0 12px 0">تسجيل الدخول إلى لوحة الإدارة</h3>
-        <form method="post" action="/login">
-          <label for="username">اسم المستخدم</label>
-          <input id="username" name="username" type="text" required>
-          <label for="password">كلمة المرور</label>
-          <input id="password" name="password" type="password" required>
-          <button type="submit">دخول</button>
-        </form>
-        ${msgHtml}
-        <div class="help">المستخدم الافتراضي: <strong>admin</strong> / كلمة المرور: <strong>admin1234</strong></div>
-      </div>
-    </body>
-    </html>
-  `);
-}
+
 
 // ======== Routes ========
 
-// مسارات تسجيل الدخول
-app.post('/login', (req, res) => handleLoginRequest(req, res));
-app.get('/admin/login', (req, res) => {
-  if (isAuthenticated(req)) return res.redirect('/admin');
-  return renderLoginPageHTML(req, res);
-});
-app.post('/admin/login', (req, res) => handleLoginRequest(req, res));
 
-// مسار تسجيل الخروج
-app.get('/logout', (req, res) => {
-  res.clearCookie('admin_auth');
-  if (req.headers.accept && req.headers.accept.indexOf('application/json') !== -1) {
-    return res.json({ status: 'success', message: 'تم تسجيل الخروج' });
-  }
-  res.redirect('/');
-});
 
 // ======== APIs إدارة الفئات والعطور ========
 
