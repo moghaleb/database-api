@@ -2840,6 +2840,63 @@ app.put('/api/orders/:id/status', (req, res) => {
   );
 });
 
+// ======== تتبع الطلبات ========
+app.get('/api/track-order', (req, res) => {
+  const { order_number, phone } = req.query;
+
+  if (!order_number) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'يرجى إدخال رقم الطلب'
+    });
+  }
+
+  let query = 'SELECT * FROM orders WHERE order_number = ?';
+  let params = [order_number];
+
+  if (phone) {
+    query += ' AND customer_phone = ?';
+    params.push(phone);
+  }
+
+  db.get(query, params, (err, order) => {
+    if (err) {
+      console.error('❌ خطأ في تتبع الطلب:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+
+    if (!order) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'الطلب غير موجود'
+      });
+    }
+
+    res.json({
+      status: 'success',
+      order: {
+        id: order.id,
+        order_number: order.order_number,
+        order_status: order.order_status,
+        customer_name: order.customer_name,
+        customer_phone: order.customer_phone,
+        total_amount: order.total_amount,
+        final_amount: order.final_amount,
+        order_date: order.order_date,
+        expected_delivery: order.expected_delivery,
+        shipping_type: order.shipping_type,
+        shipping_city: order.shipping_city,
+        shipping_area: order.shipping_area,
+        order_notes: order.order_notes
+      },
+      message: 'تم العثور على الطلب'
+    });
+  });
+});
+
 // ======== واجهات برمجية للكوبونات ========
 app.get('/api/coupons', (req, res) => {
   db.all('SELECT * FROM coupons ORDER BY created_at DESC', (err, rows) => {
