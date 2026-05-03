@@ -110,7 +110,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // ======== إعداد بيانات مسؤول افتراضي ========
 const ADMIN_CREDENTIALS = {
-  username: process.env.ADMIN_USER || 'redshe_admin',
+  username: process.env.ADMIN_USER || 'admin',
   password: process.env.ADMIN_PASS || 'Redshe@2024!Secure'
 };
 
