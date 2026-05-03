@@ -2995,16 +2995,17 @@ app.post('/api/coupons', (req, res) => {
     db.run(
       `INSERT INTO coupons (
         code, store_type, description, discount_type, discount_value, min_order_amount,
-        max_uses, valid_from, valid_until, is_active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        max_uses, used_count, valid_from, valid_until, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         code,
         store_type || 'all',
         description || '',
         discount_type,
-        discount_value,
-        min_order_amount || 0,
-        max_uses || -1,
+        parseFloat(discount_value),
+        min_order_amount ? parseFloat(min_order_amount) : 0,
+        max_uses ? parseInt(max_uses) : -1,
+        0,
         valid_from || new Date().toISOString(),
         valid_until || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         is_active !== undefined ? is_active : 1
@@ -3035,6 +3036,7 @@ app.put('/api/coupons/:id', (req, res) => {
   const { id } = req.params;
   const {
     code,
+    store_type,
     description,
     discount_type,
     discount_value,
@@ -3067,6 +3069,7 @@ app.put('/api/coupons/:id', (req, res) => {
     db.run(
       `UPDATE coupons SET
         code = COALESCE(?, code),
+        store_type = COALESCE(?, store_type),
         description = COALESCE(?, description),
         discount_type = COALESCE(?, discount_type),
         discount_value = COALESCE(?, discount_value),
@@ -3079,6 +3082,7 @@ app.put('/api/coupons/:id', (req, res) => {
       WHERE id = ?`,
       [
         code,
+        store_type,
         description,
         discount_type,
         discount_value,
