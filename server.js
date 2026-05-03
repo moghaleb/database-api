@@ -213,6 +213,7 @@ db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS coupons (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code TEXT UNIQUE NOT NULL,
+    store_type TEXT DEFAULT 'all',
     description TEXT,
     discount_type TEXT NOT NULL CHECK (discount_type IN ('percentage', 'fixed')),
     discount_value REAL NOT NULL,
@@ -229,13 +230,15 @@ db.serialize(() => {
     } else {
       console.log('✅ تم إنشاء جدول الكوبونات بنجاح');
 
-      // إضافة بعض الكوبونات الافتراضية
+      // إضافة بعض الكوبونات الافتراضية لكل المتاجر
       db.run(`
-        INSERT OR IGNORE INTO coupons (code, description, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until) 
+        INSERT OR IGNORE INTO coupons (code, store_type, description, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until) 
         VALUES 
-        ('WELCOME10', 'خصم 10% لأول طلب', 'percentage', 10.0, 50.0, 100, datetime('now'), datetime('now', '+30 days')),
-        ('FIXED20', 'خصم ثابت 20 ريال', 'fixed', 20.0, 100.0, 50, datetime('now'), datetime('now', '+15 days')),
-        ('SPECIAL30', 'خصم 30% للطلبات فوق 200 ريال', 'percentage', 30.0, 200.0, 30, datetime('now'), datetime('now', '+7 days'))
+        ('WELCOME10', 'all', 'خصم 10% لأول طلب', 'percentage', 10.0, 50.0, 100, datetime('now'), datetime('now', '+30 days')),
+        ('FIXED20', 'all', 'خصم ثابت 20 ريال', 'fixed', 20.0, 100.0, 50, datetime('now'), datetime('now', '+15 days')),
+        ('SPECIAL30', 'all', 'خصم 30% للطلبات فوق 200 ريال', 'percentage', 30.0, 200.0, 30, datetime('now'), datetime('now', '+7 days')),
+        ('STORE10', 'store1', 'خصم 10% لمتجر 1', 'percentage', 10.0, 50.0, 100, datetime('now'), datetime('now', '+30 days')),
+        ('NOON10', 'store2', 'خصم 10% لمتجر 2', 'percentage', 10.0, 50.0, 100, datetime('now'), datetime('now', '+30 days'))
       `, (err) => {
         if (err) {
           console.error('❌ خطأ في إضافة الكوبونات الافتراضية:', err);
@@ -1903,7 +1906,7 @@ app.get('/api/all-data', (req, res) => {
 
 // API التحقق من الكوبون
 app.get('/api/validate-coupon', (req, res) => {
-  const { code, order_amount } = req.query;
+  const { code, order_amount, store_type } = req.query;
 
   if (!code || !order_amount) {
     return res.status(400).json({
@@ -1912,10 +1915,17 @@ app.get('/api/validate-coupon', (req, res) => {
     });
   }
 
-  db.get(
-    'SELECT * FROM coupons WHERE code = ? AND is_active = 1',
-    [code],
-    (err, coupon) => {
+  // البحث عن الكوبون مع إمكانية التصفية حسب المتجر
+  let query = 'SELECT * FROM coupons WHERE code = ? AND is_active = 1';
+  const params = [code];
+
+  // إذا تم تحديد المتجر، ابحث في الكوبونات الخاصة بالمتجر أو ALL
+  if (store_type) {
+    query += ' AND (store_type = ? OR store_type = "all")';
+    params.push(store_type);
+  }
+
+  db.get(query, params, (err, coupon) => {
       if (err) {
         console.error('❌ خطأ في البحث عن الكوبون:', err);
         return res.status(500).json({
@@ -1989,6 +1999,7 @@ app.get('/api/validate-coupon', (req, res) => {
         coupon: {
           id: coupon.id,
           code: coupon.code,
+          store_type: coupon.store_type,
           description: coupon.description,
           discount_type: coupon.discount_type,
           discount_value: coupon.discount_value,
@@ -2947,6 +2958,7 @@ app.get('/api/coupons/:id', (req, res) => {
 app.post('/api/coupons', (req, res) => {
   const {
     code,
+    store_type,
     description,
     discount_type,
     discount_value,
@@ -2960,7 +2972,7 @@ app.post('/api/coupons', (req, res) => {
   if (!code || !discount_type || discount_value === undefined) {
     return res.status(400).json({
       status: 'error',
-      message: 'الكود ونوع الخصم وقيمة الخصم مطلوبة'
+      message: 'الكود ونوع خصم وقيمة خصم مطلوبة'
     });
   }
 
@@ -2982,11 +2994,12 @@ app.post('/api/coupons', (req, res) => {
 
     db.run(
       `INSERT INTO coupons (
-        code, description, discount_type, discount_value, min_order_amount,
+        code, store_type, description, discount_type, discount_value, min_order_amount,
         max_uses, valid_from, valid_until, is_active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         code,
+        store_type || 'all',
         description || '',
         discount_type,
         discount_value,
