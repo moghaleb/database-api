@@ -110,8 +110,8 @@ app.use(express.urlencoded({ extended: true }));
 
 // ======== إعداد بيانات مسؤول افتراضي ========
 const ADMIN_CREDENTIALS = {
-  username: process.env.ADMIN_USER || 'admin',
-  password: process.env.ADMIN_PASS || 'Redshe@2024!Secure'
+  username: process.env.ADMIN_USER || '',
+  password: process.env.ADMIN_PASS || ''
 };
 
 // ======== دوال المصادقة ========
