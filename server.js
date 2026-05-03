@@ -1151,10 +1151,6 @@ app.get('/api/check-products-tables', (req, res) => {
 
 // API لإعادة إنشاء الجداول
 app.post('/api/rebuild-products-tables', (req, res) => {
-  if (!isAuthenticated(req)) {
-    return res.status(401).json({ status: 'error', message: 'غير مصرح' });
-  }
-
   db.serialize(() => {
     // إسقاط الجداول الحالية
     db.run('DROP TABLE IF EXISTS perfumes');
@@ -1235,11 +1231,6 @@ app.post('/api/rebuild-products-tables', (req, res) => {
 
 // ======== صفحة إدارة المنتجات المحدثة ========
 app.get('/admin/products', (req, res) => {
-  // التحقق من المصادقة أولاً
-  if (!isAuthenticated(req)) {
-    return res.redirect('/admin/login');
-  }
-
   const html = `
   <!DOCTYPE html>
   <html dir="rtl">
@@ -3542,16 +3533,6 @@ app.get('/api/export-all-sales', async (req, res) => {
 
 // ======== صفحات الإدارة ========
 app.use('/admin', (req, res, next) => {
-  const publicAdminPaths = ['/admin/login', '/admin/logout'];
-  if (publicAdminPaths.includes(req.path) || publicAdminPaths.includes(req.originalUrl)) return next();
-
-  if (!isAuthenticated(req)) {
-    if (req.xhr || (req.headers.accept && req.headers.accept.indexOf('application/json') !== -1)) {
-      return res.status(401).json({ status: 'error', message: 'مطلوب تسجيل الدخول' });
-    }
-    return res.redirect('/admin/login');
-  }
-
   next();
 });
 
@@ -3601,7 +3582,6 @@ app.get('/admin', (req, res) => {
     <body>
         <div class="container">
             <div class="header">
-                <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
                 <h1 style="margin: 0; color: #333;">📊 بيانات المستخدمين - نظام الاختبار</h1>
                 <p style="margin: 10px 0 0 0; color: #666;">جميع البيانات المرسلة من تطبيق الجوال</p>
             </div>
@@ -3727,7 +3707,7 @@ app.get('/admin/confirmed-orders', (req, res) => {
     <body>
         <div class="container">
             <div class="header">
-                <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
+
                 <h1 style="margin: 0;">✅ الطلبات المؤكدة - نظام المتجر</h1>
                 <p style="margin: 10px 0 0 0; opacity: 0.9;">جميع الطلبات التي تم تأكيدها</p>
             </div>
@@ -3949,7 +3929,7 @@ app.get('/admin/confirmed-orders', (req, res) => {
     <body>
         <div class="container">
             <div class="header">
-                <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
+
                 <h1 style="margin: 0;">✅ الطلبات المؤكدة - نظام المتجر</h1>
                 <p style="margin: 10px 0 0 0; opacity: 0.9;">جميع الطلبات التي تم تأكيدها</p>
             </div>
@@ -4174,7 +4154,7 @@ app.get('/admin/advanced', (req, res) => {
     <body>
         <div class="container">
             <div class="header">
-                <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
+
                 <h1 style="margin: 0; font-size: 2.5rem;">🛠️ لوحة التحكم - نظام الاختبار</h1>
                 <p style="margin: 10px 0 0 0; font-size: 1.1rem; opacity: 0.9;">إدارة وعرض جميع البيانات من تطبيق الجوال</p>
             </div>
@@ -4334,7 +4314,7 @@ app.get('/admin/orders', (req, res) => {
     <body>
         <div class="container">
             <div class="header">
-                <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
+
                 <h1 style="margin: 0;">🛒 إدارة الطلبات - نظام المتجر</h1>
                 <p style="margin: 10px 0 0 0; opacity: 0.9;">جميع الطلبات المرسلة من تطبيق الجوال</p>
             </div>
@@ -4698,7 +4678,7 @@ app.get('/admin/coupons', (req, res) => {
     <body>
         <div class="container">
             <div class="header">
-                <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
+
                 <h1 style="margin: 0;">🎫 إدارة الكوبونات - نظام المتجر</h1>
                 <p style="margin: 10px 0 0 0; opacity: 0.9;">إنشاء وتعديل وحذف كوبونات الخصم مع تحديد الصلاحية</p>
             </div>
@@ -5197,7 +5177,7 @@ app.get('/admin/gift-cards', (req, res) => {
     <body>
         <div class="container">
             <div class="header">
-                <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
+
                 <h1 style="margin: 0;">💳 إدارة القسائم الشرائية - نظام المتجر</h1>
                 <p style="margin: 10px 0 0 0; opacity: 0.9;">إنشاء وتعديل وحذف القسائم الشرائية مع إدارة الرصيد والصلاحية</p>
             </div>
