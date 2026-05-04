@@ -238,7 +238,9 @@ db.serialize(() => {
         ('FIXED20', 'all', 'خصم ثابت 20 ريال', 'fixed', 20.0, 100.0, 50, datetime('now'), datetime('now', '+15 days')),
         ('SPECIAL30', 'all', 'خصم 30% للطلبات فوق 200 ريال', 'percentage', 30.0, 200.0, 30, datetime('now'), datetime('now', '+7 days')),
         ('STORE10', 'store1', 'خصم 10% لمتجر 1', 'percentage', 10.0, 50.0, 100, datetime('now'), datetime('now', '+30 days')),
-        ('NOON10', 'store2', 'خصم 10% لمتجر 2', 'percentage', 10.0, 50.0, 100, datetime('now'), datetime('now', '+30 days'))
+        ('NOON15', 'noon', 'خصم 15% لمتجر noon', 'percentage', 15.0, 100.0, 50, datetime('now'), datetime('now', '+30 days')),
+        ('NOON20', 'noon', 'خصم 20 ريال لمتجر noon', 'fixed', 20.0, 150.0, 30, datetime('now'), datetime('now', '+60 days')),
+        ('NOON10PERCENT', 'noon', 'خصم 10% لجميع منتجات noon', 'percentage', 10.0, 50.0, 100, datetime('now'), datetime('now', '+90 days'))
       `, (err) => {
         if (err) {
           console.error('❌ خطأ في إضافة الكوبونات الافتراضية:', err);
@@ -4333,7 +4335,12 @@ app.get('/admin/advanced', (req, res) => {
 
 // صفحة إدارة الطلبات
 app.get('/admin/orders', (req, res) => {
-  db.all('SELECT * FROM orders ORDER BY created_at DESC', (err, rows) => {
+  const storeFilter = req.query.store || 'all';
+  let query = 'SELECT * FROM orders ORDER BY created_at DESC';
+  if (storeFilter === 'noon') {
+    query = "SELECT * FROM orders WHERE cart_items LIKE '%noon%' OR customer_name LIKE '%noon%' ORDER BY created_at DESC";
+  }
+  db.all(query, (err, rows) => {
     let html = `
     <!DOCTYPE html>
     <html dir="rtl">
@@ -4346,8 +4353,10 @@ app.get('/admin/orders', (req, res) => {
             .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
             .header { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; position: relative; }
             .order-card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-right: 4px solid #ff6b6b; }
+            .order-card.noon { border-right-color: #F4C430; }
             .order-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
             .order-number { background: #ff6b6b; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; }
+            .order-number-noon { background: #F4C430; color: #000; padding: 8px 16px; border-radius: 20px; font-weight: bold; }
             .order-status { padding: 6px 12px; border-radius: 15px; font-size: 14px; font-weight: bold; }
             .status-pending { background: #fff3cd; color: #856404; }
             .status-confirmed { background: #e1bee7; color: #6a1b9a; }
@@ -4360,6 +4369,8 @@ app.get('/admin/orders', (req, res) => {
             .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
             .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
             .nav-btn:hover { background: #ff6b6b; color: white; transform: translateY(-2px); }
+            .nav-btn-noon { background: #F4C430; color: #000; }
+            .nav-btn-noon:hover { background: #E6B800; color: #000; }
             .logout-btn { position: absolute; left: 20px; top: 20px; background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
             .logout-btn:hover { background: #d32f2f; transform: translateY(-2px); }
             .empty-state { text-align: center; padding: 60px; color: #666; background: white; border-radius: 15px; }
@@ -4383,6 +4394,12 @@ app.get('/admin/orders', (req, res) => {
             .payment-info { background: #e8f5e8; padding: 12px; border-radius: 8px; margin-top: 10px; border-right: 3px solid #4CAF50; }
             .product-url { color: #1976D2; text-decoration: none; font-size: 12px; }
             .product-url:hover { text-decoration: underline; }
+            .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
+            .tab { padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer; font-weight: 500; transition: all 0.3s; }
+            .tab.active { background: #ff6b6b; color: white; }
+            .tab.active-noon { background: #F4C430; color: #000; }
+            .tab:hover:not(.active) { background: #f0f0f0; }
+            .tab.noon:hover { background: #F4C430; }
         </style>
     </head>
     <body>
@@ -4402,6 +4419,20 @@ app.get('/admin/orders', (req, res) => {
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
             </div>
+
+            <!-- تبويبات تصفية الطلبات -->
+            <div class="tabs">
+                <button class="tab" id="tabAll" onclick="location.href='/admin/orders'">📋 جميع الطلبات</button>
+                <button class="tab noon" id="tabNoon" onclick="location.href='/admin/orders?store=noon'">🛒 طلبات noon</button>
+            </div>
+            <script>
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.get('store') === 'noon') {
+                    document.getElementById('tabNoon').classList.add('active-noon');
+                } else {
+                    document.getElementById('tabAll').classList.add('active');
+                }
+            </script>
 
             <!-- قسم تصدير المبيعات -->
             <!-- قسم الطلبات المكتملة -->
@@ -4698,7 +4729,14 @@ app.get('/admin/orders', (req, res) => {
 
 // صفحة إدارة الكوبونات
 app.get('/admin/coupons', (req, res) => {
-  db.all('SELECT * FROM coupons ORDER BY created_at DESC', (err, rows) => {
+  const storeFilter = req.query.store || 'all';
+  let query = 'SELECT * FROM coupons ORDER BY created_at DESC';
+  if (storeFilter === 'noon') {
+    query = "SELECT * FROM coupons WHERE store_type = 'noon' OR store_type = 'store2' OR code LIKE 'NOON%' ORDER BY created_at DESC";
+  } else if (storeFilter === 'allstores') {
+    query = "SELECT * FROM coupons WHERE store_type = 'all' OR store_type IS NULL OR store_type = '' ORDER BY created_at DESC";
+  }
+  db.all(query, (err, rows) => {
     let html = `
     <!DOCTYPE html>
     <html dir="rtl">
@@ -4747,6 +4785,14 @@ app.get('/admin/coupons', (req, res) => {
             .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
             .stat-number { font-size: 24px; font-weight: bold; color: #4CAF50; }
             .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
+            .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
+            .tab { padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer; font-weight: 500; transition: all 0.3s; }
+            .tab.active { background: #4CAF50; color: white; }
+            .tab.active-noon { background: #F4C430; color: #000; }
+            .tab:hover:not(.active) { background: #f0f0f0; }
+            .tab.noon:hover { background: #F4C430; }
+            .coupon-card.noon { border-right-color: #F4C430; }
+            .coupon-code-noon { background: #F4C430; color: #000; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 16px; }
         </style>
     </head>
     <body>
@@ -4767,6 +4813,20 @@ app.get('/admin/coupons', (req, res) => {
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
                 <button onclick="showAddModal()" class="btn btn-success">+ إضافة كوبون جديد</button>
             </div>
+
+            <!-- تبويبات تصفية الكوبونات -->
+            <div class="tabs">
+                <button class="tab" id="tabAll" onclick="location.href='/admin/coupons'">📋 جميع الكوبونات</button>
+                <button class="tab noon" id="tabNoon" onclick="location.href='/admin/coupons?store=noon'">🛒 كوبونات noon</button>
+            </div>
+            <script>
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.get('store') === 'noon') {
+                    document.getElementById('tabNoon').classList.add('active-noon');
+                } else {
+                    document.getElementById('tabAll').classList.add('active');
+                }
+            </script>
 
             <div class="stats-grid">
                 <div class="stat-card">
@@ -6116,7 +6176,7 @@ app.use((req, res) => {
 });
 
 // بدء الخادم
-/// بدء الخادم
+// بدء الخادم
 function startServer() {
   // تشغيل الخادم على المنفذ المحدد (عادةً 3000)
   // نترك مهمة SSL و HTTPS لـ Nginx فقط
