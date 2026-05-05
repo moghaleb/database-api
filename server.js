@@ -4907,6 +4907,9 @@ app.get('/admin/coupons', (req, res) => {
 
                 <div class="coupon-details">
                     <div class="detail-item">
+                        <strong>المتجر:</strong> ${coupon.store_type === 'noon' ? 'متجر نون' : (coupon.store_type === 'store1' ? 'المتجر الأول' : 'جميع المتاجر')}
+                    </div>
+                    <div class="detail-item">
                         <strong>الوصف:</strong> ${coupon.description || 'لا يوجد وصف'}
                     </div>
                     <div class="detail-item">
@@ -4956,9 +4959,19 @@ app.get('/admin/coupons', (req, res) => {
                         <input type="text" name="code" class="form-control" required placeholder="مثال: WELCOME20">
                         <div class="form-help">يجب أن يكون الكود فريداً وغير مكرر</div>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">وصف الكوبون</label>
-                        <input type="text" name="description" class="form-control" placeholder="مثال: خصم ترحيبي 20%">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">المتجر المخصص</label>
+                            <select name="store_type" class="form-control">
+                                <option value="all">جميع المتاجر (عام)</option>
+                                <option value="store1">المتجر الأول (lib/pages)</option>
+                                <option value="noon">متجر نون (noon)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">وصف الكوبون</label>
+                            <input type="text" name="description" class="form-control" placeholder="مثال: خصم ترحيبي 20%">
+                        </div>
                     </div>
                     
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
@@ -5026,9 +5039,19 @@ app.get('/admin/coupons', (req, res) => {
                         <label class="form-label">كود الكوبون *</label>
                         <input type="text" name="code" id="edit_code" class="form-control" required>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">وصف الكوبون</label>
-                        <input type="text" name="description" id="edit_description" class="form-control">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label class="form-label">المتجر المخصص</label>
+                            <select name="store_type" id="edit_store_type" class="form-control">
+                                <option value="all">جميع المتاجر (عام)</option>
+                                <option value="store1">المتجر الأول (lib/pages)</option>
+                                <option value="noon">متجر نون (noon)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">وصف الكوبون</label>
+                            <input type="text" name="description" id="edit_description" class="form-control">
+                        </div>
                     </div>
                     
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
@@ -5152,6 +5175,7 @@ app.get('/admin/coupons', (req, res) => {
                         
                         document.getElementById('edit_coupon_id').value = coupon.id;
                         document.getElementById('edit_code').value = coupon.code;
+                        document.getElementById('edit_store_type').value = coupon.store_type || 'all';
                         document.getElementById('edit_description').value = coupon.description || '';
                         document.getElementById('edit_discount_type').value = coupon.discount_type;
                         document.getElementById('edit_discount_value').value = coupon.discount_value;
