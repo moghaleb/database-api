@@ -291,7 +291,7 @@ db.serialize(() => {
     }
   });
 
-  // جدول إعدادات الـ admبin
+  // جدول إعقدادات الـ admبin
   db.run(`CREATE TABLE IF NOT EXISTS admin_settings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     setting_key TEXT UNIQUE NOT NULL,
