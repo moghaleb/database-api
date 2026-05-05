@@ -4739,6 +4739,8 @@ app.get('/admin/coupons', (req, res) => {
   let query = 'SELECT * FROM coupons ORDER BY created_at DESC';
   if (storeFilter === 'noon') {
     query = "SELECT * FROM coupons WHERE store_type = 'noon' OR store_type = 'store2' OR code LIKE 'NOON%' ORDER BY created_at DESC";
+  } else if (storeFilter === 'store1') {
+    query = "SELECT * FROM coupons WHERE store_type = 'store1' ORDER BY created_at DESC";
   } else if (storeFilter === 'allstores') {
     query = "SELECT * FROM coupons WHERE store_type = 'all' OR store_type IS NULL OR store_type = '' ORDER BY created_at DESC";
   }
@@ -4823,12 +4825,16 @@ app.get('/admin/coupons', (req, res) => {
             <!-- تبويبات تصفية الكوبونات -->
             <div class="tabs">
                 <button class="tab" id="tabAll" onclick="location.href='/admin/coupons'">📋 جميع الكوبونات</button>
+                <button class="tab" id="tabStore1" onclick="location.href='/admin/coupons?store=store1'" style="color: #1976D2;">🏪 المتجر الأول (lib/pages)</button>
                 <button class="tab noon" id="tabNoon" onclick="location.href='/admin/coupons?store=noon'">🛒 كوبونات noon</button>
             </div>
             <script>
                 const urlParams = new URLSearchParams(window.location.search);
                 if (urlParams.get('store') === 'noon') {
                     document.getElementById('tabNoon').classList.add('active-noon');
+                } else if (urlParams.get('store') === 'store1') {
+                    document.getElementById('tabStore1').classList.add('active');
+                    document.getElementById('tabStore1').style.color = 'white';
                 } else {
                     document.getElementById('tabAll').classList.add('active');
                 }
