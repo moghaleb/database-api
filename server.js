@@ -230,7 +230,7 @@ db.serialize(() => {
     } else {
       console.log('✅ تم إنشاء جدول الكوبونات بنجاح');
 
-      // إضافة بعض الكوبونات الافتراضية لكل المتاجر
+      // إضافة بعض الكوبونات الافتراضيببة لكل المتاجر
       db.run(`
         INSERT OR IGNORE INTO coupons (code, store_type, description, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until) 
         VALUES 
