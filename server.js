@@ -112,11 +112,11 @@ app.use(express.urlencoded({ extended: true }));
 
 // ======== إنشاء مجلد التصدير ========
 //const exportsDir = process.env.NODE_ENV === 'production'
-  //? '/var/www/redshe/exports'
-  //: path.join(__dirname, 'exports');
+//? '/var/www/redshe/exports'
+//: path.join(__dirname, 'exports');
 //if (!fs.existsSync(exportsDir)) {
-  //fs.mkdirSync(exportsDir, { recursive: true });
-  //console.log('✅ تم إنشاء مجلد التصدير:', exportsDir);
+//fs.mkdirSync(exportsDir, { recursive: true });
+//console.log('✅ تم إنشاء مجلد التصدير:', exportsDir);
 //}
 
 // ======== Database Configuration ========
@@ -1928,94 +1928,94 @@ app.get('/api/validate-coupon', (req, res) => {
   }
 
   db.get(query, params, (err, coupon) => {
-      if (err) {
-        console.error('❌ خطأ في البحث عن الكوبون:', err);
-        return res.status(500).json({
-          status: 'error',
-          message: err.message
-        });
-      }
-
-      if (!coupon) {
-        return res.status(404).json({
-          status: 'error',
-          message: 'كوبون غير صالح أو غير موجود'
-        });
-      }
-
-      // التحقق من صلاحية الكوبون
-      const now = new Date();
-      const validFrom = new Date(coupon.valid_from);
-      const validUntil = new Date(coupon.valid_until);
-
-      if (now < validFrom) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'هذا الكوبون غير فعال حتى ' + validFrom.toLocaleDateString('ar-SA')
-        });
-      }
-
-      if (now > validUntil) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'هذا الكوبون منتهي الصلاحية'
-        });
-      }
-
-      // التحقق من الحد الأقصى للاستخدام
-      if (coupon.max_uses > 0 && coupon.used_count >= coupon.max_uses) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'تم الوصول إلى الحد الأقصى لاستخدام هذا الكوبون'
-        });
-      }
-
-      // التحقق من الحد الأدنى لقيمة الطلب
-      const orderAmount = parseFloat(order_amount);
-      if (orderAmount < coupon.min_order_amount) {
-        return res.status(400).json({
-          status: 'error',
-          message: `الحد الأدنى لقيمة الطلب هو ${coupon.min_order_amount} ريال`
-        });
-      }
-
-      // حساب قيمة الخصم
-      let discountAmount = 0;
-      if (coupon.discount_type === 'percentage') {
-        discountAmount = (orderAmount * coupon.discount_value) / 100;
-      } else {
-        discountAmount = coupon.discount_value;
-      }
-
-      // التأكد من أن الخصم لا يتجاوز قيمة الطلب
-      if (discountAmount > orderAmount) {
-        discountAmount = orderAmount;
-      }
-
-      const finalAmount = orderAmount - discountAmount;
-
-      res.json({
-        status: 'success',
-        message: 'كوبون صالح',
-        valid: true,
-        coupon: {
-          id: coupon.id,
-          code: coupon.code,
-          store_type: coupon.store_type,
-          description: coupon.description,
-          discount_type: coupon.discount_type,
-          discount_value: coupon.discount_value,
-          min_order_amount: coupon.min_order_amount,
-          discount_amount: discountAmount,
-          final_amount: finalAmount
-        },
-        calculation: {
-          original_amount: orderAmount,
-          discount_amount: discountAmount,
-          final_amount: finalAmount
-        }
+    if (err) {
+      console.error('❌ خطأ في البحث عن الكوبون:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
       });
     }
+
+    if (!coupon) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'كوبون غير صالح أو غير موجود'
+      });
+    }
+
+    // التحقق من صلاحية الكوبون
+    const now = new Date();
+    const validFrom = new Date(coupon.valid_from);
+    const validUntil = new Date(coupon.valid_until);
+
+    if (now < validFrom) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'هذا الكوبون غير فعال حتى ' + validFrom.toLocaleDateString('ar-SA')
+      });
+    }
+
+    if (now > validUntil) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'هذا الكوبون منتهي الصلاحية'
+      });
+    }
+
+    // التحقق من الحد الأقصى للاستخدام
+    if (coupon.max_uses > 0 && coupon.used_count >= coupon.max_uses) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'تم الوصول إلى الحد الأقصى لاستخدام هذا الكوبون'
+      });
+    }
+
+    // التحقق من الحد الأدنى لقيمة الطلب
+    const orderAmount = parseFloat(order_amount);
+    if (orderAmount < coupon.min_order_amount) {
+      return res.status(400).json({
+        status: 'error',
+        message: `الحد الأدنى لقيمة الطلب هو ${coupon.min_order_amount} ريال`
+      });
+    }
+
+    // حساب قيمة الخصم
+    let discountAmount = 0;
+    if (coupon.discount_type === 'percentage') {
+      discountAmount = (orderAmount * coupon.discount_value) / 100;
+    } else {
+      discountAmount = coupon.discount_value;
+    }
+
+    // التأكد من أن الخصم لا يتجاوز قيمة الطلب
+    if (discountAmount > orderAmount) {
+      discountAmount = orderAmount;
+    }
+
+    const finalAmount = orderAmount - discountAmount;
+
+    res.json({
+      status: 'success',
+      message: 'كوبون صالح',
+      valid: true,
+      coupon: {
+        id: coupon.id,
+        code: coupon.code,
+        store_type: coupon.store_type,
+        description: coupon.description,
+        discount_type: coupon.discount_type,
+        discount_value: coupon.discount_value,
+        min_order_amount: coupon.min_order_amount,
+        discount_amount: discountAmount,
+        final_amount: finalAmount
+      },
+      calculation: {
+        original_amount: orderAmount,
+        discount_amount: discountAmount,
+        final_amount: finalAmount
+      }
+    });
+  }
   );
 });
 
