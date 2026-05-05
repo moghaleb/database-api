@@ -112,11 +112,11 @@ app.use(express.urlencoded({ extended: true }));
 
 // ======== إنشاء مجلد التصدير ========
 //const exportsDir = process.env.NODE_ENV === 'production'
-  //? '/var/www/redshe/exports'
-  //: path.join(__dirname, 'exports');
+//? '/var/www/redshe/exports'
+//: path.join(__dirname, 'exports');
 //if (!fs.existsSync(exportsDir)) {
-  //fs.mkdirSync(exportsDir, { recursive: true });
-  //console.log('✅ تم إنشاء مجلد التصدير:', exportsDir);
+//fs.mkdirSync(exportsDir, { recursive: true });
+//console.log('✅ تم إنشاء مجلد التصدير:', exportsDir);
 //}
 
 // ======== Database Configuration ========
@@ -213,6 +213,7 @@ db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS coupons (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code TEXT UNIQUE NOT NULL,
+    store_type TEXT DEFAULT 'all',
     description TEXT,
     discount_type TEXT NOT NULL CHECK (discount_type IN ('percentage', 'fixed')),
     discount_value REAL NOT NULL,
@@ -229,13 +230,17 @@ db.serialize(() => {
     } else {
       console.log('✅ تم إنشاء جدول الكوبونات بنجاح');
 
-      // إضافة بعض الكوبونات الافتراضية
+      // إضافة بعض الكوبونات الافتراضيببة لكل المتاجر
       db.run(`
-        INSERT OR IGNORE INTO coupons (code, description, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until) 
+        INSERT OR IGNORE INTO coupons (code, store_type, description, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until) 
         VALUES 
-        ('WELCOME10', 'خصم 10% لأول طلب', 'percentage', 10.0, 50.0, 100, datetime('now'), datetime('now', '+30 days')),
-        ('FIXED20', 'خصم ثابت 20 ريال', 'fixed', 20.0, 100.0, 50, datetime('now'), datetime('now', '+15 days')),
-        ('SPECIAL30', 'خصم 30% للطلبات فوق 200 ريال', 'percentage', 30.0, 200.0, 30, datetime('now'), datetime('now', '+7 days'))
+        ('WELCOME10', 'all', 'خصم 10% لأول طلب', 'percentage', 10.0, 50.0, 100, datetime('now'), datetime('now', '+30 days')),
+        ('FIXED20', 'all', 'خصم ثابت 20 ريال', 'fixed', 20.0, 100.0, 50, datetime('now'), datetime('now', '+15 days')),
+        ('SPECIAL30', 'all', 'خصم 30% للطلبات فوق 200 ريال', 'percentage', 30.0, 200.0, 30, datetime('now'), datetime('now', '+7 days')),
+        ('STORE10', 'store1', 'خصم 10% لمتجر 1', 'percentage', 10.0, 50.0, 100, datetime('now'), datetime('now', '+30 days')),
+        ('NOON15', 'noon', 'خصم 15% لمتجر noon', 'percentage', 15.0, 100.0, 50, datetime('now'), datetime('now', '+30 days')),
+        ('NOON20', 'noon', 'خصم 20 ريال لمتجر noon', 'fixed', 20.0, 150.0, 30, datetime('now'), datetime('now', '+60 days')),
+        ('NOON10PERCENT', 'noon', 'خصم 10% لجميع منتجات noon', 'percentage', 10.0, 50.0, 100, datetime('now'), datetime('now', '+90 days'))
       `, (err) => {
         if (err) {
           console.error('❌ خطأ في إضافة الكوبونات الافتراضية:', err);
@@ -286,7 +291,7 @@ db.serialize(() => {
     }
   });
 
-  // جدول إعدادات الـ admin
+  // جدول إعقدادات الـ admبin
   db.run(`CREATE TABLE IF NOT EXISTS admin_settings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     setting_key TEXT UNIQUE NOT NULL,
@@ -1903,7 +1908,7 @@ app.get('/api/all-data', (req, res) => {
 
 // API التحقق من الكوبون
 app.get('/api/validate-coupon', (req, res) => {
-  const { code, order_amount } = req.query;
+  const { code, order_amount, store_type } = req.query;
 
   if (!code || !order_amount) {
     return res.status(400).json({
@@ -1912,97 +1917,105 @@ app.get('/api/validate-coupon', (req, res) => {
     });
   }
 
-  db.get(
-    'SELECT * FROM coupons WHERE code = ? AND is_active = 1',
-    [code],
-    (err, coupon) => {
-      if (err) {
-        console.error('❌ خطأ في البحث عن الكوبون:', err);
-        return res.status(500).json({
-          status: 'error',
-          message: err.message
-        });
-      }
+  // البحث عن الكوبون مع إمكانية التصفية حسب المتجر
+  let query = 'SELECT * FROM coupons WHERE code = ? AND is_active = 1';
+  const params = [code];
 
-      if (!coupon) {
-        return res.status(404).json({
-          status: 'error',
-          message: 'كوبون غير صالح أو غير موجود'
-        });
-      }
+  // إذا تم تحديد المتجر، ابحث في الكوبونات الخاصة بالمتجر أو ALL
+  if (store_type) {
+    query += ' AND (store_type = ? OR store_type = "all")';
+    params.push(store_type);
+  }
 
-      // التحقق من صلاحية الكوبون
-      const now = new Date();
-      const validFrom = new Date(coupon.valid_from);
-      const validUntil = new Date(coupon.valid_until);
-
-      if (now < validFrom) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'هذا الكوبون غير فعال حتى ' + validFrom.toLocaleDateString('ar-SA')
-        });
-      }
-
-      if (now > validUntil) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'هذا الكوبون منتهي الصلاحية'
-        });
-      }
-
-      // التحقق من الحد الأقصى للاستخدام
-      if (coupon.max_uses > 0 && coupon.used_count >= coupon.max_uses) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'تم الوصول إلى الحد الأقصى لاستخدام هذا الكوبون'
-        });
-      }
-
-      // التحقق من الحد الأدنى لقيمة الطلب
-      const orderAmount = parseFloat(order_amount);
-      if (orderAmount < coupon.min_order_amount) {
-        return res.status(400).json({
-          status: 'error',
-          message: `الحد الأدنى لقيمة الطلب هو ${coupon.min_order_amount} ريال`
-        });
-      }
-
-      // حساب قيمة الخصم
-      let discountAmount = 0;
-      if (coupon.discount_type === 'percentage') {
-        discountAmount = (orderAmount * coupon.discount_value) / 100;
-      } else {
-        discountAmount = coupon.discount_value;
-      }
-
-      // التأكد من أن الخصم لا يتجاوز قيمة الطلب
-      if (discountAmount > orderAmount) {
-        discountAmount = orderAmount;
-      }
-
-      const finalAmount = orderAmount - discountAmount;
-
-      res.json({
-        status: 'success',
-        message: 'كوبون صالح',
-        valid: true,
-        coupon: {
-          id: coupon.id,
-          code: coupon.code,
-          description: coupon.description,
-          discount_type: coupon.discount_type,
-          discount_value: coupon.discount_value,
-          min_order_amount: coupon.min_order_amount,
-          discount_amount: discountAmount,
-          final_amount: finalAmount
-        },
-        calculation: {
-          original_amount: orderAmount,
-          discount_amount: discountAmount,
-          final_amount: finalAmount
-        }
+  db.get(query, params, (err, coupon) => {
+    if (err) {
+      console.error('❌ خطأ في البحث عن الكوبون:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
       });
     }
+
+    if (!coupon) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'كوبون غير صالح أو غير موجود'
+      });
+    }
+
+    // التحقق من صلاحية الكوبون
+    const now = new Date();
+    const validFrom = new Date(coupon.valid_from);
+    const validUntil = new Date(coupon.valid_until);
+
+    if (now < validFrom) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'هذا الكوبون غير فعال حتى ' + validFrom.toLocaleDateString('ar-SA')
+      });
+    }
+
+    if (now > validUntil) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'هذا الكوبون منتهي الصلاحية'
+      });
+    }
+
+    // التحقق من الحد الأقصى للاستخدام
+    if (coupon.max_uses > 0 && coupon.used_count >= coupon.max_uses) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'تم الوصول إلى الحد الأقصى لاستخدام هذا الكوبون'
+      });
+    }
+
+    // التحقق من الحد الأدنى لقيمة الطلب
+    const orderAmount = parseFloat(order_amount);
+    if (orderAmount < coupon.min_order_amount) {
+      return res.status(400).json({
+        status: 'error',
+        message: `الحد الأدنى لقيمة الطلب هو ${coupon.min_order_amount} ريال`
+      });
+    }
+
+    // حساب قيمة الخصم
+    let discountAmount = 0;
+    if (coupon.discount_type === 'percentage') {
+      discountAmount = (orderAmount * coupon.discount_value) / 100;
+    } else {
+      discountAmount = coupon.discount_value;
+    }
+
+    // التأكد من أن الخصم لا يتجاوز قيمة الطلب
+    if (discountAmount > orderAmount) {
+      discountAmount = orderAmount;
+    }
+
+    const finalAmount = orderAmount - discountAmount;
+
+    res.json({
+      status: 'success',
+      message: 'كوبون صالح',
+      valid: true,
+      coupon: {
+        id: coupon.id,
+        code: coupon.code,
+        store_type: coupon.store_type,
+        description: coupon.description,
+        discount_type: coupon.discount_type,
+        discount_value: coupon.discount_value,
+        min_order_amount: coupon.min_order_amount,
+        discount_amount: discountAmount,
+        final_amount: finalAmount
+      },
+      calculation: {
+        original_amount: orderAmount,
+        discount_amount: discountAmount,
+        final_amount: finalAmount
+      }
+    });
+  }
   );
 });
 
@@ -2840,6 +2853,63 @@ app.put('/api/orders/:id/status', (req, res) => {
   );
 });
 
+// ======== تتبع الطلبات ========
+app.get('/api/track-order', (req, res) => {
+  const { order_number, phone } = req.query;
+
+  if (!order_number) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'يرجى إدخال رقم الطلب'
+    });
+  }
+
+  let query = 'SELECT * FROM orders WHERE order_number = ?';
+  let params = [order_number];
+
+  if (phone) {
+    query += ' AND customer_phone = ?';
+    params.push(phone);
+  }
+
+  db.get(query, params, (err, order) => {
+    if (err) {
+      console.error('❌ خطأ في تتبع الطلب:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+
+    if (!order) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'الطلب غير موجود'
+      });
+    }
+
+    res.json({
+      status: 'success',
+      order: {
+        id: order.id,
+        order_number: order.order_number,
+        order_status: order.order_status,
+        customer_name: order.customer_name,
+        customer_phone: order.customer_phone,
+        total_amount: order.total_amount,
+        final_amount: order.final_amount,
+        order_date: order.order_date,
+        expected_delivery: order.expected_delivery,
+        shipping_type: order.shipping_type,
+        shipping_city: order.shipping_city,
+        shipping_area: order.shipping_area,
+        order_notes: order.order_notes
+      },
+      message: 'تم العثور على الطلب'
+    });
+  });
+});
+
 // ======== واجهات برمجية للكوبونات ========
 app.get('/api/coupons', (req, res) => {
   db.all('SELECT * FROM coupons ORDER BY created_at DESC', (err, rows) => {
@@ -2890,6 +2960,7 @@ app.get('/api/coupons/:id', (req, res) => {
 app.post('/api/coupons', (req, res) => {
   const {
     code,
+    store_type,
     description,
     discount_type,
     discount_value,
@@ -2903,7 +2974,7 @@ app.post('/api/coupons', (req, res) => {
   if (!code || !discount_type || discount_value === undefined) {
     return res.status(400).json({
       status: 'error',
-      message: 'الكود ونوع الخصم وقيمة الخصم مطلوبة'
+      message: 'الكود ونوع خصم وقيمة خصم مطلوبة'
     });
   }
 
@@ -2925,16 +2996,18 @@ app.post('/api/coupons', (req, res) => {
 
     db.run(
       `INSERT INTO coupons (
-        code, description, discount_type, discount_value, min_order_amount,
-        max_uses, valid_from, valid_until, is_active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        code, store_type, description, discount_type, discount_value, min_order_amount,
+        max_uses, used_count, valid_from, valid_until, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         code,
+        store_type || 'all',
         description || '',
         discount_type,
-        discount_value,
-        min_order_amount || 0,
-        max_uses || -1,
+        parseFloat(discount_value),
+        min_order_amount ? parseFloat(min_order_amount) : 0,
+        max_uses ? parseInt(max_uses) : -1,
+        0,
         valid_from || new Date().toISOString(),
         valid_until || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         is_active !== undefined ? is_active : 1
@@ -2965,6 +3038,7 @@ app.put('/api/coupons/:id', (req, res) => {
   const { id } = req.params;
   const {
     code,
+    store_type,
     description,
     discount_type,
     discount_value,
@@ -2997,6 +3071,7 @@ app.put('/api/coupons/:id', (req, res) => {
     db.run(
       `UPDATE coupons SET
         code = COALESCE(?, code),
+        store_type = COALESCE(?, store_type),
         description = COALESCE(?, description),
         discount_type = COALESCE(?, discount_type),
         discount_value = COALESCE(?, discount_value),
@@ -3009,6 +3084,7 @@ app.put('/api/coupons/:id', (req, res) => {
       WHERE id = ?`,
       [
         code,
+        store_type,
         description,
         discount_type,
         discount_value,
@@ -4259,7 +4335,12 @@ app.get('/admin/advanced', (req, res) => {
 
 // صفحة إدارة الطلبات
 app.get('/admin/orders', (req, res) => {
-  db.all('SELECT * FROM orders ORDER BY created_at DESC', (err, rows) => {
+  const storeFilter = req.query.store || 'all';
+  let query = 'SELECT * FROM orders ORDER BY created_at DESC';
+  if (storeFilter === 'noon') {
+    query = "SELECT * FROM orders WHERE cart_items LIKE '%noon%' OR customer_name LIKE '%noon%' ORDER BY created_at DESC";
+  }
+  db.all(query, (err, rows) => {
     let html = `
     <!DOCTYPE html>
     <html dir="rtl">
@@ -4272,8 +4353,10 @@ app.get('/admin/orders', (req, res) => {
             .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
             .header { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; position: relative; }
             .order-card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-right: 4px solid #ff6b6b; }
+            .order-card.noon { border-right-color: #F4C430; }
             .order-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
             .order-number { background: #ff6b6b; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; }
+            .order-number-noon { background: #F4C430; color: #000; padding: 8px 16px; border-radius: 20px; font-weight: bold; }
             .order-status { padding: 6px 12px; border-radius: 15px; font-size: 14px; font-weight: bold; }
             .status-pending { background: #fff3cd; color: #856404; }
             .status-confirmed { background: #e1bee7; color: #6a1b9a; }
@@ -4286,6 +4369,8 @@ app.get('/admin/orders', (req, res) => {
             .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
             .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
             .nav-btn:hover { background: #ff6b6b; color: white; transform: translateY(-2px); }
+            .nav-btn-noon { background: #F4C430; color: #000; }
+            .nav-btn-noon:hover { background: #E6B800; color: #000; }
             .logout-btn { position: absolute; left: 20px; top: 20px; background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
             .logout-btn:hover { background: #d32f2f; transform: translateY(-2px); }
             .empty-state { text-align: center; padding: 60px; color: #666; background: white; border-radius: 15px; }
@@ -4309,6 +4394,12 @@ app.get('/admin/orders', (req, res) => {
             .payment-info { background: #e8f5e8; padding: 12px; border-radius: 8px; margin-top: 10px; border-right: 3px solid #4CAF50; }
             .product-url { color: #1976D2; text-decoration: none; font-size: 12px; }
             .product-url:hover { text-decoration: underline; }
+            .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
+            .tab { padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer; font-weight: 500; transition: all 0.3s; }
+            .tab.active { background: #ff6b6b; color: white; }
+            .tab.active-noon { background: #F4C430; color: #000; }
+            .tab:hover:not(.active) { background: #f0f0f0; }
+            .tab.noon:hover { background: #F4C430; }
         </style>
     </head>
     <body>
@@ -4328,6 +4419,20 @@ app.get('/admin/orders', (req, res) => {
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
             </div>
+
+            <!-- تبويبات تصفية الطلبات -->
+            <div class="tabs">
+                <button class="tab" id="tabAll" onclick="location.href='/admin/orders'">📋 جميع الطلبات</button>
+                <button class="tab noon" id="tabNoon" onclick="location.href='/admin/orders?store=noon'">🛒 طلبات noon</button>
+            </div>
+            <script>
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.get('store') === 'noon') {
+                    document.getElementById('tabNoon').classList.add('active-noon');
+                } else {
+                    document.getElementById('tabAll').classList.add('active');
+                }
+            </script>
 
             <!-- قسم تصدير المبيعات -->
             <!-- قسم الطلبات المكتملة -->
@@ -4624,7 +4729,14 @@ app.get('/admin/orders', (req, res) => {
 
 // صفحة إدارة الكوبونات
 app.get('/admin/coupons', (req, res) => {
-  db.all('SELECT * FROM coupons ORDER BY created_at DESC', (err, rows) => {
+  const storeFilter = req.query.store || 'all';
+  let query = 'SELECT * FROM coupons ORDER BY created_at DESC';
+  if (storeFilter === 'noon') {
+    query = "SELECT * FROM coupons WHERE store_type = 'noon' OR store_type = 'store2' OR code LIKE 'NOON%' ORDER BY created_at DESC";
+  } else if (storeFilter === 'allstores') {
+    query = "SELECT * FROM coupons WHERE store_type = 'all' OR store_type IS NULL OR store_type = '' ORDER BY created_at DESC";
+  }
+  db.all(query, (err, rows) => {
     let html = `
     <!DOCTYPE html>
     <html dir="rtl">
@@ -4673,6 +4785,14 @@ app.get('/admin/coupons', (req, res) => {
             .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
             .stat-number { font-size: 24px; font-weight: bold; color: #4CAF50; }
             .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
+            .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
+            .tab { padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer; font-weight: 500; transition: all 0.3s; }
+            .tab.active { background: #4CAF50; color: white; }
+            .tab.active-noon { background: #F4C430; color: #000; }
+            .tab:hover:not(.active) { background: #f0f0f0; }
+            .tab.noon:hover { background: #F4C430; }
+            .coupon-card.noon { border-right-color: #F4C430; }
+            .coupon-code-noon { background: #F4C430; color: #000; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 16px; }
         </style>
     </head>
     <body>
@@ -4693,6 +4813,20 @@ app.get('/admin/coupons', (req, res) => {
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
                 <button onclick="showAddModal()" class="btn btn-success">+ إضافة كوبون جديد</button>
             </div>
+
+            <!-- تبويبات تصفية الكوبونات -->
+            <div class="tabs">
+                <button class="tab" id="tabAll" onclick="location.href='/admin/coupons'">📋 جميع الكوبونات</button>
+                <button class="tab noon" id="tabNoon" onclick="location.href='/admin/coupons?store=noon'">🛒 كوبونات noon</button>
+            </div>
+            <script>
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.get('store') === 'noon') {
+                    document.getElementById('tabNoon').classList.add('active-noon');
+                } else {
+                    document.getElementById('tabAll').classList.add('active');
+                }
+            </script>
 
             <div class="stats-grid">
                 <div class="stat-card">
