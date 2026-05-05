@@ -2399,7 +2399,8 @@ app.post('/api/process-payment', (req, res) => {
     // الكوبونات والقسائم
     coupon_code,
     gift_card_number,
-    gift_card_pin
+    gift_card_pin,
+    store_type
   } = req.body;
 
   console.log('💰 طلب دفع جديد:', {
@@ -2450,10 +2451,15 @@ app.post('/api/process-payment', (req, res) => {
   const processCoupon = () => {
     return new Promise((resolve, reject) => {
       if (coupon_code) {
-        db.get(
-          'SELECT * FROM coupons WHERE code = ? AND is_active = 1',
-          [coupon_code],
-          (err, coupon) => {
+        let query = 'SELECT * FROM coupons WHERE code = ? AND is_active = 1';
+        let params = [coupon_code];
+        
+        if (store_type) {
+          query += ' AND (store_type = ? OR store_type = "all")';
+          params.push(store_type);
+        }
+
+        db.get(query, params, (err, coupon) => {
             if (err) {
               reject(err);
               return;
@@ -2998,7 +3004,7 @@ app.post('/api/coupons', (req, res) => {
       `INSERT INTO coupons (
         code, store_type, description, discount_type, discount_value, min_order_amount,
         max_uses, used_count, valid_from, valid_until, is_active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         code,
         store_type || 'all',
