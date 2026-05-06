@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus Analytics | E-Commerce Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-deep: #0a0e17;
+            --bg-charcoal: #121829;
+            --bg-navy: #1a2332;
+            --bg-card: rgba(26, 35, 50, 0.6);
+            --neon-green: #00ff87;
+            --neon-green-glow: rgba(0, 255, 135, 0.4);
+            --electric-blue: #00d4ff;
+            --electric-blue-glow: rgba(0, 212, 255, 0.4);
+            --text-primary: #ffffff;
+            --text-secondary: #8892a4;
+            --text-muted: #5a6478;
+            --border-glow: rgba(0, 212, 255, 0.2);
+            --glass-border: rgba(255, 255, 255, 0.08);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(ellipse 80% 50% at 20% 20%, rgba(0, 212, 255, 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse 60% 40% at 80% 80%, rgba(0, 255, 135, 0.06) 0%, transparent 50%),
+                linear-gradient(180deg, var(--bg-deep) 0%, #0d1220 100%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .dashboard-container {
+            position: relative;
+            z-index: 1;
+            padding: 24px 32px;
+            max-width: 1920px;
+            margin: 0 auto;
+        }
+
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--electric-blue), var(--neon-green));
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            font-size: 20px;
+            box-shadow: 0 0 30px var(--neon-green-glow);
+        }
+
+        .brand-name {
+            font-size: 24px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+            background: linear-gradient(90deg, var(--text-primary), var(--text-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .brand-tag {
+            font-size: 11px;
+            color: var(--electric-blue);
+            font-weight: 500;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        .period-selector {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--bg-card);
+            padding: 8px 16px;
+            border-radius: 12px;
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(20px);
+        }
+
+        .period-selector select {
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            font-family: 'Outfit', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            outline: none;
+            padding-right: 24px;
+        }
+
+        .period-selector select option {
+            background: var(--bg-navy);
+            color: var(--text-primary);
+        }
+
+        .calendar-icon {
+            color: var(--text-secondary);
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border-radius: 20px;
+            padding: 24px;
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(20px);
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--electric-blue), var(--neon-green));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .stat-card:hover::before {
+            opacity: 1;
+        }
+
+        .stat-card.glow-green {
+            box-shadow: 0 0 40px var(--neon-green-glow), inset 0 0 40px rgba(0, 255, 135, 0.03);
+        }
+
+        .stat-card.glow-blue {
+            box-shadow: 0 0 40px var(--electric-blue-glow), inset 0 0 40px rgba(0, 212, 255, 0.03);
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .stat-label .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .stat-label .dot.green { background: var(--neon-green); box-shadow: 0 0 10px var(--neon-green); }
+        .stat-label .dot.blue { background: var(--electric-blue); box-shadow: 0 0 10px var(--electric-blue); }
+
+        .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 36px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            letter-spacing: -1px;
+        }
+
+        .stat-value.green { color: var(--neon-green); text-shadow: 0 0 30px var(--neon-green-glow); }
+        .stat-value.blue { color: var(--electric-blue); text-shadow: 0 0 30px var(--electric-blue-glow); }
+        .stat-value.white { color: var(--text-primary); }
+
+        .stat-change {
+            font-size: 13px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .stat-change.positive { color: var(--neon-green); }
+        .stat-change.negative { color: #ff4757; }
+
+        .charts-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .chart-card {
+            background: var(--bg-card);
+            border-radius: 20px;
+            padding: 24px;
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(20px);
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .chart-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .chart-legend {
+            display: flex;
+            gap: 20px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
+        }
+
+        .legend-dot.revenue { background: var(--neon-green); box-shadow: 0 0 10px var(--neon-green-glow); }
+        .legend-dot.orders { background: var(--electric-blue); box-shadow: 0 0 10px var(--electric-blue-glow); }
+
+        .chart-container {
+            height: 280px;
+            position: relative;
+        }
+
+        .donut-container {
+            height: 260px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .donut-center {
+            position: absolute;
+            text-align: center;
+        }
+
+        .donut-center .value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 32px;
+            font-weight: 600;
+            color: var(--neon-green);
+            text-shadow: 0 0 20px var(--neon-green-glow);
+        }
+
+        .donut-center .label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .bottom-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 24px;
+        }
+
+        .info-card {
+            background: var(--bg-card);
+            border-radius: 20px;
+            padding: 24px;
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(20px);
+        }
+
+        .info-card h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--text-primary);
+        }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .metric-row:last-child {
+            border-bottom: none;
+        }
+
+        .metric-name {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .metric-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            margin-top: 16px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+
+        .progress-fill.green {
+            background: linear-gradient(90deg, var(--neon-green), #00cc6a);
+            box-shadow: 0 0 15px var(--neon-green-glow);
+        }
+
+        .progress-fill.blue {
+            background: linear-gradient(90deg, var(--electric-blue), #0099cc);
+            box-shadow: 0 0 15px var(--electric-blue-glow);
+        }
+
+        .glow-pulse {
+            animation: pulseGlow 2s infinite;
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .sidebar {
+            position: fixed;
+            right: 32px;
+            top: 100px;
+            width: 300px;
+        }
+
+        .activity-card {
+            background: var(--bg-card);
+            border-radius: 20px;
+            padding: 24px;
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(20px);
+        }
+
+        .activity-item {
+            display: flex;
+            gap: 14px;
+            padding: 14px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+
+        .activity-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        .activity-icon.order { background: rgba(0, 255, 135, 0.15); color: var(--neon-green); }
+        .activity-icon.payment { background: rgba(0, 212, 255, 0.15); color: var(--electric-blue); }
+        .activity-icon.user { background: rgba(255, 193, 7, 0.15); color: #ffc107; }
+
+        .activity-content h4 {
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .activity-content p {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-charcoal);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--bg-navy);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <div class="top-bar">
+            <div class="logo-section">
+                <div class="logo">NX</div>
+                <div>
+                    <div class="brand-name">Nexus Analytics</div>
+                    <div class="brand-tag">E-Commerce Dashboard</div>
+                </div>
+            </div>
+            <div class="period-selector">
+                <svg class="calendar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+                <select id="periodSelect">
+                    <option value="7d">Last 7 Days</option>
+                    <option value="30d" selected>Last 30 Days</option>
+                    <option value="90d">Last 90 Days</option>
+                    <option value="12m">Last 12 Months</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="main-grid">
+            <div class="stat-card glow-green">
+                <div class="stat-label"><span class="dot green"></span>Revenue Growth</div>
+                <div class="stat-value green">+24.8%</div>
+                <div class="stat-change positive">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 15l-6-6-6 6"/></svg>
+                    +12.4% vs last period
+                </div>
+            </div>
+            <div class="stat-card glow-blue">
+                <div class="stat-label"><span class="dot blue"></span>Conversion Rate</div>
+                <div class="stat-value blue">3.42%</div>
+                <div class="stat-change positive">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 15l-6-6-6 6"/></svg>
+                    +0.8% vs last period
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label"><span class="dot green"></span>Total Revenue</div>
+                <div class="stat-value white">$847,293</div>
+                <div class="stat-change positive">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 15l-6-6-6 6"/></svg>
+                    +18.2% vs last period
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label"><span class="dot blue"></span>Active Users</div>
+                <div class="stat-value white">24,847</div>
+                <div class="stat-change positive">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 15l-6-6-6 6"/></svg>
+                    +5.3% vs last period
+                </div>
+            </div>
+        </div>
+
+        <div class="charts-row">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <div class="chart-title">Revenue & Orders Trend</div>
+                    <div class="chart-legend">
+                        <div class="legend-item"><span class="legend-dot revenue"></span>Revenue</div>
+                        <div class="legend-item"><span class="legend-dot orders"></span>Orders</div>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="lineChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-header">
+                    <div class="chart-title">Traffic Sources</div>
+                </div>
+                <div class="donut-container">
+                    <canvas id="donutChart"></canvas>
+                    <div class="donut-center">
+                        <div class="value glow-pulse">68%</div>
+                        <div class="label">Organic</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bottom-row">
+            <div class="info-card">
+                <h3>Top Products</h3>
+                <div class="metric-row">
+                    <span class="metric-name">Wireless Earbuds Pro</span>
+                    <span class="metric-value">$12,450</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-name">Smart Watch Series X</span>
+                    <span class="metric-value">$9,820</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-name">Mechanical Keyboard RGB</span>
+                    <span class="metric-value">$7,340</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-name">4K Webcam Ultra</span>
+                    <span class="metric-value">$5,280</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill green" style="width: 85%"></div>
+                </div>
+            </div>
+            <div class="info-card">
+                <h3>Conversion Funnel</h3>
+                <div class="metric-row">
+                    <span class="metric-name">Page Views</span>
+                    <span class="metric-value">124,892</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-name">Add to Cart</span>
+                    <span class="metric-value">18,432</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-name">Checkout</span>
+                    <span class="metric-value">8,921</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-name">Purchases</span>
+                    <span class="metric-value">4,273</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill blue" style="width: 72%"></div>
+                </div>
+            </div>
+            <div class="info-card">
+                <h3>Regional Performance</h3>
+                <div class="metric-row">
+                    <span class="metric-name">North America</span>
+                    <span class="metric-value">42%</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-name">Europe</span>
+                    <span class="metric-value">28%</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-name">Asia Pacific</span>
+                    <span class="metric-value">21%</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-name">Other Regions</span>
+                    <span class="metric-value">9%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill green" style="width: 60%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        Chart.defaults.font.family = "'Outfit', sans-serif";
+        Chart.defaults.color = '#8892a4';
+
+        const lineCtx = document.getElementById('lineChart').getContext('2d');
+        const lineGradient = lineCtx.createLinearGradient(0, 0, 0, 280);
+        lineGradient.addColorStop(0, 'rgba(0, 255, 135, 0.3)');
+        lineGradient.addColorStop(1, 'rgba(0, 255, 135, 0)');
+
+        const lineGradientBlue = lineCtx.createLinearGradient(0, 0, 0, 280);
+        lineGradientBlue.addColorStop(0, 'rgba(0, 212, 255, 0.3)');
+        lineGradientBlue.addColorStop(1, 'rgba(0, 212, 255, 0)');
+
+        new Chart(lineCtx, {
+            type: 'line',
+            data: {
+                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                datasets: [{
+                    label: 'Revenue',
+                    data: [42000, 48000, 52000, 61000, 58000, 72000, 78000, 85000, 92000, 88000, 96000, 112000],
+                    borderColor: '#00ff87',
+                    backgroundColor: lineGradient,
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: '#00ff87',
+                    pointBorderColor: '#0a0e17',
+                    pointBorderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 6
+                }, {
+                    label: 'Orders',
+                    data: [320, 380, 410, 480, 440, 560, 620, 680, 740, 700, 780, 890],
+                    borderColor: '#00d4ff',
+                    backgroundColor: lineGradientBlue,
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: '#00d4ff',
+                    pointBorderColor: '#0a0e17',
+                    pointBorderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(18, 24, 41, 0.95)',
+                        titleColor: '#ffffff',
+                        bodyColor: '#8892a4',
+                        borderColor: 'rgba(0, 212, 255, 0.3)',
+                        borderWidth: 1,
+                        padding: 12,
+                        displayColors: true,
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + (context.datasetIndex === 0 ? '$' : '') + context.parsed.y.toLocaleString();
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { color: '#5a6478' }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { 
+                            color: '#5a6478',
+                            callback: function(value) {
+                                return '$' + (value / 1000) + 'k';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        const donutCtx = document.getElementById('donutChart').getContext('2d');
+        new Chart(donutCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Organic', 'Direct', 'Social', 'Referral', 'Email'],
+                datasets: [{
+                    data: [68, 15, 10, 5, 2],
+                    backgroundColor: [
+                        '#00ff87',
+                        '#00d4ff',
+                        '#8b5cf6',
+                        '#f59e0b',
+                        '#ef4444'
+                    ],
+                    borderWidth: 0,
+                    hoverOffset: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '75%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: '#8892a4',
+                            padding: 16,
+                            usePointStyle: true,
+                            pointStyle: 'circle'
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(18, 24, 41, 0.95)',
+                        titleColor: '#ffffff',
+                        bodyColor: '#8892a4',
+                        borderColor: 'rgba(0, 212, 255, 0.3)',
+                        borderWidth: 1,
+                        padding: 12
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
