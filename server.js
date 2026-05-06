@@ -6202,6 +6202,306 @@ app.use((err, req, res, next) => {
   });
 });
 
+// ======== لوحة التحليلات الاحترافية ========
+app.get('/admin/dashboard', (req, res) => {
+  const period = req.query.period || '30';
+  let dateFilter = '';
+  if (period !== 'all') {
+    dateFilter = `WHERE order_date >= datetime('now', '-${period} days')`;
+  }
+
+  const queries = {
+    total: `SELECT COUNT(*) as count, COALESCE(SUM(final_amount),0) as revenue FROM orders ${dateFilter}`,
+    byStatus: `SELECT order_status, COUNT(*) as count, COALESCE(SUM(final_amount),0) as revenue FROM orders ${dateFilter} GROUP BY order_status`,
+    daily: `SELECT DATE(order_date) as day, COUNT(*) as orders, COALESCE(SUM(final_amount),0) as revenue FROM orders ${dateFilter} GROUP BY DATE(order_date) ORDER BY day`,
+    byStore: `SELECT store_type, COUNT(*) as count, COALESCE(SUM(final_amount),0) as revenue FROM orders ${dateFilter ? dateFilter + ' AND' : 'WHERE'} store_type IS NOT NULL GROUP BY store_type`,
+    topProducts: `SELECT json_extract(value,'$.name') as name, SUM(CAST(json_extract(value,'$.quantity') AS INTEGER)) as qty FROM orders ${dateFilter ? dateFilter + ',' : ','} json_each(orders.cart_items) GROUP BY name ORDER BY qty DESC LIMIT 8`,
+    prevTotal: `SELECT COUNT(*) as count, COALESCE(SUM(final_amount),0) as revenue FROM orders WHERE order_date >= datetime('now', '-${parseInt(period)*2} days') AND order_date < datetime('now', '-${period} days')`
+  };
+
+  const results = {};
+  const qKeys = Object.keys(queries);
+  let done = 0;
+
+  qKeys.forEach(key => {
+    const method = (key === 'daily' || key === 'byStatus' || key === 'byStore' || key === 'topProducts') ? 'all' : 'get';
+    db[method](queries[key], [], (err, rows) => {
+      results[key] = err ? (method === 'get' ? {} : []) : rows;
+      done++;
+      if (done === qKeys.length) sendDashboard(res, results, period);
+    });
+  });
+});
+
+function sendDashboard(res, data, period) {
+  const total = data.total || {};
+  const prev = data.prevTotal || {};
+  const revenueChange = prev.revenue > 0 ? (((total.revenue - prev.revenue) / prev.revenue) * 100).toFixed(1) : 0;
+  const ordersChange = prev.count > 0 ? (((total.count - prev.count) / prev.count) * 100).toFixed(1) : 0;
+
+  const statusMap = { pending: 'قيد الانتظار', confirmed: 'مؤكد', completed: 'مكتمل', cancelled: 'ملغي' };
+  const statusColors = { pending: '#f59e0b', confirmed: '#6366f1', completed: '#10b981', cancelled: '#ef4444' };
+
+  const daily = (data.daily || []);
+  const days = daily.map(r => r.day);
+  const dailyRevenue = daily.map(r => parseFloat(r.revenue).toFixed(2));
+  const dailyOrders = daily.map(r => r.orders);
+
+  const byStatus = (data.byStatus || []);
+  const statusLabels = byStatus.map(r => statusMap[r.order_status] || r.order_status);
+  const statusCounts = byStatus.map(r => r.count);
+  const statusColorsArr = byStatus.map(r => statusColors[r.order_status] || '#94a3b8');
+
+  const byStore = (data.byStore || []);
+  const storeLabels = byStore.map(r => r.store_type || 'غير محدد');
+  const storeRevenue = byStore.map(r => parseFloat(r.revenue).toFixed(2));
+
+  const topProducts = (data.topProducts || []);
+  const productNames = topProducts.map(r => (r.name || 'منتج').substring(0, 25));
+  const productQty = topProducts.map(r => r.qty || 0);
+
+  const target = 10000;
+  const progress = Math.min(100, ((total.revenue / target) * 100)).toFixed(1);
+  const completedCount = byStatus.find(s => s.order_status === 'completed')?.count || 0;
+  const completionRate = total.count > 0 ? ((completedCount / total.count) * 100).toFixed(1) : 0;
+
+  // بناء صفوف الجدول للمنتجات
+  const productRows = topProducts.map((p, i) => `
+    <tr>
+      <td><span class="rank">${i+1}</span></td>
+      <td>${(p.name||'منتج').substring(0,30)}</td>
+      <td><div class="bar-wrap"><div class="bar-fill" style="width:${Math.min(100,(p.qty/Math.max(...productQty||[1]))*100)}%;background:linear-gradient(90deg,#6366f1,#8b5cf6)"></div></div></td>
+      <td><strong>${p.qty}</strong></td>
+    </tr>`).join('');
+
+  const html = `<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>لوحة التحليلات - نظام المتجر</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',sans-serif;background:#f1f5f9;color:#1e293b;min-height:100vh}
+.sidebar{position:fixed;top:0;right:0;width:220px;height:100vh;background:linear-gradient(180deg,#1e293b,#0f172a);padding:24px 16px;z-index:100}
+.sidebar .logo{color:#fff;font-size:18px;font-weight:700;margin-bottom:32px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.1)}
+.sidebar a{display:flex;align-items:center;gap:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:10px 12px;border-radius:8px;margin-bottom:4px;font-size:14px;transition:.2s}
+.sidebar a:hover,.sidebar a.active{background:rgba(99,102,241,.3);color:#fff}
+.main{margin-right:220px;padding:24px}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:28px;flex-wrap:wrap;gap:12px}
+.topbar h1{font-size:22px;font-weight:700;color:#1e293b}
+.period-select{display:flex;align-items:center;gap:8px;background:#fff;border-radius:10px;padding:8px 16px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.period-select label{font-size:13px;color:#64748b;font-weight:600}
+.period-select select{border:none;outline:none;font-size:14px;color:#1e293b;cursor:pointer;background:transparent}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}
+.grid-2{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:24px}
+.card{background:#fff;border-radius:16px;padding:20px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
+.stat-card{display:flex;flex-direction:column;gap:8px}
+.stat-card .label{font-size:12px;color:#64748b;font-weight:600;text-transform:uppercase}
+.stat-card .value{font-size:28px;font-weight:700}
+.stat-card .change{font-size:12px;padding:3px 8px;border-radius:20px;width:fit-content}
+.up{background:#dcfce7;color:#16a34a} .down{background:#fee2e2;color:#dc2626}
+.card-title{font-size:14px;font-weight:700;color:#374151;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.progress-ring-wrap{display:flex;flex-direction:column;align-items:center;gap:12px}
+.ring-label{font-size:13px;color:#64748b;text-align:center}
+.ring-value{font-size:22px;font-weight:700;color:#1e293b}
+canvas{max-height:260px}
+.donut-wrap{position:relative;display:flex;align-items:center;justify-content:center}
+.donut-center{position:absolute;text-align:center}
+.donut-center .num{font-size:24px;font-weight:700}
+.donut-center .sub{font-size:11px;color:#64748b}
+table{width:100%;border-collapse:collapse}
+th{text-align:right;padding:8px 12px;font-size:12px;color:#64748b;background:#f8fafc;font-weight:600}
+td{padding:8px 12px;font-size:13px;border-bottom:1px solid #f1f5f9}
+tr:last-child td{border:none}
+.rank{background:#e0e7ff;color:#6366f1;border-radius:50%;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.bar-wrap{background:#f1f5f9;border-radius:4px;height:8px;width:100%}
+.bar-fill{height:8px;border-radius:4px;transition:.5s}
+.heatmap{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.heatmap-cell{aspect-ratio:1;border-radius:3px;position:relative;cursor:pointer}
+.heatmap-cell:hover::after{content:attr(title);position:absolute;bottom:120%;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:4px 8px;border-radius:4px;font-size:11px;white-space:nowrap;z-index:10}
+.store-badge{display:inline-block;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600}
+@media(max-width:900px){.grid-4{grid-template-columns:repeat(2,1fr)}.grid-3,.grid-2{grid-template-columns:1fr}.sidebar{display:none}.main{margin-right:0}}
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <div class="logo">🛒 متجري</div>
+  <a href="/admin" >👥 المستخدمون</a>
+  <a href="/admin/advanced">🛠️ التحكم</a>
+  <a href="/admin/orders">📦 الطلبات</a>
+  <a href="/admin/confirmed-orders">✅ المؤكدة</a>
+  <a href="/admin/coupons">🎫 الكوبونات</a>
+  <a href="/admin/dashboard" class="active">📊 التحليلات</a>
+</div>
+<div class="main">
+  <div class="topbar">
+    <h1>📊 لوحة التحليلات</h1>
+    <div class="period-select">
+      <label>📅 فلترة حسب الفترة:</label>
+      <select onchange="location.href='/admin/dashboard?period='+this.value">
+        <option value="7" ${period==='7'?'selected':''}>آخر 7 أيام</option>
+        <option value="30" ${period==='30'?'selected':''}>آخر 30 يوم</option>
+        <option value="90" ${period==='90'?'selected':''}>آخر 3 أشهر</option>
+        <option value="180" ${period==='180'?'selected':''}>آخر 6 أشهر</option>
+        <option value="365" ${period==='365'?'selected':''}>آخر سنة</option>
+        <option value="all" ${period==='all'?'selected':''}>كل الفترات</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="grid-4">
+    <div class="card stat-card" style="border-top:3px solid #6366f1">
+      <div class="label">💰 إجمالي الإيرادات</div>
+      <div class="value" style="color:#6366f1">${parseFloat(total.revenue||0).toFixed(2)} ر.س</div>
+      <div class="change ${revenueChange>=0?'up':'down'}">${revenueChange>=0?'▲':'▼'} ${Math.abs(revenueChange)}% مقارنة بالفترة السابقة</div>
+    </div>
+    <div class="card stat-card" style="border-top:3px solid #10b981">
+      <div class="label">📦 إجمالي الطلبات</div>
+      <div class="value" style="color:#10b981">${total.count||0}</div>
+      <div class="change ${ordersChange>=0?'up':'down'}">${ordersChange>=0?'▲':'▼'} ${Math.abs(ordersChange)}% مقارنة بالفترة السابقة</div>
+    </div>
+    <div class="card stat-card" style="border-top:3px solid #f59e0b">
+      <div class="label">✅ معدل الإتمام</div>
+      <div class="value" style="color:#f59e0b">${completionRate}%</div>
+      <div class="change up">من ${total.count||0} طلب</div>
+    </div>
+    <div class="card stat-card" style="border-top:3px solid #ec4899">
+      <div class="label">🎯 هدف الإيرادات</div>
+      <div class="value" style="color:#ec4899">${progress}%</div>
+      <div class="change ${progress>=50?'up':'down'}">من ${target.toLocaleString()} ر.س مستهدف</div>
+    </div>
+  </div>
+
+  <!-- Progress Rings + Donut -->
+  <div class="grid-3" style="margin-bottom:24px">
+    <div class="card">
+      <div class="card-title">🎯 تقدم هدف الإيرادات</div>
+      <div class="progress-ring-wrap">
+        <canvas id="ringRevenue" width="160" height="160"></canvas>
+        <div class="ring-label">الهدف الشهري: ${target.toLocaleString()} ر.س</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">📋 حالات الطلبات</div>
+      <div class="donut-wrap">
+        <canvas id="donutStatus" width="200" height="200"></canvas>
+        <div class="donut-center">
+          <div class="num">${total.count||0}</div>
+          <div class="sub">طلب</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">🏪 إيرادات حسب المتجر</div>
+      <canvas id="storeChart" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- Revenue Chart -->
+  <div class="card" style="margin-bottom:24px">
+    <div class="card-title">📈 تطور الإيرادات والطلبات اليومية</div>
+    <canvas id="revenueChart" height="90"></canvas>
+  </div>
+
+  <!-- Top Products + Heatmap -->
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">🛍️ أكثر المنتجات مبيعاً</div>
+      <table>
+        <thead><tr><th>#</th><th>المنتج</th><th>الأداء</th><th>الكمية</th></tr></thead>
+        <tbody>${productRows || '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:20px">لا توجد بيانات</td></tr>'}</tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">🗓️ خريطة نشاط الطلبات</div>
+      <div class="heatmap" id="heatmap"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:11px;color:#64748b">
+        <span>أقل</span>
+        <div style="width:12px;height:12px;border-radius:2px;background:#e0e7ff"></div>
+        <div style="width:12px;height:12px;border-radius:2px;background:#a5b4fc"></div>
+        <div style="width:12px;height:12px;border-radius:2px;background:#6366f1"></div>
+        <div style="width:12px;height:12px;border-radius:2px;background:#4338ca"></div>
+        <span>أكثر</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const days = ${JSON.stringify(days)};
+const dailyRevenue = ${JSON.stringify(dailyRevenue)};
+const dailyOrders = ${JSON.stringify(dailyOrders)};
+const statusLabels = ${JSON.stringify(statusLabels)};
+const statusCounts = ${JSON.stringify(statusCounts)};
+const statusColorsArr = ${JSON.stringify(statusColorsArr)};
+const storeLabels = ${JSON.stringify(storeLabels)};
+const storeRevenue = ${JSON.stringify(storeRevenue)};
+const progress = ${progress};
+
+// Revenue/Orders line chart
+new Chart(document.getElementById('revenueChart'), {
+  data: {
+    labels: days,
+    datasets: [
+      {type:'line', label:'الإيرادات (ر.س)', data: dailyRevenue, borderColor:'#6366f1', backgroundColor:'rgba(99,102,241,.08)', fill:true, tension:.4, yAxisID:'y'},
+      {type:'bar', label:'الطلبات', data: dailyOrders, backgroundColor:'rgba(16,185,129,.2)', borderColor:'#10b981', borderWidth:1, yAxisID:'y1'}
+    ]
+  },
+  options:{responsive:true, interaction:{mode:'index'}, plugins:{legend:{position:'top'}}, scales:{y:{position:'right', grid:{color:'#f1f5f9'}}, y1:{position:'left', grid:{display:false}}}}
+});
+
+// Donut status
+new Chart(document.getElementById('donutStatus'), {
+  type:'doughnut',
+  data:{labels:statusLabels, datasets:[{data:statusCounts, backgroundColor:statusColorsArr, borderWidth:0, hoverOffset:4}]},
+  options:{cutout:'72%', plugins:{legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}}}}
+});
+
+// Store bar chart
+new Chart(document.getElementById('storeChart'), {
+  type:'bar',
+  data:{labels:storeLabels, datasets:[{label:'الإيرادات', data:storeRevenue, backgroundColor:['#6366f1','#f59e0b','#10b981','#ec4899'], borderRadius:6}]},
+  options:{plugins:{legend:{display:false}}, scales:{y:{grid:{color:'#f8fafc'}}, x:{grid:{display:false}}}}
+});
+
+// Progress Ring (doughnut as circular progress)
+const ringCtx = document.getElementById('ringRevenue');
+new Chart(ringCtx, {
+  type:'doughnut',
+  data:{datasets:[{data:[progress, 100-progress], backgroundColor:['#6366f1','#e0e7ff'], borderWidth:0}]},
+  options:{cutout:'80%', plugins:{legend:{display:false}, tooltip:{enabled:false}}, animation:{animateRotate:true}},
+  plugins:[{id:'centerText', afterDraw(chart){const {ctx,chartArea:{width,height}}=chart; const x=chartArea?width/2+chart.chartArea.left:0; const y=chartArea?height/2+chart.chartArea.top:0; ctx.save(); ctx.font='bold 24px Segoe UI'; ctx.fillStyle='#6366f1'; ctx.textAlign='center'; ctx.textBaseline='middle'; try{ctx.fillText(progress+'%', chart.chartArea.left+chart.chartArea.width/2, chart.chartArea.top+chart.chartArea.height/2)}catch(e){} ctx.restore();}}]
+});
+
+// Heatmap
+(function() {
+  const cells = 35;
+  const hm = document.getElementById('heatmap');
+  const heatData = {};
+  ${JSON.stringify(data.daily||[])}.forEach(d => { heatData[d.day] = d.orders; });
+  const maxVal = Math.max(...Object.values(heatData), 1);
+  const colors = ['#f1f5f9','#e0e7ff','#a5b4fc','#6366f1','#4338ca'];
+  for(let i = cells-1; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate()-i);
+    const key = d.toISOString().split('T')[0];
+    const val = heatData[key] || 0;
+    const idx = Math.min(4, Math.floor((val/maxVal)*5));
+    const cell = document.createElement('div');
+    cell.className = 'heatmap-cell';
+    cell.style.background = colors[idx];
+    cell.title = key + ': ' + val + ' طلب';
+    hm.appendChild(cell);
+  }
+})();
+</script>
+</body>
+</html>`;
+  res.send(html);
+}
+
 // التعامل مع المسارات غير الموجودة
 app.use((req, res) => {
   res.status(404).json({
