@@ -702,7 +702,7 @@ app.get('/admin', (req, res) => {
     if (err) {
       return res.status(500).send('خطأ في جلب البيانات');
     }
-
+    
     const content = `
     <div class="stats-grid">
         <div class="stat-card">
@@ -777,17 +777,17 @@ app.get('/admin', (req, res) => {
 app.get('/admin/purchases/:phone', (req, res) => {
   const { phone } = req.params;
   const name = req.query.name || 'العميل';
-
+  
   db.all('SELECT * FROM orders WHERE customer_phone = ? OR customer_secondary_phone = ? ORDER BY created_at DESC', [phone, phone], (err, orders) => {
     if (err) return res.status(500).send('خطأ');
-
+    
     let ordersHtml = '';
     if (orders.length === 0) {
       ordersHtml = '<div class="empty-state"><i class="fas fa-box-open"></i><br>لا توجد طلبات لهذا العميل</div>';
     } else {
       orders.forEach(order => {
         let items = [];
-        try { items = JSON.parse(order.cart_items); } catch (e) { }
+        try { items = JSON.parse(order.cart_items); } catch(e) {}
         const statusClass = order.order_status === 'confirmed' ? 'badge-success' : (order.order_status === 'pending' ? 'badge-warning' : 'badge-danger');
         ordersHtml += `
         <div class="card">
@@ -808,11 +808,11 @@ app.get('/admin/purchases/:phone', (req, res) => {
         </div>`;
       });
     }
-
+    
     const content = `
     <div class="stats-grid">
         <div class="stat-card"><div class="stat-info"><h3>${orders.length}</h3><p>عدد الطلبات</p></div><div class="stat-icon"><i class="fas fa-shopping-cart"></i></div></div>
-        <div class="stat-card"><div class="stat-info"><h3>${orders.reduce((s, o) => s + parseFloat(o.total_amount), 0).toFixed(2)} ر.س</h3><p>إجمالي المشتريات</p></div><div class="stat-icon"><i class="fas fa-chart-line"></i></div></div>
+        <div class="stat-card"><div class="stat-info"><h3>${orders.reduce((s,o)=>s+parseFloat(o.total_amount),0).toFixed(2)} ر.س</h3><p>إجمالي المشتريات</p></div><div class="stat-icon"><i class="fas fa-chart-line"></i></div></div>
     </div>
     ${ordersHtml}
     <div style="margin-top:20px;"><a href="/admin" class="btn btn-outline"><i class="fas fa-arrow-right"></i> العودة</a></div>
@@ -825,14 +825,14 @@ app.get('/admin/purchases/:phone', (req, res) => {
 app.get('/admin/orders', (req, res) => {
   db.all('SELECT * FROM orders ORDER BY created_at DESC', (err, orders) => {
     if (err) return res.status(500).send('خطأ');
-
+    
     let ordersHtml = '';
     if (orders.length === 0) {
       ordersHtml = '<div class="empty-state"><i class="fas fa-inbox"></i><br>لا توجد طلبات بعد</div>';
     } else {
       orders.forEach(order => {
         let items = [];
-        try { items = JSON.parse(order.cart_items); } catch (e) { }
+        try { items = JSON.parse(order.cart_items); } catch(e) {}
         const statusClass = order.order_status === 'completed' ? 'badge-success' : (order.order_status === 'pending' ? 'badge-warning' : (order.order_status === 'confirmed' ? 'badge-info' : 'badge-danger'));
         ordersHtml += `
         <div class="card" id="order-${order.id}">
@@ -868,13 +868,13 @@ app.get('/admin/orders', (req, res) => {
         </div>`;
       });
     }
-
+    
     const content = `
     <div class="stats-grid">
         <div class="stat-card"><div class="stat-info"><h3>${orders.length}</h3><p>إجمالي الطلبات</p></div><div class="stat-icon"><i class="fas fa-chart-bar"></i></div></div>
-        <div class="stat-card"><div class="stat-info"><h3>${orders.filter(o => o.order_status === 'pending').length}</h3><p>قيد الانتظار</p></div><div class="stat-icon"><i class="fas fa-clock"></i></div></div>
-        <div class="stat-card"><div class="stat-info"><h3>${orders.filter(o => o.order_status === 'confirmed').length}</h3><p>مؤكدة</p></div><div class="stat-icon"><i class="fas fa-check-circle"></i></div></div>
-        <div class="stat-card"><div class="stat-info"><h3>${orders.reduce((s, o) => s + parseFloat(o.total_amount), 0).toFixed(0)} ر.س</h3><p>إجمالي المبيعات</p></div><div class="stat-icon"><i class="fas fa-chart-line"></i></div></div>
+        <div class="stat-card"><div class="stat-info"><h3>${orders.filter(o=>o.order_status==='pending').length}</h3><p>قيد الانتظار</p></div><div class="stat-icon"><i class="fas fa-clock"></i></div></div>
+        <div class="stat-card"><div class="stat-info"><h3>${orders.filter(o=>o.order_status==='confirmed').length}</h3><p>مؤكدة</p></div><div class="stat-icon"><i class="fas fa-check-circle"></i></div></div>
+        <div class="stat-card"><div class="stat-info"><h3>${orders.reduce((s,o)=>s+parseFloat(o.total_amount),0).toFixed(0)} ر.س</h3><p>إجمالي المبيعات</p></div><div class="stat-icon"><i class="fas fa-chart-line"></i></div></div>
     </div>
     <div class="card"><div class="card-header"><h2><i class="fas fa-shopping-cart"></i> جميع الطلبات</h2><button onclick="exportOrders()" class="btn btn-primary"><i class="fas fa-download"></i> تصدير Excel</button></div><div class="card-body">${ordersHtml}</div></div>
     <script>
@@ -903,14 +903,14 @@ app.get('/admin/orders', (req, res) => {
 app.get('/admin/confirmed-orders', (req, res) => {
   db.all("SELECT * FROM orders WHERE order_status = 'confirmed' ORDER BY created_at DESC", (err, orders) => {
     if (err) return res.status(500).send('خطأ');
-
+    
     let ordersHtml = '';
     if (orders.length === 0) {
       ordersHtml = '<div class="empty-state"><i class="fas fa-check-circle"></i><br>لا توجد طلبات مؤكدة</div>';
     } else {
       orders.forEach(order => {
         let items = [];
-        try { items = JSON.parse(order.cart_items); } catch (e) { }
+        try { items = JSON.parse(order.cart_items); } catch(e) {}
         ordersHtml += `
         <div class="card">
             <div class="card-header">
@@ -933,7 +933,7 @@ app.get('/admin/confirmed-orders', (req, res) => {
         </div>`;
       });
     }
-
+    
     const content = `
     <div class="stats-grid"><div class="stat-card"><div class="stat-info"><h3>${orders.length}</h3><p>طلبات مؤكدة</p></div><div class="stat-icon"><i class="fas fa-check-double"></i></div></div></div>
     ${ordersHtml}
@@ -954,7 +954,7 @@ app.get('/admin/confirmed-orders', (req, res) => {
 app.get('/admin/coupons', (req, res) => {
   db.all('SELECT * FROM coupons ORDER BY created_at DESC', (err, coupons) => {
     if (err) return res.status(500).send('خطأ');
-
+    
     let couponsHtml = '';
     if (coupons.length === 0) {
       couponsHtml = '<div class="empty-state"><i class="fas fa-ticket-alt"></i><br>لا توجد كوبونات</div>';
@@ -980,11 +980,11 @@ app.get('/admin/coupons', (req, res) => {
         </div>`;
       });
     }
-
+    
     const content = `
     <div class="stats-grid">
         <div class="stat-card"><div class="stat-info"><h3>${coupons.length}</h3><p>إجمالي الكوبونات</p></div><div class="stat-icon"><i class="fas fa-ticket-alt"></i></div></div>
-        <div class="stat-card"><div class="stat-info"><h3>${coupons.filter(c => c.is_active && new Date(c.valid_until) > new Date()).length}</h3><p>نشطة</p></div><div class="stat-icon"><i class="fas fa-check-circle"></i></div></div>
+        <div class="stat-card"><div class="stat-info"><h3>${coupons.filter(c=>c.is_active && new Date(c.valid_until)>new Date()).length}</h3><p>نشطة</p></div><div class="stat-icon"><i class="fas fa-check-circle"></i></div></div>
     </div>
     <div class="card">
         <div class="card-header">
@@ -1038,7 +1038,7 @@ app.get('/admin/coupons', (req, res) => {
 app.get('/admin/gift-cards', (req, res) => {
   db.all('SELECT * FROM gift_cards ORDER BY created_at DESC', (err, cards) => {
     if (err) return res.status(500).send('خطأ');
-
+    
     let cardsHtml = '';
     if (cards.length === 0) {
       cardsHtml = '<div class="empty-state"><i class="fas fa-gift"></i><br>لا توجد قسائم</div>';
@@ -1060,11 +1060,11 @@ app.get('/admin/gift-cards', (req, res) => {
         </div>`;
       });
     }
-
+    
     const content = `
     <div class="stats-grid">
         <div class="stat-card"><div class="stat-info"><h3>${cards.length}</h3><p>إجمالي القسائم</p></div><div class="stat-icon"><i class="fas fa-gift"></i></div></div>
-        <div class="stat-card"><div class="stat-info"><h3>${cards.reduce((s, g) => s + g.current_balance, 0).toFixed(2)} ر.س</h3><p>الرصيد المتبقي</p></div><div class="stat-icon"><i class="fas fa-wallet"></i></div></div>
+        <div class="stat-card"><div class="stat-info"><h3>${cards.reduce((s,g)=>s+g.current_balance,0).toFixed(2)} ر.س</h3><p>الرصيد المتبقي</p></div><div class="stat-icon"><i class="fas fa-wallet"></i></div></div>
     </div>
     <div class="card"><div class="card-header"><h2><i class="fas fa-plus"></i> إضافة قسيمة</h2><button onclick="showAddModal()" class="btn btn-success"><i class="fas fa-plus"></i> إضافة</button></div></div>
     ${cardsHtml}
