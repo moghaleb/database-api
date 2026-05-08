@@ -38,10 +38,7 @@ if (!fs.existsSync(exportsDir)) {
 // ======== Middleware ========
 app.use(cors({
   origin: [
-    'https://redme.cfd',
-    'http://redme.cfd',
-    'https://www.redme.cfd',
-    'http://www.redme.cfd',
+    'https://database-api-kvxr.onrender.com',
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'capacitor://localhost',
