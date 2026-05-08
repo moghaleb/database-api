@@ -3721,6 +3721,10 @@ app.get('/admin', (req, res) => {
                         <td style="padding: 8px; color: #555;">${user.message || 'لا توجد رسالة'}</td>
                     </tr>
                 </table>
+                <div style="margin-top: 15px; display: flex; gap: 10px;">
+                    <a href="/admin/purchases/${user.phone}?name=${encodeURIComponent(user.name)}" class="nav-btn" style="background: #4CAF50; color: white; font-size: 14px; text-decoration: none;">🛍️ عرض المشتريات</a>
+                    <a href="tel:${user.phone}" class="nav-btn" style="background: #2196F3; color: white; font-size: 14px; text-decoration: none;">📞 اتصال</a>
+                </div>
             </div>
         `;
       });
@@ -3742,6 +3746,340 @@ app.get('/admin', (req, res) => {
     res.send(html);
   });
 });
+
+// صفحة مشتريات عميل محدد
+app.get('/admin/purchases/:phone', (req, res) => {
+  const { phone } = req.params;
+  const name = req.query.name || 'عميل';
+
+  db.all('SELECT * FROM orders WHERE customer_phone = ? OR customer_secondary_phone = ? ORDER BY created_at DESC', [phone, phone], (err, rows) => {
+    if (err) {
+      console.error('❌ خطأ في جلب المشتريات:', err);
+      return res.status(500).send('خطأ في جلب المشتريات');
+    }
+
+    let html = `
+    <!DOCTYPE html>
+    <html dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>مشتريات العميل: ${name}</title>
+        <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background: #f0f2f5; min-height: 100vh; }
+            .container { max-width: 1200px; margin: 0 auto; }
+            .header { background: #fff; padding: 30px; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
+            .order-card { background: #fff; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-right: 5px solid #2196F3; }
+            .order-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+            .order-number { background: #2196F3; color: white; padding: 5px 15px; border-radius: 20px; font-weight: bold; font-size: 14px; }
+            .status-badge { padding: 4px 10px; border-radius: 10px; font-size: 12px; font-weight: bold; }
+            .status-pending { background: #fff3e0; color: #ef6c00; }
+            .status-confirmed { background: #e8f5e9; color: #2e7d32; }
+            .status-completed { background: #e3f2fd; color: #1565c0; }
+            .status-cancelled { background: #ffebee; color: #c62828; }
+            .back-btn { background: #2196F3; color: white; padding: 10px 25px; border-radius: 25px; text-decoration: none; font-weight: bold; transition: all 0.3s; }
+            .back-btn:hover { background: #1976D2; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3); }
+            .item-list { background: #f9f9f9; padding: 15px; border-radius: 10px; margin-top: 15px; }
+            .item-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed #ddd; }
+            .item-row:last-child { border-bottom: none; }
+            .total-row { margin-top: 15px; text-align: left; font-size: 18px; font-weight: bold; color: #2196F3; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <div>
+                    <h1 style="margin: 0; color: #333;">🛍️ مشتريات العميل: ${name}</h1>
+                    <p style="margin: 5px 0 0 0; color: #666;">رقم الهاتف: <strong style="color: #2196F3;">${phone}</strong></p>
+                </div>
+                <a href="/admin" class="back-btn">⬅️ العودة لقائمة المستخدمين</a>
+            </div>
+    `;
+
+    if (rows.length === 0) {
+      html += `
+            <div style="text-align: center; padding: 80px 20px; background: white; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.05);">
+                <div style="font-size: 60px; margin-bottom: 20px;">📭</div>
+                <h2 style="color: #666; margin-bottom: 10px;">لا توجد مشتريات لهذا العميل بعد</h2>
+                <p style="color: #999;">لم يقم هذا العميل بإتمام أي طلبات شراء من خلال التطبيق حتى الآن.</p>
+            </div>
+      `;
+    } else {
+      rows.forEach(order => {
+        let items = [];
+        try {
+          items = JSON.parse(order.cart_items);
+        } catch (e) {
+          console.error('Error parsing cart items:', e);
+        }
+
+        const statusMap = {
+          'pending': 'قيد الانتظار',
+          'confirmed': 'مؤكد',
+          'completed': 'مكتمل',
+          'cancelled': 'ملغي'
+        };
+
+        html += `
+            <div class="order-card">
+                <div class="order-header">
+                    <span class="order-number">${order.order_number}</span>
+                    <span class="status-badge status-${order.order_status}">${statusMap[order.order_status] || order.order_status}</span>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                    <div>📅 التاريخ: <strong>${new Date(order.order_date).toLocaleString('ar-SA')}</strong></div>
+                    <div>💳 الدفع: <strong>${order.payment_method}</strong></div>
+                    <div>📍 المدينة: <strong>${order.address_city || 'غير محدد'}</strong></div>
+                    <div>🗺️ المنطقة: <strong>${order.address_area || 'غير محدد'}</strong></div>
+                </div>
+                <div class="item-list">
+                    <strong style="display: block; margin-bottom: 10px; color: #555;">📦 المنتجات المطلوبة:</strong>
+                    ${items.map(item => `
+                        <div class="item-row">
+                            <span>${item.name} (${item.quantity}x)</span>
+                            <strong>${item.price} ر.س</strong>
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="total-row">
+                    الإجمالي: ${order.final_amount || order.total_amount} ر.س
+                </div>
+            </div>
+        `;
+      });
+    }
+
+    html += `
+        </div>
+    </body>
+    </html>
+    `;
+    res.send(html);
+  });
+});
+
+// صفحة الطلبات المؤكدة
+app.get('/admin/confirmed-orders', (req, res) => {
+  db.all('SELECT * FROM orders WHERE order_status = "confirmed" ORDER BY created_at DESC', (err, rows) => {
+    let html = `
+    <!DOCTYPE html>
+    <html dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>الطلبات المؤكدة - نظام المتجر</title>
+        <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
+            .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #8e24aa 0%, #6a1b9a 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; position: relative; }
+            .order-card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-right: 4px solid #8e24aa; }
+            .order-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
+            .order-number { background: #8e24aa; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; }
+            .order-status { padding: 6px 12px; border-radius: 15px; font-size: 14px; font-weight: bold; }
+            .status-confirmed { background: #e1bee7; color: #6a1b9a; }
+            .order-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
+            .detail-item { background: #f8f9fa; padding: 12px; border-radius: 8px; }
+            .items-list { background: #f8f9fa; padding: 15px; border-radius: 8px; }
+            .item-card { background: white; padding: 10px; margin-bottom: 8px; border-radius: 6px; border-left: 3px solid #8e24aa; }
+            .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+            .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
+            .nav-btn:hover { background: #8e24aa; color: white; transform: translateY(-2px); }
+            .logout-btn { position: absolute; left: 20px; top: 20px; background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
+            .logout-btn:hover { background: #d32f2f; transform: translateY(-2px); }
+            .empty-state { text-align: center; padding: 60px; color: #666; background: white; border-radius: 15px; }
+            .customer-info { background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+            .btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
+            .btn-success { background: #4CAF50; color: white; }
+            .btn-success:hover { background: #388E3C; transform: translateY(-2px); }
+            .btn-primary { background: #2196F3; color: white; }
+            .btn-primary:hover { background: #1976D2; transform: translateY(-2px); }
+            .product-url { color: #1976D2; text-decoration: none; font-size: 12px; }
+            .product-url:hover { text-decoration: underline; }
+            .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
+            .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+            .stat-number { font-size: 24px; font-weight: bold; }
+            .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+
+                <h1 style="margin: 0;">✅ الطلبات المؤكدة - نظام المتجر</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">جميع الطلبات التي تم تأكيدها</p>
+            </div>
+
+            <div class="nav">
+                <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
+                <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
+                <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
+                <a href="/admin/confirmed-orders" class="nav-btn">✅ الطلبات المؤكدة</a>
+                <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
+                <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
+                <a href="/admin/products" class="nav-btn">🛍️ إدارة المنتجات</a>
+                <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
+                <a href="/" class="nav-btn">🏠 الرئيسية</a>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card" style="border-right: 4px solid #8e24aa;">
+                    <div class="stat-number" style="color: #8e24aa;">${rows.length}</div>
+                    <div class="stat-label">إجمالي الطلبات المؤكدة</div>
+                </div>
+                <div class="stat-card" style="border-right: 4px solid #6c757d;">
+                    <div class="stat-number" style="color: #6c757d;">${rows.reduce((sum, order) => sum + parseFloat(order.total_amount), 0).toFixed(2)} ر.س</div>
+                    <div class="stat-label">إجمالي المبيعات المؤكدة</div>
+                </div>
+            </div>
+    `;
+
+    if (rows.length === 0) {
+      html += `
+            <div class="empty-state">
+                <h3 style="color: #666; margin-bottom: 10px;">📭 لا توجد طلبات مؤكدة حتى الآن</h3>
+                <p style="color: #999;">لم يتم تأكيد أي طلبات بعد</p>
+            </div>
+      `;
+    } else {
+      rows.forEach(order => {
+        const items = JSON.parse(order.cart_items);
+        const statusClass = `status-${order.order_status}`;
+        const statusText = {
+          'pending': 'قيد الانتظار',
+          'confirmed': 'مؤكد',
+          'completed': 'مكتمل',
+          'cancelled': 'ملغي'
+        }[order.order_status] || order.order_status;
+
+        const paymentMethodText = {
+          'mobicash': 'موبي كاش',
+          'yemenwallet': 'محفظة جيب',
+          'bank_babalmandab': 'حوالة بنكية - باب المندب',
+          'khameri': 'الكريمي',
+          'online': 'دفع إلكتروني'
+        }[order.payment_method] || order.payment_method;
+
+        html += `
+            <div class="order-card">
+                <div class="order-header">
+                    <div>
+                        <span class="order-number">${order.order_number}</span>
+                        <span class="order-status ${statusClass}" style="margin-right: 10px;">${statusText}</span>
+                    </div>
+                    <div style="color: #666; font-size: 14px;">
+                        ${new Date(order.order_date).toLocaleString('ar-SA')}
+                    </div>
+                </div>
+
+                <div class="customer-info">
+                    <strong>معلومات العميل:</strong><br>
+                    الاسم: ${order.customer_name || 'غير محدد'} |
+                    الهاتف: ${order.customer_phone || 'غير محدد'} |
+                    ${order.customer_secondary_phone ? `هاتف إضافي: ${order.customer_secondary_phone} | ` : ''}
+                    البريد: ${order.customer_email || 'غير محدد'}<br>
+                    طريقة الدفع: <strong>${paymentMethodText}</strong>
+
+                    <!-- عرض معلومات الحوالة إذا كانت موجودة -->
+                    ${order.transfer_name ? `<div style="background: #e8f5e8; padding: 12px; border-radius: 8px; margin-top: 10px; border-right: 3px solid #4CAF50;">
+                        <strong>معلومات الحوالة:</strong><br>
+                        اسم المرسل: ${order.transfer_name} |
+                        رقم الحوالة: ${order.transfer_number}
+                    </div>` : ''}
+
+                    <!-- عرض العنوان الجديد -->
+                    ${order.customer_address ? `<br><strong>العنوان:</strong> ${order.customer_address}` : ''}
+                    ${order.address_city ? ` | <strong>المدينة:</strong> ${order.address_city}` : ''}
+                    ${order.address_area ? ` | <strong>المنطقة:</strong> ${order.address_area}` : ''}
+                    ${order.address_detail ? `<br><strong>تفاصيل العنوان:</strong> ${order.address_detail}` : ''}
+
+                    ${order.coupon_code ? `<br>كود الخصم: <strong>${order.coupon_code}</strong> (خصم: ${order.discount_amount} ر.س)` : ''}
+                    ${order.gift_card_number ? `<br>رقم القسيمة: <strong>${order.gift_card_number}</strong> (مستخدم: ${order.gift_card_amount} ر.س)` : ''}
+                </div>
+
+                <div class="order-details">
+                    <div class="detail-item">
+                        <strong>المجموع الأصلي:</strong> ${order.total_amount} ر.س
+                    </div>
+                    <div class="detail-item">
+                        <strong>الخصم:</strong> ${order.discount_amount} ر.س
+                    </div>
+                    <div class="detail-item">
+                        <strong>القسيمة:</strong> ${order.gift_card_amount} ر.س
+                    </div>
+                    <div class="detail-item">
+                        <strong>رسوم التوصيل:</strong> ${order.shipping_fee || 0} ر.س
+                    </div>
+                    <div class="detail-item">
+                        <strong>المجموع النهائي:</strong> ${(order.final_amount || (order.total_amount - order.discount_amount - order.gift_card_amount + parseFloat(order.shipping_fee || 0))).toFixed(2)} ر.س
+                    </div>
+                    <div class="detail-item">
+                        <strong>عدد العناصر:</strong> ${items.length}
+                    </div>
+                    <div class="detail-item">
+                        <strong>حالة الطلب:</strong>
+                        <select onchange="updateOrderStatus(${order.id}, this.value)" style="margin-right: 10px; padding: 4px 8px; border-radius: 5px; border: 1px solid #ddd;">
+                            <option value="pending" ${order.order_status === 'pending' ? 'selected' : ''}>قيد الانتظار</option>
+                            <option value="confirmed" ${order.order_status === 'confirmed' ? 'selected' : ''}>مؤكد</option>
+                            <option value="completed" ${order.order_status === 'completed' ? 'selected' : ''}>مكتمل</option>
+                            <option value="cancelled" ${order.order_status === 'cancelled' ? 'selected' : ''}>ملغي</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="items-list">
+                    <h4 style="margin: 0 0 15px 0;">🛍️ العناصر المطلوبة:</h4>
+                    ${items.map(item => `
+                        <div class="item-card">
+                            <strong>${item.name || 'منتج'}</strong><br>
+                            <span style="color: #2196F3; font-weight: bold;">رقم المنتج: ${item.id || item.product_id || 'غير معروف'}</span><br>
+                            السعر: ${item.price} ر.س × ${item.quantity || 1}
+                            = <strong>${(item.price * (item.quantity || 1)).toFixed(2)} ر.س</strong>
+                            ${item.selectedSize && item.selectedSize !== 'غير محدد' ? `<br>المقاس: ${item.selectedSize}` : ''}
+                            ${item.colors && item.colors[0] && item.colors[0] !== 'غير محدد' ? `<br>اللون: ${item.colors[0]}` : ''}
+                            ${item.productUrl ? `<br><a href="${item.productUrl}" target="_blank" class="product-url">🔗 رابط المنتج</a>` : ''}
+                            ${item.image ? `<br><img src="${item.image}" style="max-width: 60px; max-height: 60px; margin-top: 5px; border-radius: 5px;">` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+      });
+    }
+
+    html += `
+        </div>
+
+        <script>
+            function updateOrderStatus(orderId, newStatus) {
+                fetch('/api/orders/' + orderId + '/status', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ status: newStatus })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('✅ ' + data.message);
+                        location.reload();
+                    } else {
+                        alert('❌ ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('❌ حدث خطأ: ' + error);
+                });
+            }
+        </script>
+    </body>
+    </html>
+    `;
+
+    res.send(html);
+  });
+});
+
 // صفحة الطلبات المؤكدة
 app.get('/admin/confirmed-orders', (req, res) => {
   db.all('SELECT * FROM orders WHERE order_status = "confirmed" ORDER BY created_at DESC', (err, rows) => {
@@ -4022,6 +4360,8 @@ app.get('/admin/advanced', (req, res) => {
                 <a href="/admin" class="btn btn-secondary">📊 العرض البسيط</a>
                 <a href="/admin/advanced" class="btn btn-success">🛠️ لوحة التحكم</a>
                 <a href="/admin/orders" class="btn btn-success">🛒 إدارة الطلبات</a>
+                <a href="/admin/confirmed-orders" class="btn btn-primary">✅ الطلبات المؤكدة</a>
+                <a href="/admin/confirmed-orders" class="btn btn-primary">✅ الطلبات المؤكدة</a>
                 <a href="/admin/confirmed-orders" class="btn btn-primary">✅ الطلبات المؤكدة</a>
                 <a href="/admin/coupons" class="btn btn-info">🎫 إدارة الكوبونات</a>
                 <a href="/admin/gift-cards" class="btn btn-info">💳 إدارة القسائم</a>
@@ -5966,892 +6306,6 @@ app.get('/api/orders', (req, res) => {
     }
     res.json({ status: 'success', orders: rows });
   });
-});
-
-// ======== Analytics API ========
-app.get('/api/analytics', (req, res) => {
-  const period = req.query.period || '30d';
-  let dateFilter = '';
-  let prevDateFilter = '';
-  const now = new Date();
-
-  if (period === '7d') {
-    dateFilter = "order_date >= datetime('now', '-7 days')";
-    prevDateFilter = "order_date >= datetime('now', '-14 days') AND order_date < datetime('now', '-7 days')";
-  } else if (period === '30d') {
-    dateFilter = "order_date >= datetime('now', '-30 days')";
-    prevDateFilter = "order_date >= datetime('now', '-60 days') AND order_date < datetime('now', '-30 days')";
-  } else if (period === '90d') {
-    dateFilter = "order_date >= datetime('now', '-90 days')";
-    prevDateFilter = "order_date >= datetime('now', '-180 days') AND order_date < datetime('now', '-90 days')";
-  } else {
-    dateFilter = "1=1";
-    prevDateFilter = "1=0";
-  }
-
-  const queries = [
-    new Promise((resolve, reject) => {
-      db.get(`SELECT COALESCE(SUM(total_amount), 0) as revenue, COUNT(*) as orders_count, COALESCE(AVG(total_amount), 0) as avg_order FROM orders WHERE ${dateFilter}`, (err, row) => {
-        if (err) reject(err); else resolve({ current: row });
-      });
-    }),
-    new Promise((resolve, reject) => {
-      db.get(`SELECT COALESCE(SUM(total_amount), 0) as revenue, COUNT(*) as orders_count FROM orders WHERE ${prevDateFilter}`, (err, row) => {
-        if (err) reject(err); else resolve({ previous: row });
-      });
-    }),
-    new Promise((resolve, reject) => {
-      db.get('SELECT COUNT(*) as total FROM test_users', (err, row) => {
-        if (err) reject(err); else resolve(row);
-      });
-    }),
-    new Promise((resolve, reject) => {
-      db.all(`SELECT strftime('%Y-%m', order_date) as month, COUNT(*) as order_count, COALESCE(SUM(total_amount), 0) as revenue FROM orders WHERE order_date IS NOT NULL GROUP BY month ORDER BY month ASC`, (err, rows) => {
-        if (err) reject(err); else resolve(rows);
-      });
-    }),
-    new Promise((resolve, reject) => {
-      db.all('SELECT order_status, COUNT(*) as count FROM orders GROUP BY order_status', (err, rows) => {
-        if (err) reject(err); else resolve(rows);
-      });
-    }),
-    new Promise((resolve, reject) => {
-      db.all('SELECT * FROM orders ORDER BY created_at DESC LIMIT 10', (err, rows) => {
-        if (err) reject(err); else resolve(rows);
-      });
-    }),
-    new Promise((resolve, reject) => {
-      db.get('SELECT COUNT(*) as total FROM coupons WHERE is_active = 1', (err, row) => {
-        if (err) reject(err); else resolve(row);
-      });
-    }),
-    new Promise((resolve, reject) => {
-      db.get('SELECT COALESCE(SUM(current_balance), 0) as total_balance, COUNT(*) as total FROM gift_cards WHERE is_active = 1', (err, row) => {
-        if (err) reject(err); else resolve(row);
-      });
-    }),
-    new Promise((resolve, reject) => {
-      db.get('SELECT COUNT(*) as total FROM perfumes WHERE is_active = 1', (err, row) => {
-        if (err) reject(err); else resolve(row);
-      });
-    })
-  ];
-
-  Promise.all(queries).then(([revenueData, prevData, usersData, monthlyData, statusData, recentOrders, couponsData, giftCardsData, productsData]) => {
-    const currentRevenue = revenueData.current.revenue;
-    const prevRevenue = prevData.previous.revenue;
-    const currentOrders = revenueData.current.orders_count;
-    const prevOrders = prevData.previous.orders_count;
-    const revenueGrowth = prevRevenue > 0 ? ((currentRevenue - prevRevenue) / prevRevenue * 100) : 0;
-    const orderGrowth = prevOrders > 0 ? ((currentOrders - prevOrders) / prevOrders * 100) : 0;
-
-    let topProducts = [];
-    try {
-      const allOrders = recentOrders;
-      const productMap = {};
-      allOrders.forEach(order => {
-        try {
-          const items = JSON.parse(order.cart_items || '[]');
-          (Array.isArray(items) ? items : (items.items || [])).forEach(item => {
-            const name = item.product_name || item.name || 'Unknown';
-            const price = parseFloat(item.total_price || item.price || 0);
-            if (!productMap[name]) productMap[name] = { revenue: 0, count: 0 };
-            productMap[name].revenue += price;
-            productMap[name].count += (item.quantity || 1);
-          });
-        } catch (e) {}
-      });
-      topProducts = Object.entries(productMap)
-        .map(([name, data]) => ({ name, ...data }))
-        .sort((a, b) => b.revenue - a.revenue)
-        .slice(0, 5);
-    } catch (e) {}
-
-    res.json({
-      status: 'success',
-      period,
-      summary: {
-        total_revenue: currentRevenue,
-        prev_revenue: prevRevenue,
-        revenue_growth: Math.round(revenueGrowth * 10) / 10,
-        total_orders: currentOrders,
-        prev_orders: prevOrders,
-        order_growth: Math.round(orderGrowth * 10) / 10,
-        avg_order_value: revenueData.current.avg_order || 0,
-        total_users: usersData.total || 0,
-        active_coupons: couponsData.total || 0,
-        active_gift_cards: giftCardsData.total || 0,
-        gift_card_balance: giftCardsData.total_balance || 0,
-        active_products: productsData.total || 0
-      },
-      monthly: monthlyData,
-      status_distribution: statusData,
-      recent_orders: recentOrders.map(o => ({
-        id: o.id,
-        order_number: o.order_number,
-        customer_name: o.customer_name,
-        total_amount: o.total_amount,
-        order_status: o.order_status,
-        order_date: o.order_date,
-        created_at: o.created_at
-      })),
-      top_products: topProducts
-    });
-  }).catch(err => {
-    console.error('Analytics error:', err);
-    res.status(500).json({ status: 'error', message: err.message });
-  });
-});
-
-// ======== Advanced Analytics Dashboard ========
-app.get('/admin/analytics', (req, res) => {
-  res.send(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nexus Analytics Pro | E-Commerce Dashboard</title>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    :root {
-      --bg-deep: #060b18;
-      --bg-charcoal: #0d1528;
-      --bg-navy: #111d35;
-      --bg-card: rgba(17, 29, 53, 0.55);
-      --bg-card-hover: rgba(17, 29, 53, 0.75);
-      --glass-border: rgba(255, 255, 255, 0.06);
-      --glass-border-hover: rgba(0, 212, 255, 0.2);
-      --neon-green: #00ff87;
-      --neon-green-dim: rgba(0, 255, 135, 0.15);
-      --neon-green-glow: rgba(0, 255, 135, 0.35);
-      --electric-blue: #00d4ff;
-      --electric-blue-dim: rgba(0, 212, 255, 0.15);
-      --electric-blue-glow: rgba(0, 212, 255, 0.35);
-      --purple-accent: #8b5cf6;
-      --amber-accent: #f59e0b;
-      --red-accent: #ef4444;
-      --text-primary: #f0f4ff;
-      --text-secondary: #8892b0;
-      --text-muted: #4a5470;
-    }
-    body {
-      font-family: 'Outfit', sans-serif;
-      background: var(--bg-deep);
-      color: var(--text-primary);
-      min-height: 100vh;
-      overflow-x: hidden;
-    }
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background:
-        radial-gradient(ellipse 70% 40% at 15% 15%, rgba(0, 212, 255, 0.07) 0%, transparent 50%),
-        radial-gradient(ellipse 50% 30% at 85% 85%, rgba(0, 255, 135, 0.05) 0%, transparent 50%),
-        radial-gradient(ellipse 40% 30% at 50% 50%, rgba(139, 92, 246, 0.03) 0%, transparent 50%);
-      pointer-events: none;
-      z-index: 0;
-    }
-    .dashboard { position: relative; z-index: 1; padding: 20px 28px; max-width: 1920px; margin: 0 auto; }
-    .top-bar {
-      display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 28px; flex-wrap: wrap; gap: 16px;
-    }
-    .brand {
-      display: flex; align-items: center; gap: 16px;
-    }
-    .brand-logo {
-      width: 46px; height: 46px;
-      background: linear-gradient(135deg, var(--electric-blue), var(--neon-green));
-      border-radius: 14px; display: flex; align-items: center; justify-content: center;
-      font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 18px;
-      box-shadow: 0 0 30px var(--neon-green-glow);
-      position: relative;
-    }
-    .brand-logo::after {
-      content: ''; position: absolute; inset: -2px;
-      border-radius: 16px;
-      background: linear-gradient(135deg, var(--electric-blue), var(--neon-green));
-      opacity: 0.3; z-index: -1; filter: blur(8px);
-    }
-    .brand-text h1 {
-      font-size: 22px; font-weight: 700; letter-spacing: -0.5px;
-      background: linear-gradient(90deg, #fff, #8892b0);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    .brand-text span {
-      font-size: 11px; color: var(--electric-blue); font-weight: 500;
-      letter-spacing: 3px; text-transform: uppercase;
-    }
-    .top-right {
-      display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-    }
-    .nav-links {
-      display: flex; gap: 6px;
-    }
-    .nav-link {
-      padding: 8px 14px; border-radius: 10px; text-decoration: none;
-      font-size: 12px; font-weight: 500; color: var(--text-secondary);
-      background: var(--bg-card); border: 1px solid var(--glass-border);
-      transition: all 0.3s; backdrop-filter: blur(10px);
-    }
-    .nav-link:hover {
-      color: var(--text-primary); background: var(--bg-card-hover);
-      border-color: var(--glass-border-hover); transform: translateY(-1px);
-    }
-    .period-selector {
-      display: flex; align-items: center; gap: 10px;
-      background: var(--bg-card); padding: 6px 14px 6px 18px;
-      border-radius: 12px; border: 1px solid var(--glass-border);
-      backdrop-filter: blur(20px);
-      transition: border-color 0.3s;
-    }
-    .period-selector:focus-within { border-color: var(--electric-blue-glow); }
-    .period-selector svg { color: var(--text-secondary); flex-shrink: 0; }
-    .period-selector select {
-      background: transparent; border: none;
-      color: var(--text-primary); font-family: 'Outfit', sans-serif;
-      font-size: 13px; font-weight: 500; cursor: pointer;
-      outline: none; padding: 6px 20px 6px 4px;
-      -webkit-appearance: none; appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='%238892b0'%3E%3Cpath d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
-      background-repeat: no-repeat; background-position: right center;
-    }
-    .period-selector select option { background: var(--bg-navy); color: var(--text-primary); }
-    .stats-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 20px; margin-bottom: 24px;
-    }
-    .stat-card {
-      background: var(--bg-card); border-radius: 18px; padding: 22px 24px;
-      border: 1px solid var(--glass-border);
-      backdrop-filter: blur(20px);
-      position: relative; overflow: hidden;
-      transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.4s ease;
-    }
-    .stat-card:hover { transform: translateY(-6px); }
-    .stat-card::before {
-      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-      background: linear-gradient(90deg, var(--electric-blue), var(--neon-green));
-      opacity: 0; transition: opacity 0.4s ease;
-    }
-    .stat-card:hover::before { opacity: 1; }
-    .stat-card .glow-bg {
-      position: absolute; top: -50%; right: -50%; width: 100%; height: 100%;
-      border-radius: 50%; opacity: 0.08; transition: opacity 0.4s;
-      pointer-events: none;
-    }
-    .stat-card:hover .glow-bg { opacity: 0.15; }
-    .stat-card.green-glow { box-shadow: 0 0 30px rgba(0, 255, 135, 0.06); }
-    .stat-card.blue-glow { box-shadow: 0 0 30px rgba(0, 212, 255, 0.06); }
-    .stat-card.purple-glow { box-shadow: 0 0 30px rgba(139, 92, 246, 0.06); }
-    .stat-card.amber-glow { box-shadow: 0 0 30px rgba(245, 158, 11, 0.06); }
-    .stat-label {
-      font-size: 12px; color: var(--text-secondary); font-weight: 500;
-      margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
-      text-transform: uppercase; letter-spacing: 0.5px;
-    }
-    .stat-label .dot {
-      width: 8px; height: 8px; border-radius: 50%; display: inline-block;
-    }
-    .stat-label .dot.green { background: var(--neon-green); box-shadow: 0 0 12px var(--neon-green); }
-    .stat-label .dot.blue { background: var(--electric-blue); box-shadow: 0 0 12px var(--electric-blue); }
-    .stat-label .dot.purple { background: var(--purple-accent); box-shadow: 0 0 12px var(--purple-accent); }
-    .stat-label .dot.amber { background: var(--amber-accent); box-shadow: 0 0 12px var(--amber-accent); }
-    .stat-value {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 32px; font-weight: 600;
-      margin-bottom: 8px; letter-spacing: -1px;
-    }
-    .stat-value.green { color: var(--neon-green); text-shadow: 0 0 40px var(--neon-green-glow); }
-    .stat-value.blue { color: var(--electric-blue); text-shadow: 0 0 40px var(--electric-blue-glow); }
-    .stat-value.purple { color: var(--purple-accent); text-shadow: 0 0 40px rgba(139, 92, 246, 0.4); }
-    .stat-value.amber { color: var(--amber-accent); text-shadow: 0 0 40px rgba(245, 158, 11, 0.4); }
-    .stat-value.white { color: var(--text-primary); }
-    .stat-footer {
-      display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500;
-    }
-    .stat-footer.positive { color: var(--neon-green); }
-    .stat-footer.negative { color: var(--red-accent); }
-    .stat-footer.neutral { color: var(--text-muted); }
-    .stat-footer svg { width: 14px; height: 14px; }
-    .charts-row {
-      display: grid; grid-template-columns: 2fr 1fr;
-      gap: 20px; margin-bottom: 24px;
-    }
-    @media (max-width: 1100px) { .charts-row { grid-template-columns: 1fr; } }
-    .chart-card {
-      background: var(--bg-card); border-radius: 18px; padding: 22px 24px;
-      border: 1px solid var(--glass-border);
-      backdrop-filter: blur(20px);
-      transition: border-color 0.3s;
-    }
-    .chart-card:hover { border-color: rgba(255,255,255,0.1); }
-    .chart-header {
-      display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 20px; flex-wrap: wrap; gap: 12px;
-    }
-    .chart-title {
-      font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 10px;
-    }
-    .chart-title .badge {
-      font-size: 10px; font-weight: 600; padding: 3px 10px;
-      border-radius: 20px; letter-spacing: 0.5px;
-      background: var(--neon-green-dim); color: var(--neon-green);
-    }
-    .chart-legend { display: flex; gap: 18px; flex-wrap: wrap; }
-    .legend-item {
-      display: flex; align-items: center; gap: 7px;
-      font-size: 12px; color: var(--text-secondary);
-    }
-    .legend-dot {
-      width: 10px; height: 10px; border-radius: 3px;
-    }
-    .legend-dot.revenue { background: var(--neon-green); box-shadow: 0 0 10px var(--neon-green-glow); }
-    .legend-dot.orders { background: var(--electric-blue); box-shadow: 0 0 10px var(--electric-blue-glow); }
-    .chart-body { height: 290px; position: relative; }
-    .chart-body.donut { height: 290px; display: flex; align-items: center; justify-content: center; }
-    .donut-center {
-      position: absolute; text-align: center; pointer-events: none;
-    }
-    .donut-center .value {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 28px; font-weight: 600;
-    }
-    .donut-center .value.green { color: var(--neon-green); text-shadow: 0 0 20px var(--neon-green-glow); }
-    .donut-center .label {
-      font-size: 11px; color: var(--text-secondary); margin-top: 2px;
-    }
-    .bottom-row {
-      display: grid; grid-template-columns: 1fr 1fr 1fr;
-      gap: 20px; margin-bottom: 24px;
-    }
-    @media (max-width: 1200px) { .bottom-row { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 768px) { .bottom-row { grid-template-columns: 1fr; } }
-    .info-card {
-      background: var(--bg-card); border-radius: 18px; padding: 22px 24px;
-      border: 1px solid var(--glass-border);
-      backdrop-filter: blur(20px);
-    }
-    .info-card h3 {
-      font-size: 15px; font-weight: 600; margin-bottom: 18px;
-      display: flex; align-items: center; gap: 8px;
-    }
-    .info-card h3 .count {
-      font-size: 11px; font-weight: 500; padding: 2px 10px;
-      border-radius: 20px; background: var(--neon-green-dim);
-      color: var(--neon-green); margin-left: auto;
-    }
-    .metric-row {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
-    }
-    .metric-row:last-child { border-bottom: none; }
-    .metric-name {
-      font-size: 13px; color: var(--text-secondary);
-      display: flex; align-items: center; gap: 8px;
-    }
-    .metric-name .rank {
-      width: 20px; height: 20px; border-radius: 6px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 10px; font-weight: 600; font-family: 'JetBrains Mono', monospace;
-      background: rgba(255,255,255,0.05); color: var(--text-muted);
-    }
-    .metric-name .rank.gold { background: rgba(245,158,11,0.15); color: var(--amber-accent); }
-    .metric-name .rank.silver { background: rgba(136,146,176,0.15); color: var(--text-secondary); }
-    .metric-name .rank.bronze { background: rgba(205,127,50,0.15); color: #cd7f32; }
-    .metric-value {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 13px; font-weight: 500; color: var(--text-primary);
-    }
-    .metric-value.green { color: var(--neon-green); }
-    .metric-value.blue { color: var(--electric-blue); }
-    .activity-item {
-      display: flex; gap: 12px; padding: 12px 0;
-      border-bottom: 1px solid rgba(255,255,255,0.04);
-      align-items: flex-start;
-    }
-    .activity-item:last-child { border-bottom: none; }
-    .activity-icon {
-      width: 34px; height: 34px; border-radius: 10px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 14px; flex-shrink: 0;
-    }
-    .activity-icon.order { background: var(--neon-green-dim); color: var(--neon-green); }
-    .activity-icon.payment { background: var(--electric-blue-dim); color: var(--electric-blue); }
-    .activity-icon.user { background: rgba(139,92,246,0.15); color: var(--purple-accent); }
-    .activity-icon.warning { background: rgba(245,158,11,0.15); color: var(--amber-accent); }
-    .activity-content { min-width: 0; }
-    .activity-content h4 {
-      font-size: 13px; font-weight: 500; margin-bottom: 2px;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .activity-content p {
-      font-size: 11px; color: var(--text-muted);
-    }
-    .progress-bar {
-      width: 100%; height: 4px;
-      background: rgba(255,255,255,0.06);
-      border-radius: 2px; margin-top: 14px; overflow: hidden;
-    }
-    .progress-fill {
-      height: 100%; border-radius: 2px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .progress-fill.green { background: linear-gradient(90deg, var(--neon-green), #00cc6a); box-shadow: 0 0 12px var(--neon-green-glow); }
-    .progress-fill.blue { background: linear-gradient(90deg, var(--electric-blue), #0099cc); box-shadow: 0 0 12px var(--electric-blue-glow); }
-    .glow-pulse { animation: pulse 2.5s ease-in-out infinite; }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.6; }
-    }
-    .loading-spinner {
-      display: flex; align-items: center; justify-content: center;
-      min-height: 400px; flex-direction: column; gap: 16px;
-    }
-    .spinner {
-      width: 48px; height: 48px; border-radius: 50%;
-      border: 3px solid rgba(0, 212, 255, 0.1);
-      border-top-color: var(--electric-blue);
-      animation: spin 0.8s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .loading-spinner p { color: var(--text-muted); font-size: 14px; }
-    .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
-    .empty-state svg { opacity: 0.3; margin-bottom: 12px; }
-    .empty-state p { font-size: 14px; }
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: var(--bg-charcoal); }
-    ::-webkit-scrollbar-thumb { background: var(--bg-navy); border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
-    .toast {
-      position: fixed; bottom: 24px; right: 24px;
-      padding: 14px 24px; border-radius: 12px;
-      background: var(--bg-card); border: 1px solid var(--glass-border);
-      backdrop-filter: blur(20px);
-      color: var(--text-primary); font-size: 13px; font-weight: 500;
-      transform: translateY(120%); opacity: 0;
-      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-      z-index: 1000;
-    }
-    .toast.show { transform: translateY(0); opacity: 1; }
-    .last-updated {
-      font-size: 11px; color: var(--text-muted); text-align: right; padding-top: 12px;
-      border-top: 1px solid rgba(255,255,255,0.04);
-    }
-    .skeleton {
-      background: linear-gradient(90deg, var(--bg-card) 25%, rgba(255,255,255,0.05) 50%, var(--bg-card) 75%);
-      background-size: 200% 100%;
-      animation: shimmer 1.5s infinite;
-      border-radius: 8px;
-    }
-    @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-  </style>
-</head>
-<body>
-  <div class="dashboard" id="app">
-    <div class="top-bar">
-      <div class="brand">
-        <div class="brand-logo">NX</div>
-        <div class="brand-text">
-          <h1>Nexus Analytics</h1>
-          <span>E-Commerce Intelligence</span>
-        </div>
-      </div>
-      <div class="top-right">
-        <div class="nav-links">
-          <a href="/admin" class="nav-link">Users</a>
-          <a href="/admin/orders" class="nav-link">Orders</a>
-          <a href="/admin/coupons" class="nav-link">Coupons</a>
-          <a href="/admin/gift-cards" class="nav-link">Gift Cards</a>
-          <a href="/admin/products" class="nav-link">Products</a>
-          <a href="/admin/settings" class="nav-link">Settings</a>
-        </div>
-        <div class="period-selector">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <select id="periodSelect" onchange="changePeriod(this.value)">
-            <option value="7d">Last 7 Days</option>
-            <option value="30d" selected>Last 30 Days</option>
-            <option value="90d">Last 90 Days</option>
-            <option value="12m">All Time</option>
-          </select>
-        </div>
-      </div>
-    </div>
-
-    <div id="dashboardContent">
-      <div class="loading-spinner" id="loadingState">
-        <div class="spinner"></div>
-        <p>Loading analytics data...</p>
-      </div>
-    </div>
-
-    <div class="toast" id="toast"></div>
-  </div>
-
-  <script>
-    let charts = {};
-
-    async function loadDashboard(period) {
-      const container = document.getElementById('dashboardContent');
-      container.innerHTML = '<div class="loading-spinner" id="loadingState"><div class="spinner"></div><p>Loading analytics data...</p></div>';
-
-      try {
-        const res = await fetch('/api/analytics?period=' + period);
-        const data = await res.json();
-        if (data.status !== 'success') throw new Error(data.message);
-        renderDashboard(data);
-        showToast('Dashboard updated');
-      } catch (err) {
-        container.innerHTML = '<div class="empty-state"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><p>Failed to load analytics: ' + err.message + '</p></div>';
-      }
-    }
-
-    function changePeriod(period) {
-      history.replaceState(null, '', '?period=' + period);
-      loadDashboard(period);
-    }
-
-    function formatCurrency(val) {
-      if (val >= 1000000) return '$' + (val / 1000000).toFixed(1) + 'M';
-      if (val >= 1000) return '$' + (val / 1000).toFixed(1) + 'K';
-      return '$' + Number(val).toFixed(0);
-    }
-
-    function formatNumber(val) {
-      if (val >= 1000000) return (val / 1000000).toFixed(1) + 'M';
-      if (val >= 1000) return (val / 1000).toFixed(1) + 'K';
-      return Number(val).toFixed(0);
-    }
-
-    function renderDashboard(data) {
-      const s = data.summary;
-      const container = document.getElementById('dashboardContent');
-      const orderRate = s.total_orders > 0 && s.total_users > 0
-        ? ((s.total_orders / s.total_users) * 100).toFixed(2)
-        : '0.00';
-
-      const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-      container.innerHTML = \`
-        <div class="stats-grid">
-          <div class="stat-card green-glow">
-            <div class="glow-bg" style="background: radial-gradient(circle, rgba(0,255,135,0.3) 0%, transparent 70%);"></div>
-            <div class="stat-label"><span class="dot green"></span>Revenue Growth</div>
-            <div class="stat-value green">\${s.revenue_growth >= 0 ? '+' : ''}\${s.revenue_growth}%</div>
-            <div class="stat-footer \${s.revenue_growth >= 0 ? 'positive' : 'negative'}">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
-              \${s.revenue_growth >= 0 ? '+' : ''}\${s.revenue_growth}% vs previous period
-            </div>
-          </div>
-          <div class="stat-card blue-glow">
-            <div class="glow-bg" style="background: radial-gradient(circle, rgba(0,212,255,0.3) 0%, transparent 70%);"></div>
-            <div class="stat-label"><span class="dot blue"></span>Conversion Rate</div>
-            <div class="stat-value blue">\${orderRate}%</div>
-            <div class="stat-footer \${s.order_growth >= 0 ? 'positive' : 'negative'}">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
-              \${s.order_growth >= 0 ? '+' : ''}\${s.order_growth}% order growth
-            </div>
-          </div>
-          <div class="stat-card purple-glow">
-            <div class="glow-bg" style="background: radial-gradient(circle, rgba(139,92,246,0.3) 0%, transparent 70%);"></div>
-            <div class="stat-label"><span class="dot purple"></span>Total Revenue</div>
-            <div class="stat-value purple">\${formatCurrency(s.total_revenue)}</div>
-            <div class="stat-footer neutral">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
-              Avg order: \${formatCurrency(s.avg_order_value)}
-            </div>
-          </div>
-          <div class="stat-card amber-glow">
-            <div class="glow-bg" style="background: radial-gradient(circle, rgba(245,158,11,0.3) 0%, transparent 70%);"></div>
-            <div class="stat-label"><span class="dot amber"></span>Total Orders</div>
-            <div class="stat-value amber">\${formatNumber(s.total_orders)}</div>
-            <div class="stat-footer neutral">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
-              \${s.active_products} active products
-            </div>
-          </div>
-        </div>
-
-        <div class="charts-row">
-          <div class="chart-card">
-            <div class="chart-header">
-              <div class="chart-title">
-                Revenue & Orders
-                <span class="badge">Trend</span>
-              </div>
-              <div class="chart-legend">
-                <div class="legend-item"><span class="legend-dot revenue"></span>Revenue</div>
-                <div class="legend-item"><span class="legend-dot orders"></span>Orders</div>
-              </div>
-            </div>
-            <div class="chart-body">
-              <canvas id="lineChart"></canvas>
-            </div>
-          </div>
-          <div class="chart-card">
-            <div class="chart-header">
-              <div class="chart-title">Order Status</div>
-            </div>
-            <div class="chart-body donut">
-              <canvas id="donutChart"></canvas>
-              <div class="donut-center">
-                <div class="value green glow-pulse" id="donutCenterValue">\${s.total_orders}</div>
-                <div class="label">Total Orders</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="bottom-row">
-          <div class="info-card">
-            <h3>Top Products <span class="count">\${data.top_products.length}</span></h3>
-            \${data.top_products.length > 0 ? data.top_products.map((p, i) => \`
-              <div class="metric-row">
-                <span class="metric-name">
-                  <span class="rank \${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">\${i + 1}</span>
-                  \${p.name.length > 25 ? p.name.substring(0, 25) + '...' : p.name}
-                </span>
-                <span class="metric-value green">\${formatCurrency(p.revenue)}</span>
-              </div>
-            \`).join('') : '<div class="empty-state"><p>No product data available</p></div>'}
-            <div class="progress-bar"><div class="progress-fill green" style="width: \${Math.min(100, (data.top_products[0]?.revenue || 0) / (data.top_products.reduce((a,b) => a + b.revenue, 0) || 1) * 100)}%"></div></div>
-          </div>
-          <div class="info-card">
-            <h3>Recent Activity</h3>
-            <div id="recentActivity">
-              \${data.recent_orders.length > 0 ? data.recent_orders.slice(0, 6).map(o => {
-                const isNew = Date.now() - new Date(o.created_at || o.order_date).getTime() < 86400000;
-                const statusIcon = o.order_status === 'confirmed' || o.order_status === 'completed' ? 'order' : o.order_status === 'cancelled' ? 'warning' : 'payment';
-                return \`
-                  <div class="activity-item">
-                    <div class="activity-icon \${statusIcon}">
-                      \${statusIcon === 'order' ? '📦' : statusIcon === 'payment' ? '💳' : '⚠️'}
-                    </div>
-                    <div class="activity-content">
-                      <h4>\${o.customer_name || 'Guest'} \${isNew ? '<span style="color:var(--neon-green);font-size:10px;">● NEW</span>' : ''}</h4>
-                      <p>Order #\${o.order_number || o.id} - \${formatCurrency(o.total_amount)} - \${o.order_status}</p>
-                    </div>
-                  </div>
-                \`;
-              }).join('') : '<div class="empty-state"><p>No recent orders</p></div>'}
-            </div>
-          </div>
-          <div class="info-card">
-            <h3>Quick Stats</h3>
-            <div class="metric-row">
-              <span class="metric-name">Total Users</span>
-              <span class="metric-value blue">\${formatNumber(s.total_users)}</span>
-            </div>
-            <div class="metric-row">
-              <span class="metric-name">Active Coupons</span>
-              <span class="metric-value green">\${s.active_coupons}</span>
-            </div>
-            <div class="metric-row">
-              <span class="metric-name">Active Gift Cards</span>
-              <span class="metric-value blue">\${s.active_gift_cards}</span>
-            </div>
-            <div class="metric-row">
-              <span class="metric-name">Gift Card Balance</span>
-              <span class="metric-value green">\${formatCurrency(s.gift_card_balance)}</span>
-            </div>
-            <div class="metric-row">
-              <span class="metric-name">Active Products</span>
-              <span class="metric-value amber">\${s.active_products}</span>
-            </div>
-            <div class="metric-row">
-              <span class="metric-name">Avg Order Value</span>
-              <span class="metric-value white">\${formatCurrency(s.avg_order_value)}</span>
-            </div>
-            <div class="progress-bar"><div class="progress-fill blue" style="width: \${Math.min(100, (s.total_orders / (s.total_users || 1)) * 10)}%"></div></div>
-          </div>
-        </div>
-
-        <div class="last-updated" id="lastUpdated">Last updated: \${new Date().toLocaleTimeString()}</div>
-      \`;
-
-      renderCharts(data);
-    }
-
-    function renderCharts(data) {
-      Object.values(charts).forEach(c => { try { c.destroy(); } catch(e) {} });
-      charts = {};
-
-      const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      const monthly = data.monthly || [];
-
-      const labels = monthly.map(m => {
-        const parts = m.month.split('-');
-        return monthNames[parseInt(parts[1]) - 1] + ' ' + parts[0];
-      });
-      const revenueData = monthly.map(m => m.revenue || 0);
-      const ordersData = monthly.map(m => m.order_count || 0);
-
-      const lineCtx = document.getElementById('lineChart');
-      if (!lineCtx) return;
-      const ctx = lineCtx.getContext('2d');
-
-      const gradient1 = ctx.createLinearGradient(0, 0, 0, 290);
-      gradient1.addColorStop(0, 'rgba(0, 255, 135, 0.35)');
-      gradient1.addColorStop(0.5, 'rgba(0, 255, 135, 0.1)');
-      gradient1.addColorStop(1, 'rgba(0, 255, 135, 0)');
-
-      const gradient2 = ctx.createLinearGradient(0, 0, 0, 290);
-      gradient2.addColorStop(0, 'rgba(0, 212, 255, 0.35)');
-      gradient2.addColorStop(0.5, 'rgba(0, 212, 255, 0.1)');
-      gradient2.addColorStop(1, 'rgba(0, 212, 255, 0)');
-
-      charts.line = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: labels.length > 0 ? labels : ['No Data'],
-          datasets: [{
-            label: 'Revenue',
-            data: revenueData.length > 0 ? revenueData.map(v => v / 1000) : [0],
-            borderColor: '#00ff87',
-            backgroundColor: gradient1,
-            borderWidth: 3,
-            fill: true,
-            tension: 0.45,
-            pointBackgroundColor: '#00ff87',
-            pointBorderColor: '#060b18',
-            pointBorderWidth: 2.5,
-            pointRadius: 0,
-            pointHoverRadius: 7,
-            pointHoverBackgroundColor: '#00ff87',
-            pointHoverBorderColor: '#060b18',
-            pointHoverBorderWidth: 3
-          }, {
-            label: 'Orders',
-            data: ordersData.length > 0 ? ordersData : [0],
-            borderColor: '#00d4ff',
-            backgroundColor: gradient2,
-            borderWidth: 3,
-            fill: true,
-            tension: 0.45,
-            pointBackgroundColor: '#00d4ff',
-            pointBorderColor: '#060b18',
-            pointBorderWidth: 2.5,
-            pointRadius: 0,
-            pointHoverRadius: 7,
-            pointHoverBackgroundColor: '#00d4ff',
-            pointHoverBorderColor: '#060b18',
-            pointHoverBorderWidth: 3
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          interaction: { intersect: false, mode: 'index' },
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              backgroundColor: 'rgba(13, 21, 40, 0.95)',
-              titleColor: '#f0f4ff',
-              bodyColor: '#8892b0',
-              borderColor: 'rgba(0, 212, 255, 0.25)',
-              borderWidth: 1,
-              padding: 14,
-              cornerRadius: 10,
-              displayColors: true,
-              callbacks: {
-                label: function(ctx) {
-                  if (ctx.datasetIndex === 0) return 'Revenue: $' + (ctx.parsed.y * 1000).toLocaleString();
-                  return 'Orders: ' + ctx.parsed.y;
-                }
-              }
-            }
-          },
-          scales: {
-            x: {
-              grid: { color: 'rgba(255,255,255,0.04)', drawBorder: false },
-              ticks: { color: '#4a5470', font: { size: 11, family: 'Outfit' } }
-            },
-            y: {
-              grid: { color: 'rgba(255,255,255,0.04)', drawBorder: false },
-              ticks: {
-                color: '#4a5470', font: { size: 11, family: 'Outfit' },
-                callback: function(v) { return '$' + v + 'k'; }
-              }
-            }
-          }
-        }
-      });
-
-      const donutCtx = document.getElementById('donutChart');
-      if (!donutCtx) return;
-      const dCtx = donutCtx.getContext('2d');
-
-      const statusData = data.status_distribution || [];
-      const colors = { 'pending': '#f59e0b', 'confirmed': '#00ff87', 'completed': '#00d4ff', 'cancelled': '#ef4444', 'refunded': '#8b5cf6' };
-      const labels_order = statusData.map(s => s.order_status || 'unknown');
-      const values = statusData.map(s => s.count || 0);
-
-      if (values.length === 0) { values.push(1); labels_order.push('No Data'); }
-
-      charts.donut = new Chart(dCtx, {
-        type: 'doughnut',
-        data: {
-          labels: labels_order,
-          datasets: [{
-            data: values,
-            backgroundColor: labels_order.map(l => colors[l] || '#4a5470'),
-            borderWidth: 0,
-            hoverOffset: 10
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          cutout: '78%',
-          plugins: {
-            legend: {
-              position: 'bottom',
-              labels: {
-                color: '#8892b0',
-                padding: 14,
-                usePointStyle: true,
-                pointStyle: 'circle',
-                font: { size: 11, family: 'Outfit' }
-              }
-            },
-            tooltip: {
-              backgroundColor: 'rgba(13, 21, 40, 0.95)',
-              titleColor: '#f0f4ff',
-              bodyColor: '#8892b0',
-              borderColor: 'rgba(0, 212, 255, 0.25)',
-              borderWidth: 1,
-              padding: 14,
-              cornerRadius: 10
-            }
-          }
-        }
-      });
-
-      document.getElementById('donutCenterValue').textContent = values.reduce((a, b) => a + b, 0);
-    }
-
-    function showToast(msg) {
-      const t = document.getElementById('toast');
-      t.textContent = msg;
-      t.classList.add('show');
-      setTimeout(() => t.classList.remove('show'), 2500);
-    }
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const initialPeriod = urlParams.get('period') || '30d';
-    document.getElementById('periodSelect').value = initialPeriod;
-    loadDashboard(initialPeriod);
-
-    setInterval(() => {
-      const period = document.getElementById('periodSelect').value;
-      loadDashboard(period);
-    }, 60000);
-  </script>
-</body>
-</html>`);
 });
 
 // معالجة الأخطاء
