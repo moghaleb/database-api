@@ -6,42 +6,34 @@ const ExcelJS = require('exceljs');
 const path = require('path');
 const fs = require('fs');
 
+// ======== إعدادات الخادم ========
 const app = express();
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
 
 // ======== Middleware ========
 app.use(cors({
-  origin: [
-    'https://database-api-kvxr.onrender.com',
-    'http://localhost:3000',
-    'capacitor://localhost',
-    'ionic://localhost',
-  ],
+  origin: '*',  // في الإنتاج يمكنك تقييده بنطاقك
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-
 app.use(express.json());
-const SESSION_SECRET = process.env.SESSION_SECRET || 'redshe_shop_production_secret_2024_change_this';
-app.use(cookieParser(SESSION_SECRET));
-app.use(express.static('public'));
+app.use(cookieParser());
 app.use(express.urlencoded({ extended: true }));
 
 // ======== مجلد التصدير ========
 const exportsDir = path.join(__dirname, 'exports');
-if (!fs.existsSync(exportsDir)) {
-  fs.mkdirSync(exportsDir, { recursive: true });
-  console.log('✅ تم إنشاء مجلد التصدير:', exportsDir);
-}
+if (!fs.existsSync(exportsDir)) fs.mkdirSync(exportsDir, { recursive: true });
+console.log('✅ مجلد التصدير جاهز:', exportsDir);
 
-// ======== قاعدة البيانات (ذاكرة مؤقتة للاختبار - يمكن تغييرها إلى ملف) ========
+// ======== قاعدة البيانات (في الذاكرة - مناسبة للاختبار السريع) ========
 const db = new sqlite3.Database(':memory:');
+console.log('✅ قاعدة البيانات SQLite (ذاكرة) جاهزة');
 
 // ======== تهيئة الجداول والبيانات الافتراضية ========
 db.serialize(() => {
-  // --- جداول المستخدمين والطلبات ---
+  // المستخدمون
   db.run(`CREATE TABLE IF NOT EXISTS test_users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -51,6 +43,7 @@ db.serialize(() => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
+  // الطلبات
   db.run(`CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     order_number TEXT UNIQUE,
@@ -60,7 +53,6 @@ db.serialize(() => {
     coupon_code TEXT,
     coupon_type TEXT,
     gift_card_number TEXT,
-    gift_card_type TEXT,
     gift_card_amount REAL DEFAULT 0,
     order_date DATETIME NOT NULL,
     order_status TEXT DEFAULT 'pending',
@@ -75,8 +67,6 @@ db.serialize(() => {
     address_city TEXT,
     address_area TEXT,
     address_detail TEXT,
-    shipping_city TEXT,
-    shipping_area TEXT,
     shipping_fee REAL DEFAULT 0,
     final_amount REAL DEFAULT 0,
     order_notes TEXT,
@@ -86,6 +76,7 @@ db.serialize(() => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
+  // تفاصيل الطلبات
   db.run(`CREATE TABLE IF NOT EXISTS order_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     order_id INTEGER NOT NULL,
@@ -99,7 +90,7 @@ db.serialize(() => {
     FOREIGN KEY (order_id) REFERENCES orders (id)
   )`);
 
-  // --- جداول الكوبونات والقسائم ---
+  // الكوبونات (مع دعم المتجر)
   db.run(`CREATE TABLE IF NOT EXISTS coupons (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code TEXT UNIQUE NOT NULL,
@@ -116,6 +107,7 @@ db.serialize(() => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
+  // القسائم الشرائية
   db.run(`CREATE TABLE IF NOT EXISTS gift_cards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     card_number TEXT UNIQUE NOT NULL,
@@ -134,7 +126,15 @@ db.serialize(() => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
-  // --- جداول المنتجات والفئات ---
+  // إعدادات الـ admin
+  db.run(`CREATE TABLE IF NOT EXISTS admin_settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    setting_key TEXT UNIQUE NOT NULL,
+    setting_value TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // الفئات
   db.run(`CREATE TABLE IF NOT EXISTS categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name_ar TEXT NOT NULL,
@@ -147,6 +147,7 @@ db.serialize(() => {
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
+  // العطور
   db.run(`CREATE TABLE IF NOT EXISTS perfumes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name_ar TEXT NOT NULL,
@@ -167,83 +168,89 @@ db.serialize(() => {
     FOREIGN KEY (category_id) REFERENCES categories (id)
   )`);
 
-  // --- إعدادات admin ---
-  db.run(`CREATE TABLE IF NOT EXISTS admin_settings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    setting_key TEXT UNIQUE NOT NULL,
-    setting_value TEXT,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
+  // ======== إدخال البيانات الافتراضية ========
+  // المستخدمون التجريبيون
+  db.run(`INSERT OR IGNORE INTO test_users (name, email, phone, message) VALUES 
+    ('أحمد محمد', 'ahmed@example.com', '0501234567', 'رسالة تجريبية'),
+    ('سارة علي', 'sara@example.com', '0557654321', 'أريد معرفة المزيد عن العطور')`);
 
-  // --- البيانات الافتراضية ---
-  db.get("SELECT COUNT(*) as count FROM categories", (err, row) => {
-    if (!err && row.count === 0) {
-      db.run(`INSERT INTO categories (name_ar, name_en, description, image, sort_order) VALUES 
-        ('عطور رجالية', 'Men Perfumes', 'أجمل العطور الرجالية', 'assets/images/category/men.png', 1),
-        ('عطور نسائية', 'Women Perfumes', 'أجمل العطور النسائية', 'assets/images/category/women.png', 2),
-        ('عطور عائلية', 'Family Perfumes', 'عطور مناسبة للعائلة', 'assets/images/category/family.png', 3),
-        ('عطور فاخرة', 'Luxury Perfumes', 'أرقى العطور الفاخرة', 'assets/images/category/luxury.png', 4)`);
-    }
-  });
+  // الكوبونات الافتراضية (مع أنواع المتاجر)
+  db.run(`INSERT OR IGNORE INTO coupons 
+    (code, store_type, description, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until) 
+    VALUES 
+    ('WELCOME10', 'all', 'خصم 10% لأول طلب', 'percentage', 10, 50, 100, datetime('now'), datetime('now', '+30 days')),
+    ('FIXED20', 'all', 'خصم 20 ريال', 'fixed', 20, 100, 50, datetime('now'), datetime('now', '+15 days')),
+    ('NOON15', 'noon', 'خصم 15% لمتجر نون', 'percentage', 15, 100, 50, datetime('now'), datetime('now', '+30 days')),
+    ('STORE10', 'store1', 'خصم 10 ريال للمتجر الأول', 'fixed', 10, 50, 100, datetime('now'), datetime('now', '+60 days'))`);
 
-  db.get("SELECT COUNT(*) as count FROM perfumes", (err, row) => {
-    if (!err && row.count === 0) {
-      db.run(`INSERT INTO perfumes (name_ar, name_en, description, price, original_price, category_id, image, is_featured, stock_quantity) VALUES 
-        ('عطر رجالي فاخر', 'Luxury Men Perfume', 'عطر رجالي برائحة مميزة', 150.0, 200.0, 1, 'assets/images/L/L1.png', 1, 50),
-        ('عطر نسائي أنيق', 'Elegant Women Perfume', 'عطر نسائي برائحة زهرية', 120.0, 150.0, 2, 'assets/images/L/L2.png', 1, 40),
-        ('عطر عائلي مميز', 'Family Special Perfume', 'عطر مناسب لجميع أفراد العائلة', 100.0, 120.0, 3, 'assets/images/L/L3.png', 0, 30),
-        ('عطر فاخر متميز', 'Premium Luxury Perfume', 'عطر فاخر برائحة استثنائية', 250.0, 300.0, 4, 'assets/images/L/L4.png', 1, 20)`);
-    }
-  });
+  // القسائم الافتراضية
+  db.run(`INSERT OR IGNORE INTO gift_cards 
+    (card_number, pin_code, initial_amount, current_balance, valid_until, customer_name, notes) 
+    VALUES 
+    ('GC-1001-2024', '1234', 100, 100, datetime('now', '+90 days'), 'عميل تجريبي', 'قسيمة هدية')`);
 
-  db.get("SELECT COUNT(*) as count FROM coupons", (err, row) => {
-    if (!err && row.count === 0) {
-      db.run(`INSERT INTO coupons (code, store_type, description, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until) VALUES 
-        ('WELCOME10', 'all', 'خصم 10% لأول طلب', 'percentage', 10.0, 50.0, 100, datetime('now'), datetime('now', '+30 days')),
-        ('FIXED20', 'all', 'خصم ثابت 20 ريال', 'fixed', 20.0, 100.0, 50, datetime('now'), datetime('now', '+15 days')),
-        ('NOON15', 'noon', 'خصم 15% لمتجر نون', 'percentage', 15.0, 100.0, 50, datetime('now'), datetime('now', '+30 days')),
-        ('STORE10', 'store1', 'خصم 10 ريال للمتجر الأول', 'fixed', 10.0, 50.0, 100, datetime('now'), datetime('now', '+60 days'))`);
-    }
-  });
+  // الفئات الافتراضية
+  db.run(`INSERT OR IGNORE INTO categories (name_ar, name_en, description, image, sort_order) VALUES 
+    ('عطور رجالية', 'Men Perfumes', 'أجمل العطور الرجالية', '/images/men.png', 1),
+    ('عطور نسائية', 'Women Perfumes', 'عطور أنيقة', '/images/women.png', 2)`);
 
-  db.get("SELECT COUNT(*) as count FROM gift_cards", (err, row) => {
-    if (!err && row.count === 0) {
-      db.run(`INSERT INTO gift_cards (card_number, pin_code, initial_amount, current_balance, valid_until, customer_name, notes) VALUES 
-        ('GC-1001-2024', '1234', 100.0, 100.0, datetime('now', '+90 days'), 'عميل تجريبي', 'قسيمة ترحيبية')`);
-    }
-  });
+  // العطور الافتراضية
+  db.run(`INSERT OR IGNORE INTO perfumes (name_ar, name_en, description, price, category_id, in_stock, stock_quantity) VALUES 
+    ('عطر فاخر', 'Luxury Perfume', 'عطر فاخر برائحة خشبية', 199, 1, 1, 50),
+    ('عطر زهور', 'Flower Perfume', 'عطر زهري ناعم', 149, 2, 1, 30)`);
 
+  // إعدادات admin
   db.run(`INSERT OR IGNORE INTO admin_settings (setting_key, setting_value) VALUES 
-    ('theme', 'light'), 
+    ('theme', 'light'),
     ('items_per_page', '10')`);
+
+  console.log('✅ تم إنشاء الجداول والبيانات الافتراضية بنجاح');
 });
 
-console.log('✅ قاعدة البيانات جاهزة');
+// ================================
+// ========== واجهات برمجة التطبيقات ==========
+// ================================
 
-// ================================
-// ========== APIs ================
-// ================================
+// --- مسار الترحيب الأساسي ---
+app.get('/', (req, res) => {
+  res.json({
+    status: 'success',
+    message: '🚀 نظام إدارة المتجر يعمل بنجاح',
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      users: '/api/all-data',
+      test: '/api/test',
+      orders: '/api/orders',
+      coupons: '/api/coupons',
+      giftCards: '/api/gift-cards',
+      adminPanel: '/admin'
+    }
+  });
+});
 
 // --- اختبار الاتصال ---
 app.get('/api/test', (req, res) => {
-  res.json({ status: 'success', message: '✅ تم الاتصال بالخادم بنجاح!' });
+  res.json({ status: 'success', message: '✅ الاتصال بالخادم ناجح', timestamp: new Date().toISOString() });
 });
 
 app.get('/api/db-test', (req, res) => {
-  db.get('SELECT 1 as test_value, datetime("now") as server_time', (err, row) => {
+  db.get('SELECT 1 as test, datetime("now") as now', (err, row) => {
     if (err) return res.status(500).json({ status: 'error', message: err.message });
-    res.json({ status: 'success', message: '✅ قاعدة البيانات تعمل', test_value: row.test_value, server_time: row.server_time });
+    res.json({ status: 'success', db: 'connected', server_time: row.now });
   });
 });
 
-// --- المستخدمين ---
+// --- إدارة المستخدمين ---
 app.post('/api/save-data', (req, res) => {
   const { name, email, phone, message } = req.body;
-  if (!name || !email) return res.status(400).json({ status: 'error', message: 'الاسم والبريد مطلوبان' });
-  db.run('INSERT INTO test_users (name, email, phone, message) VALUES (?, ?, ?, ?)', [name, email, phone || '', message || ''], function(err) {
-    if (err) return res.status(500).json({ status: 'error', message: err.message });
-    res.json({ status: 'success', message: '✅ تم حفظ البيانات', insert_id: this.lastID });
-  });
+  if (!name || !email) return res.status(400).json({ status: 'error', message: 'الاسم والبريد الإلكتروني مطلوبان' });
+
+  db.run('INSERT INTO test_users (name, email, phone, message) VALUES (?, ?, ?, ?)',
+    [name, email, phone || '', message || ''],
+    function(err) {
+      if (err) return res.status(500).json({ status: 'error', message: err.message });
+      res.json({ status: 'success', message: 'تم حفظ البيانات', insert_id: this.lastID });
+    });
 });
 
 app.get('/api/all-data', (req, res) => {
@@ -253,19 +260,20 @@ app.get('/api/all-data', (req, res) => {
   });
 });
 
-// --- الطلبات ---
+// --- معالجة الطلبات ---
 app.post('/api/process-payment', (req, res) => {
   const {
     cart_items, total_amount, discount_amount, coupon_code, gift_card_number, gift_card_amount,
     customer_name, customer_phone, customer_email, customer_secondary_phone,
     payment_method, transfer_name, transfer_number, customer_address, address_city, address_area,
-    address_detail, shipping_city, shipping_area, shipping_fee, final_amount,
-    order_notes, expected_delivery, items_count, shipping_type
+    address_detail, shipping_fee, final_amount, order_notes, expected_delivery, items_count, shipping_type
   } = req.body;
 
-  if (!cart_items || cart_items.length === 0) return res.status(400).json({ status: 'error', message: 'السلة فارغة' });
+  if (!cart_items || cart_items.length === 0) {
+    return res.status(400).json({ status: 'error', message: 'السلة فارغة' });
+  }
 
-  const order_number = 'ORD-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+  const order_number = 'ORD-' + Date.now() + '-' + Math.floor(Math.random() * 10000);
   const order_date = new Date().toISOString();
 
   db.run(
@@ -273,25 +281,37 @@ app.post('/api/process-payment', (req, res) => {
       order_number, cart_items, total_amount, discount_amount, coupon_code, gift_card_amount,
       order_date, order_status, customer_name, customer_phone, customer_email, customer_secondary_phone,
       payment_method, transfer_name, transfer_number, customer_address, address_city, address_area,
-      address_detail, shipping_city, shipping_area, shipping_fee, final_amount,
-      order_notes, expected_delivery, items_count, shipping_type
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      address_detail, shipping_fee, final_amount, order_notes, expected_delivery, items_count, shipping_type
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       order_number, JSON.stringify(cart_items), parseFloat(total_amount), parseFloat(discount_amount || 0),
-      coupon_code || null, parseFloat(gift_card_amount || 0),
-      order_date, 'pending', customer_name || 'عميل', customer_phone || '', customer_email || '', customer_secondary_phone || '',
-      payment_method || 'online', transfer_name || '', transfer_number || '', customer_address || '', address_city || '', address_area || '',
-      address_detail || '', shipping_city || address_city || '', shipping_area || address_area || '', parseFloat(shipping_fee || 0),
-      parseFloat(final_amount || total_amount), order_notes || '', expected_delivery || '', items_count || cart_items.length, shipping_type || 'توصيل منزلي'
+      coupon_code || null, parseFloat(gift_card_amount || 0), order_date, 'pending',
+      customer_name || 'عميل', customer_phone || '', customer_email || '', customer_secondary_phone || '',
+      payment_method || 'online', transfer_name || '', transfer_number || '', customer_address || '',
+      address_city || '', address_area || '', address_detail || '', parseFloat(shipping_fee || 0),
+      parseFloat(final_amount || total_amount), order_notes || '', expected_delivery || '',
+      items_count || cart_items.length, shipping_type || 'توصيل منزلي'
     ],
     function(err) {
       if (err) return res.status(500).json({ status: 'error', message: err.message });
       const orderId = this.lastID;
       const stmt = db.prepare(`INSERT INTO order_items (order_id, product_id, product_name, quantity, price, total_price, product_url) VALUES (?, ?, ?, ?, ?, ?, ?)`);
       cart_items.forEach(item => {
-        stmt.run(orderId, item.id || 0, item.name || 'منتج', item.quantity || 1, item.price || 0, (item.price || 0) * (item.quantity || 1), item.productUrl || '');
+        stmt.run(orderId, item.id || 0, item.name || 'منتج', item.quantity || 1, item.price || 0,
+          (item.price || 0) * (item.quantity || 1), item.productUrl || '');
       });
       stmt.finalize();
+
+      // تحديث استهلاك الكوبون إن وجد
+      if (coupon_code) {
+        db.run('UPDATE coupons SET used_count = used_count + 1 WHERE code = ?', [coupon_code]);
+      }
+      // تحديث رصيد القسيمة إن وجد
+      if (gift_card_number && gift_card_amount > 0) {
+        db.run('UPDATE gift_cards SET current_balance = current_balance - ?, used_count = used_count + 1, used_amount = used_amount + ? WHERE card_number = ?',
+          [gift_card_amount, gift_card_amount, gift_card_number]);
+      }
+
       res.json({ status: 'success', message: 'تم استلام الطلب', order_id: order_number });
     }
   );
@@ -313,12 +333,12 @@ app.put('/api/orders/:id/status', (req, res) => {
     db.get('SELECT * FROM orders WHERE id = ?', [id], (err2, order) => {
       if (err2) return res.status(500).json({ status: 'error', message: err2.message });
       order.cart_items = JSON.parse(order.cart_items);
-      res.json({ status: 'success', message: 'تم تحديث الحالة', order });
+      res.json({ status: 'success', message: 'تم تحديث حالة الطلب', order });
     });
   });
 });
 
-// --- الكوبونات (مع store_type) ---
+// --- إدارة الكوبونات (مع store_type) ---
 app.get('/api/coupons', (req, res) => {
   db.all('SELECT * FROM coupons ORDER BY created_at DESC', (err, rows) => {
     if (err) return res.status(500).json({ status: 'error', message: err.message });
@@ -328,69 +348,61 @@ app.get('/api/coupons', (req, res) => {
 
 app.get('/api/coupons/:id', (req, res) => {
   const { id } = req.params;
-  db.get('SELECT * FROM coupons WHERE id = ?', [id], (err, coupon) => {
-    if (err || !coupon) return res.status(404).json({ status: 'error', message: 'الكوبون غير موجود' });
-    res.json({ status: 'success', coupon });
+  db.get('SELECT * FROM coupons WHERE id = ?', [id], (err, row) => {
+    if (err || !row) return res.status(404).json({ status: 'error', message: 'الكوبون غير موجود' });
+    res.json({ status: 'success', coupon: row });
   });
 });
 
 app.post('/api/coupons', (req, res) => {
   const { code, store_type, description, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until, is_active } = req.body;
-  if (!code || !discount_type || discount_value === undefined) return res.status(400).json({ status: 'error', message: 'بيانات ناقصة' });
-
+  if (!code || !discount_type || discount_value === undefined) {
+    return res.status(400).json({ status: 'error', message: 'الكود ونوع الخصم وقيمته مطلوبة' });
+  }
   db.get('SELECT id FROM coupons WHERE code = ?', [code], (err, existing) => {
-    if (existing) return res.status(400).json({ status: 'error', message: 'الكود مستخدم' });
-    const validFrom = valid_from || new Date().toISOString();
-    const validUntil = valid_until || new Date(Date.now() + 30*24*60*60*1000).toISOString();
+    if (existing) return res.status(400).json({ status: 'error', message: 'الكود موجود مسبقاً' });
+    const now = new Date().toISOString();
+    const vFrom = valid_from || now;
+    const vUntil = valid_until || new Date(Date.now() + 30*24*60*60*1000).toISOString();
     db.run(
       `INSERT INTO coupons (code, store_type, description, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until, is_active)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [code, store_type || 'all', description || '', discount_type, parseFloat(discount_value), parseFloat(min_order_amount) || 0, parseInt(max_uses) || -1, validFrom, validUntil, is_active !== undefined ? is_active : 1],
+      [code, store_type || 'all', description || '', discount_type, parseFloat(discount_value), parseFloat(min_order_amount) || 0,
+        max_uses ? parseInt(max_uses) : -1, vFrom, vUntil, is_active !== undefined ? is_active : 1],
       function(err) {
         if (err) return res.status(500).json({ status: 'error', message: err.message });
         res.json({ status: 'success', message: 'تم إنشاء الكوبون', coupon_id: this.lastID });
-      }
-    );
+      });
   });
 });
 
 app.put('/api/coupons/:id', (req, res) => {
   const { id } = req.params;
-  const { code, store_type, description, discount_type, discount_value, min_order_amount, max_uses, valid_from, valid_until, is_active, used_count } = req.body;
-
-  const checkQuery = 'SELECT id FROM coupons WHERE code = ? AND id != ?';
-  db.get(checkQuery, [code, id], (err, existing) => {
-    if (existing) return res.status(400).json({ status: 'error', message: 'الكود مستخدم' });
-    const fields = [], values = [];
-    if (code !== undefined) { fields.push('code = ?'); values.push(code); }
-    if (store_type !== undefined) { fields.push('store_type = ?'); values.push(store_type); }
-    if (description !== undefined) { fields.push('description = ?'); values.push(description); }
-    if (discount_type !== undefined) { fields.push('discount_type = ?'); values.push(discount_type); }
-    if (discount_value !== undefined) { fields.push('discount_value = ?'); values.push(discount_value); }
-    if (min_order_amount !== undefined) { fields.push('min_order_amount = ?'); values.push(min_order_amount); }
-    if (max_uses !== undefined) { fields.push('max_uses = ?'); values.push(max_uses); }
-    if (valid_from !== undefined) { fields.push('valid_from = ?'); values.push(valid_from); }
-    if (valid_until !== undefined) { fields.push('valid_until = ?'); values.push(valid_until); }
-    if (is_active !== undefined) { fields.push('is_active = ?'); values.push(is_active); }
-    if (used_count !== undefined) { fields.push('used_count = ?'); values.push(used_count); }
-    if (fields.length === 0) return res.json({ status: 'success', message: 'لا تغييرات' });
-    values.push(id);
-    db.run(`UPDATE coupons SET ${fields.join(', ')} WHERE id = ?`, values, function(err) {
-      if (err) return res.status(500).json({ status: 'error', message: err.message });
-      res.json({ status: 'success', message: 'تم تحديث الكوبون' });
-    });
+  const updates = req.body;
+  const fields = [];
+  const values = [];
+  for (const [key, val] of Object.entries(updates)) {
+    if (key !== 'id' && val !== undefined) {
+      fields.push(`${key} = ?`);
+      values.push(val);
+    }
+  }
+  if (fields.length === 0) return res.json({ status: 'success', message: 'لا توجد تغييرات' });
+  values.push(id);
+  db.run(`UPDATE coupons SET ${fields.join(', ')} WHERE id = ?`, values, function(err) {
+    if (err) return res.status(500).json({ status: 'error', message: err.message });
+    res.json({ status: 'success', message: 'تم تحديث الكوبون' });
   });
 });
 
 app.delete('/api/coupons/:id', (req, res) => {
-  const { id } = req.params;
-  db.run('DELETE FROM coupons WHERE id = ?', [id], function(err) {
+  db.run('DELETE FROM coupons WHERE id = ?', [req.params.id], function(err) {
     if (err) return res.status(500).json({ status: 'error', message: err.message });
     res.json({ status: 'success', message: 'تم حذف الكوبون' });
   });
 });
 
-// --- التحقق من الكوبون أثناء الدفع ---
+// --- التحقق من صحة الكوبون أثناء الشراء ---
 app.get('/api/validate-coupon', (req, res) => {
   const { code, order_amount, store_type } = req.query;
   if (!code || !order_amount) return res.status(400).json({ status: 'error', message: 'بيانات ناقصة' });
@@ -403,22 +415,35 @@ app.get('/api/validate-coupon', (req, res) => {
   }
   db.get(query, params, (err, coupon) => {
     if (err || !coupon) return res.status(404).json({ status: 'error', message: 'كوبون غير صالح' });
-
     const now = new Date();
-    const validUntil = new Date(coupon.valid_until);
-    if (now > validUntil) return res.status(400).json({ status: 'error', message: 'انتهت صلاحية الكوبون' });
-    if (coupon.max_uses > 0 && coupon.used_count >= coupon.max_uses) return res.status(400).json({ status: 'error', message: 'تم استخدام العدد الأقصى' });
-
+    if (now > new Date(coupon.valid_until)) return res.status(400).json({ status: 'error', message: 'انتهت صلاحية الكوبون' });
+    if (coupon.max_uses !== -1 && coupon.used_count >= coupon.max_uses) {
+      return res.status(400).json({ status: 'error', message: 'تم استخدام الكوبون لأقصى عدد مرات' });
+    }
     const orderAmount = parseFloat(order_amount);
-    if (orderAmount < coupon.min_order_amount) return res.status(400).json({ status: 'error', message: `الحد الأدنى ${coupon.min_order_amount} ريال` });
-
+    if (orderAmount < coupon.min_order_amount) {
+      return res.status(400).json({ status: 'error', message: `الحد الأدنى للطلب هو ${coupon.min_order_amount} ريال` });
+    }
     let discount = coupon.discount_type === 'percentage' ? (orderAmount * coupon.discount_value) / 100 : coupon.discount_value;
     if (discount > orderAmount) discount = orderAmount;
-    res.json({ status: 'success', valid: true, discount_amount: discount, final_amount: orderAmount - discount, coupon });
+    const final = orderAmount - discount;
+    res.json({
+      status: 'success',
+      valid: true,
+      discount_amount: discount,
+      final_amount: final,
+      coupon: {
+        code: coupon.code,
+        discount_type: coupon.discount_type,
+        discount_value: coupon.discount_value,
+        min_order_amount: coupon.min_order_amount,
+        store_type: coupon.store_type
+      }
+    });
   });
 });
 
-// --- القسائم ---
+// --- إدارة القسائم الشرائية ---
 app.get('/api/gift-cards', (req, res) => {
   db.all('SELECT * FROM gift_cards ORDER BY created_at DESC', (err, rows) => {
     if (err) return res.status(500).json({ status: 'error', message: err.message });
@@ -427,18 +452,18 @@ app.get('/api/gift-cards', (req, res) => {
 });
 
 app.post('/api/gift-cards', (req, res) => {
-  const { card_number, pin_code, initial_amount, valid_until, customer_name, customer_phone, notes, is_active, max_uses } = req.body;
+  const { card_number, pin_code, initial_amount, valid_until, customer_name, customer_phone, notes, max_uses, is_active } = req.body;
   if (!card_number || !pin_code || !initial_amount) return res.status(400).json({ status: 'error', message: 'بيانات ناقصة' });
-  const validUntil = valid_until || new Date(Date.now() + 90*24*60*60*1000).toISOString();
+  const vUntil = valid_until || new Date(Date.now() + 90*24*60*60*1000).toISOString();
   db.run(
-    `INSERT INTO gift_cards (card_number, pin_code, initial_amount, current_balance, valid_until, customer_name, customer_phone, notes, is_active, max_uses)
+    `INSERT INTO gift_cards (card_number, pin_code, initial_amount, current_balance, valid_until, customer_name, customer_phone, notes, max_uses, is_active)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [card_number, pin_code, parseFloat(initial_amount), parseFloat(initial_amount), validUntil, customer_name || '', customer_phone || '', notes || '', is_active !== undefined ? is_active : 1, max_uses || 1],
+    [card_number, pin_code, parseFloat(initial_amount), parseFloat(initial_amount), vUntil,
+      customer_name || '', customer_phone || '', notes || '', max_uses || 1, is_active !== undefined ? is_active : 1],
     function(err) {
       if (err) return res.status(500).json({ status: 'error', message: err.message });
       res.json({ status: 'success', message: 'تم إنشاء القسيمة', gift_card_id: this.lastID });
-    }
-  );
+    });
 });
 
 app.delete('/api/gift-cards/:id', (req, res) => {
@@ -454,13 +479,13 @@ app.post('/api/validate-gift-card', (req, res) => {
     if (err || !card) return res.status(404).json({ status: 'error', message: 'قسيمة غير صالحة' });
     const now = new Date();
     if (now > new Date(card.valid_until)) return res.status(400).json({ status: 'error', message: 'انتهت صلاحية القسيمة' });
-    if (card.current_balance <= 0) return res.status(400).json({ status: 'error', message: 'لا يوجد رصيد' });
+    if (card.current_balance <= 0) return res.status(400).json({ status: 'error', message: 'لا يوجد رصيد متبقي' });
     const used = Math.min(card.current_balance, parseFloat(order_amount || 0));
     res.json({ status: 'success', valid: true, used_amount: used, remaining_balance: card.current_balance - used });
   });
 });
 
-// --- الفئات والعطور ---
+// --- إدارة الفئات والعطور ---
 app.get('/api/categories', (req, res) => {
   db.all('SELECT * FROM categories WHERE is_active = 1 ORDER BY sort_order ASC', (err, rows) => {
     if (err) return res.status(500).json({ status: 'error', message: err.message });
@@ -486,10 +511,12 @@ app.get('/api/perfumes-stats', (req, res) => {
 app.post('/api/categories', (req, res) => {
   const { name_ar, name_en, description, image, is_active, sort_order } = req.body;
   if (!name_ar || !name_en) return res.status(400).json({ status: 'error', message: 'الاسم مطلوب' });
-  db.run(`INSERT INTO categories (name_ar, name_en, description, image, is_active, sort_order) VALUES (?, ?, ?, ?, ?, ?)`, [name_ar, name_en, description || '', image || '', is_active !== undefined ? is_active : 1, sort_order || 0], function(err) {
-    if (err) return res.status(500).json({ status: 'error', message: err.message });
-    res.json({ status: 'success', message: 'تمت الإضافة', category_id: this.lastID });
-  });
+  db.run(`INSERT INTO categories (name_ar, name_en, description, image, is_active, sort_order) VALUES (?, ?, ?, ?, ?, ?)`,
+    [name_ar, name_en, description || '', image || '', is_active !== undefined ? is_active : 1, sort_order || 0],
+    function(err) {
+      if (err) return res.status(500).json({ status: 'error', message: err.message });
+      res.json({ status: 'success', message: 'تمت الإضافة', category_id: this.lastID });
+    });
 });
 
 app.delete('/api/categories/:id', (req, res) => {
@@ -499,15 +526,16 @@ app.delete('/api/categories/:id', (req, res) => {
   });
 });
 
-// --- الإعدادات ---
+// --- إعدادات النظام ---
 app.get('/api/admin-settings', (req, res) => {
-  db.all('SELECT * FROM admin_settings', (err, rows) => {
+  db.all('SELECT setting_key, setting_value FROM admin_settings', (err, rows) => {
     if (err) return res.status(500).json({ status: 'error', message: err.message });
     const settings = {};
     rows.forEach(r => settings[r.setting_key] = r.setting_value);
     res.json({ status: 'success', settings });
   });
 });
+
 app.put('/api/admin-settings/:key', (req, res) => {
   const { key } = req.params;
   const { value } = req.body;
@@ -517,7 +545,7 @@ app.put('/api/admin-settings/:key', (req, res) => {
   });
 });
 
-// --- تصدير Excel ---
+// --- تصدير المبيعات إلى Excel ---
 app.get('/api/export-all-sales', async (req, res) => {
   try {
     const orders = await new Promise((resolve, reject) => {
@@ -541,13 +569,15 @@ app.get('/api/export-all-sales', async (req, res) => {
     const filename = `sales-${Date.now()}.xlsx`;
     const filepath = path.join(exportsDir, filename);
     await workbook.xlsx.writeFile(filepath);
-    res.download(filepath, filename, () => setTimeout(() => fs.unlinkSync(filepath), 30000));
+    res.download(filepath, filename, () => {
+      setTimeout(() => fs.unlink(filepath, () => {}), 30000);
+    });
   } catch (err) {
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
 
-// --- مسح البيانات ---
+// --- مسح جميع البيانات ---
 app.delete('/api/clear-all-data', (req, res) => {
   db.run('DELETE FROM test_users');
   db.run('DELETE FROM orders');
@@ -556,25 +586,23 @@ app.delete('/api/clear-all-data', (req, res) => {
 });
 
 // ================================
-// ========== ADMIN PANEL =========
+// ========== واجهة المستخدم (لوحة التحكم الاحترافية) ==========
 // ================================
 
-// قالب موحد للوحة التحكم (جديد احترافي)
 const adminLayout = (title, content, activePage = '') => `
 <!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${title} | لوحة التحكم - متجر العطور</title>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Cairo',sans-serif;background:#f5f7fb;overflow-x:hidden}
+*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Cairo',sans-serif;background:#f5f7fb;overflow-x:hidden}
 .sidebar{position:fixed;right:0;top:0;width:280px;height:100vh;background:linear-gradient(180deg,#1e293b 0%,#0f172a 100%);color:#fff;transition:0.3s;z-index:1000;overflow-y:auto;box-shadow:-4px 0 20px rgba(0,0,0,0.1)}
 .sidebar-header{padding:30px 25px;text-align:center;border-bottom:1px solid rgba(255,255,255,0.1)}
-.sidebar-logo{font-size:24px;font-weight:800;background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.sidebar-logo{font-size:24px;font-weight:800;background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .sidebar-logo small{font-size:12px;display:block;color:#94a3b8;margin-top:5px}
 .nav-list{list-style:none;padding:20px 15px}
 .nav-item{margin-bottom:8px}
@@ -669,15 +697,17 @@ app.get('/admin', (req, res) => {
   <div class="stat-card"><div class="stat-info"><h3>${users.length}</h3><p>إجمالي المستخدمين</p></div><div class="stat-icon"><i class="fas fa-user-friends"></i></div></div>
   <div class="stat-card"><div class="stat-info"><h3>${users.filter(u=>u.phone).length}</h3><p>معرفون بالهاتف</p></div><div class="stat-icon"><i class="fas fa-phone-alt"></i></div></div>
 </div>
-<div class="card"><div class="card-header"><h2><i class="fas fa-list"></i> قائمة المستخدمين</h2><button onclick="exportUsers()" class="btn btn-primary"><i class="fas fa-file-excel"></i> تصدير JSON</button></div><div class="card-body"><div class="table-responsive"><table><thead><tr><th>#</th><th>الاسم</th><th>البريد</th><th>الهاتف</th><th>الرسالة</th><th>التاريخ</th><th>الإجراءات</th></tr></thead><tbody>
-${users.length===0?'<tr><td colspan="7" class="empty-state"><i class="fas fa-inbox"></i><br>لا توجد بيانات</td></tr>':users.map(u=>`<tr><td>${u.id}</td><td><strong>${u.name||'-'}</strong></td><td>${u.email||'-'}</td><td>${u.phone||'-'}</td><td>${u.message||'-'}</td><td>${new Date(u.created_at).toLocaleString('ar-SA')}</td><td><a href="/admin/purchases/${u.phone}?name=${encodeURIComponent(u.name)}" class="btn btn-primary" style="padding:6px 12px;font-size:12px"><i class="fas fa-shopping-bag"></i> مشتريات</a></td></tr>`).join('')}
-</tbody></table></div></div></div>
+<div class="card"><div class="card-header"><h2><i class="fas fa-list"></i> قائمة المستخدمين</h2><button onclick="exportUsers()" class="btn btn-primary"><i class="fas fa-file-excel"></i> تصدير JSON</button></div><div class="card-body"><div class="table-responsive"></td>
+<thead><tr><th>#</th><th>الاسم</th><th>البريد</th><th>الهاتف</th><th>الرسالة</th><th>التاريخ</th><th>الإجراءات</th></tr></thead>
+<tbody>${users.length===0?'<tr><td colspan="7" class="empty-state"><i class="fas fa-inbox"></i><br>لا توجد بيانات</td></tr>':users.map(u=>`<tr><td>${u.id}</td><td><strong>${u.name||'-'}</strong></td><td>${u.email||'-'}</td><td>${u.phone||'-'}</td><td>${u.message||'-'}</td><td>${new Date(u.created_at).toLocaleString('ar-SA')}</td><td><a href="/admin/purchases/${u.phone}?name=${encodeURIComponent(u.name)}" class="btn btn-primary" style="padding:6px 12px;font-size:12px"><i class="fas fa-shopping-bag"></i> مشتريات</a></td></tr>`).join('')}
+</tbody>
+</div></div></div>
 <script>function exportUsers(){ window.open('/api/all-data','_blank'); }</script>`;
     res.send(adminLayout('لوحة المستخدمين', content, 'users'));
   });
 });
 
-// صفحة مشتريات عميل
+// صفحة مشتريات العميل
 app.get('/admin/purchases/:phone', (req, res) => {
   const { phone } = req.params;
   const name = req.query.name || 'العميل';
@@ -695,7 +725,7 @@ app.get('/admin/orders', (req, res) => {
     if (err) return res.status(500).send('خطأ');
     let ordersHtml = orders.length===0 ? '<div class="empty-state"><i class="fas fa-inbox"></i><br>لا توجد طلبات</div>' : orders.map(o=>{
       let items = []; try{ items=JSON.parse(o.cart_items); }catch(e){}
-      return `<div class="card" id="order-${o.id}"><div class="card-header"><div><h2><i class="fas fa-receipt"></i> ${o.order_number}</h2><span class="badge badge-${o.order_status==='completed'?'success':(o.order_status==='pending'?'warning':'info')}">${o.order_status}</span></div><div>${new Date(o.order_date).toLocaleString('ar-SA')}</div></div><div class="card-body"><div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); margin-bottom:20px;"><div><i class="fas fa-user"></i> ${o.customer_name||'-'}</div><div><i class="fas fa-phone"></i> ${o.customer_phone||'-'}</div><div><i class="fas fa-money-bill"></i> ${o.total_amount} ر.س</div><div><i class="fas fa-credit-card"></i> ${o.payment_method}</div></div><div><strong>المنتجات:</strong></div>${items.map(it=>`<div style="background:#f8fafc; margin-top:8px; padding:10px; border-radius:10px;">${it.name} × ${it.quantity} = ${(it.price*it.quantity).toFixed(2)} ر.س</div>`).join('')}<div style="margin-top:20px"><select onchange="updateOrderStatus(${o.id}, this.value)" class="form-control" style="width:auto"><option value="pending" ${o.order_status==='pending'?'selected':''}>قيد الانتظار</option><option value="confirmed" ${o.order_status==='confirmed'?'selected':''}>تأكيد</option><option value="completed" ${o.order_status==='completed'?'selected':''}>مكتمل</option><option value="cancelled" ${o.order_status==='cancelled'?'selected':''}>ملغي</option></select></div></div></div>`;
+      return `<div class="card"><div class="card-header"><div><h2><i class="fas fa-receipt"></i> ${o.order_number}</h2><span class="badge badge-${o.order_status==='completed'?'success':(o.order_status==='pending'?'warning':'info')}">${o.order_status}</span></div><div>${new Date(o.order_date).toLocaleString('ar-SA')}</div></div><div class="card-body"><div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); margin-bottom:20px;"><div><i class="fas fa-user"></i> ${o.customer_name||'-'}</div><div><i class="fas fa-phone"></i> ${o.customer_phone||'-'}</div><div><i class="fas fa-money-bill"></i> ${o.total_amount} ر.س</div><div><i class="fas fa-credit-card"></i> ${o.payment_method}</div></div><div><strong>المنتجات:</strong></div>${items.map(it=>`<div style="background:#f8fafc; margin-top:8px; padding:10px; border-radius:10px;">${it.name} × ${it.quantity} = ${(it.price*it.quantity).toFixed(2)} ر.س</div>`).join('')}<div style="margin-top:20px"><select onchange="updateOrderStatus(${o.id}, this.value)" class="form-control" style="width:auto"><option value="pending" ${o.order_status==='pending'?'selected':''}>قيد الانتظار</option><option value="confirmed" ${o.order_status==='confirmed'?'selected':''}>تأكيد</option><option value="completed" ${o.order_status==='completed'?'selected':''}>مكتمل</option><option value="cancelled" ${o.order_status==='cancelled'?'selected':''}>ملغي</option></select></div></div></div>`;
     }).join('');
     const content = `<div class="stats-grid"><div class="stat-card"><div class="stat-info"><h3>${orders.length}</h3><p>إجمالي الطلبات</p></div><div class="stat-icon"><i class="fas fa-chart-bar"></i></div></div><div class="stat-card"><div class="stat-info"><h3>${orders.filter(o=>o.order_status==='pending').length}</h3><p>قيد الانتظار</p></div><div class="stat-icon"><i class="fas fa-clock"></i></div></div><div class="stat-card"><div class="stat-info"><h3>${orders.reduce((s,o)=>s+parseFloat(o.total_amount),0).toFixed(0)} ر.س</h3><p>إجمالي المبيعات</p></div><div class="stat-icon"><i class="fas fa-chart-line"></i></div></div></div><div class="card"><div class="card-header"><h2><i class="fas fa-shopping-cart"></i> جميع الطلبات</h2><button onclick="exportOrders()" class="btn btn-primary"><i class="fas fa-download"></i> تصدير Excel</button></div><div class="card-body">${ordersHtml}</div></div>
     <script>
@@ -725,17 +755,17 @@ app.get('/admin/coupons', (req, res) => {
     if (err) return res.status(500).send('خطأ');
     const couponsHtml = coupons.length===0 ? '<div class="empty-state"><i class="fas fa-ticket-alt"></i><br>لا توجد كوبونات</div>' : coupons.map(c=>{
       const storeTypeText = c.store_type==='noon' ? '🛒 نون' : (c.store_type==='store1' ? '🏪 المتجر الأول' : '🌐 عام');
-      return `<div class="card"><div class="card-header"><div><i class="fas fa-tag"></i> <strong>${c.code}</strong> <span class="badge badge-info">${storeTypeText}</span> <span class="badge ${c.is_active && new Date(c.valid_until)>new Date() ? 'badge-success' : 'badge-danger'}">${c.is_active && new Date(c.valid_until)>new Date() ? 'نشط' : 'غير نشط'}</span></div><div>الاستخدام: ${c.used_count}/${c.max_uses===-1?'∞':c.max_uses}</div></div><div class="card-body"><div>الخصم: ${c.discount_value} ${c.discount_type==='percentage'?'%':'ر.س'} | الحد الأدنى: ${c.min_order_amount} ر.س</div><div>صالح حتى: ${new Date(c.valid_until).toLocaleDateString('ar-SA')}</div><div style="margin-top:15px"><button onclick="deleteCoupon(${c.id})" class="btn btn-danger">حذف</button> <button onclick="editCoupon(${c.id})" class="btn btn-primary">تعديل</button></div></div></div>`;
+      return `<div class="card"><div class="card-header"><div><i class="fas fa-tag"></i> <strong>${c.code}</strong> <span class="badge badge-info">${storeTypeText}</span> <span class="badge ${c.is_active && new Date(c.valid_until)>new Date() ? 'badge-success' : 'badge-danger'}">${c.is_active && new Date(c.valid_until)>new Date() ? 'نشط' : 'غير نشط'}</span></div><div>الاستخدام: ${c.used_count}/${c.max_uses===-1?'∞':c.max_uses}</div></div><div class="card-body"><div>الخصم: ${c.discount_value} ${c.discount_type==='percentage'?'%':'ر.س'} | الحد الأدنى: ${c.min_order_amount} ر.س</div><div>صالح حتى: ${new Date(c.valid_until).toLocaleString('ar-SA')}</div><div style="margin-top:15px"><button onclick="deleteCoupon(${c.id})" class="btn btn-danger">حذف</button> <button onclick="editCoupon(${c.id})" class="btn btn-primary">تعديل</button></div></div></div>`;
     }).join('');
     const content = `<div class="stats-grid"><div class="stat-card"><div class="stat-info"><h3>${coupons.length}</h3><p>إجمالي الكوبونات</p></div><div class="stat-icon"><i class="fas fa-ticket-alt"></i></div></div></div><div class="card"><div class="card-header"><h2><i class="fas fa-plus"></i> إضافة كوبون جديد</h2><button onclick="showAddCouponModal()" class="btn btn-success"><i class="fas fa-plus"></i> إضافة</button></div></div>${couponsHtml}
-    <div id="addCouponModal" class="modal"><div class="modal-content"><div class="modal-header"><h3>إضافة كوبون</h3><span class="close-modal" onclick="closeAddModal()">&times;</span></div><form id="couponForm"><div class="form-group"><label>الكود</label><input name="code" class="form-control" required></div><div class="form-group"><label>نوع المتجر</label><select name="store_type" class="form-control"><option value="all">جميع المتاجر</option><option value="store1">المتجر الأول (lib/pages)</option><option value="noon">متجر نون (noon)</option></select></div><div class="form-group"><label>قيمة الخصم</label><input name="discount_value" type="number" step="0.01" class="form-control" required></div><div class="form-group"><label>نوع الخصم</label><select name="discount_type" class="form-control"><option value="percentage">نسبة مئوية</option><option value="fixed">قيمة ثابتة</option></select></div><div class="form-group"><label>الحد الأدنى للطلب</label><input name="min_order_amount" type="number" step="0.01" class="form-control" value="0"></div><div class="form-group"><label>تاريخ الانتهاء</label><input name="valid_until" type="datetime-local" class="form-control" required></div><button type="submit" class="btn btn-primary">حفظ</button></form></div></div>
-    <div id="editCouponModal" class="modal"><div class="modal-content"><div class="modal-header"><h3>تعديل الكوبون</h3><span class="close-modal" onclick="closeEditModal()">&times;</span></div><form id="editCouponForm"><input type="hidden" name="id" id="edit_id"><div class="form-group"><label>الكود</label><input name="code" id="edit_code" class="form-control" required></div><div class="form-group"><label>نوع المتجر</label><select name="store_type" id="edit_store_type" class="form-control"><option value="all">جميع المتاجر</option><option value="store1">المتجر الأول</option><option value="noon">متجر نون</option></select></div><div class="form-group"><label>قيمة الخصم</label><input name="discount_value" id="edit_discount_value" type="number" step="0.01" class="form-control" required></div><div class="form-group"><label>نوع الخصم</label><select name="discount_type" id="edit_discount_type" class="form-control"><option value="percentage">نسبة مئوية</option><option value="fixed">قيمة ثابتة</option></select></div><div class="form-group"><label>الحد الأدنى للطلب</label><input name="min_order_amount" id="edit_min_order" type="number" step="0.01" class="form-control"></div><div class="form-group"><label>تاريخ الانتهاء</label><input name="valid_until" id="edit_valid_until" type="datetime-local" class="form-control" required></div><div class="form-group"><label class="form-label"><input type="checkbox" name="is_active" id="edit_is_active"> نشط</label></div><button type="submit" class="btn btn-primary">حفظ التعديلات</button></form></div></div>
+    <div id="addCouponModal" class="modal"><div class="modal-content"><div class="modal-header"><h3>إضافة كوبون</h3><span class="close-modal" onclick="closeAddModal()">&times;</span></div><form id="couponForm"><div class="form-group"><label>الكود</label><input name="code" class="form-control" required></div><div class="form-group"><label>نوع المتجر</label><select name="store_type" class="form-control"><option value="all">جميع المتاجر</option><option value="store1">المتجر الأول</option><option value="noon">متجر نون</option></select></div><div class="form-group"><label>نوع الخصم</label><select name="discount_type" class="form-control"><option value="percentage">نسبة مئوية</option><option value="fixed">قيمة ثابتة</option></select></div><div class="form-group"><label>قيمة الخصم</label><input name="discount_value" type="number" step="0.01" class="form-control" required></div><div class="form-group"><label>الحد الأدنى للطلب</label><input name="min_order_amount" type="number" step="0.01" class="form-control" value="0"></div><div class="form-group"><label>تاريخ الانتهاء</label><input name="valid_until" type="datetime-local" class="form-control" required></div><button type="submit" class="btn btn-primary">حفظ</button></form></div></div>
+    <div id="editCouponModal" class="modal"><div class="modal-content"><div class="modal-header"><h3>تعديل الكوبون</h3><span class="close-modal" onclick="closeEditModal()">&times;</span></div><form id="editCouponForm"><input type="hidden" name="id" id="edit_id"><div class="form-group"><label>الكود</label><input name="code" id="edit_code" class="form-control" required></div><div class="form-group"><label>نوع المتجر</label><select name="store_type" id="edit_store_type" class="form-control"><option value="all">جميع المتاجر</option><option value="store1">المتجر الأول</option><option value="noon">متجر نون</option></select></div><div class="form-group"><label>نوع الخصم</label><select name="discount_type" id="edit_discount_type" class="form-control"><option value="percentage">نسبة مئوية</option><option value="fixed">قيمة ثابتة</option></select></div><div class="form-group"><label>قيمة الخصم</label><input name="discount_value" id="edit_discount_value" type="number" step="0.01" class="form-control" required></div><div class="form-group"><label>الحد الأدنى للطلب</label><input name="min_order_amount" id="edit_min_order" type="number" step="0.01" class="form-control"></div><div class="form-group"><label>تاريخ الانتهاء</label><input name="valid_until" id="edit_valid_until" type="datetime-local" class="form-control" required></div><div class="form-group"><label class="form-label"><input type="checkbox" name="is_active" id="edit_is_active"> نشط</label></div><button type="submit" class="btn btn-primary">حفظ التعديلات</button></form></div></div>
     <script>
     function showAddCouponModal(){ document.getElementById('addCouponModal').style.display='flex'; }
     function closeAddModal(){ document.getElementById('addCouponModal').style.display='none'; }
     function closeEditModal(){ document.getElementById('editCouponModal').style.display='none'; }
     document.getElementById('couponForm').addEventListener('submit', async(e)=>{ e.preventDefault(); const data=Object.fromEntries(new FormData(e.target)); data.discount_value=parseFloat(data.discount_value); data.min_order_amount=parseFloat(data.min_order_amount); data.valid_from=new Date().toISOString().slice(0,16); data.is_active=1; const res=await fetch('/api/coupons',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}); const result=await res.json(); if(result.status==='success'){ showToast('تمت الإضافة'); location.reload(); } else showToast(result.message,'error'); });
-    window.editCoupon=async function(id){ const res=await fetch('/api/coupons/'+id); const data=await res.json(); if(data.status==='success'){ const c=data.coupon; document.getElementById('edit_id').value=c.id; document.getElementById('edit_code').value=c.code; document.getElementById('edit_store_type').value=c.store_type||'all'; document.getElementById('edit_discount_value').value=c.discount_value; document.getElementById('edit_discount_type').value=c.discount_type; document.getElementById('edit_min_order').value=c.min_order_amount; document.getElementById('edit_valid_until').value=c.valid_until.slice(0,16); document.getElementById('edit_is_active').checked=c.is_active==1; document.getElementById('editCouponModal').style.display='flex'; } };
+    window.editCoupon=async function(id){ const res=await fetch('/api/coupons/'+id); const data=await res.json(); if(data.status==='success'){ const c=data.coupon; document.getElementById('edit_id').value=c.id; document.getElementById('edit_code').value=c.code; document.getElementById('edit_store_type').value=c.store_type||'all'; document.getElementById('edit_discount_type').value=c.discount_type; document.getElementById('edit_discount_value').value=c.discount_value; document.getElementById('edit_min_order').value=c.min_order_amount; document.getElementById('edit_valid_until').value=c.valid_until.slice(0,16); document.getElementById('edit_is_active').checked=c.is_active==1; document.getElementById('editCouponModal').style.display='flex'; } };
     document.getElementById('editCouponForm').addEventListener('submit', async(e)=>{ e.preventDefault(); const data=Object.fromEntries(new FormData(e.target)); const id=data.id; data.discount_value=parseFloat(data.discount_value); data.min_order_amount=parseFloat(data.min_order_amount); data.is_active=data.is_active?1:0; const res=await fetch('/api/coupons/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}); const result=await res.json(); if(result.status==='success'){ showToast('تم التحديث'); location.reload(); } else showToast(result.message,'error'); });
     async function deleteCoupon(id){ if(confirm('حذف الكوبون؟')){ await fetch('/api/coupons/'+id,{method:'DELETE'}); location.reload(); } }
     </script>`;
@@ -764,7 +794,7 @@ app.get('/admin/gift-cards', (req, res) => {
 app.get('/admin/products', (req, res) => {
   db.get('SELECT COUNT(*) as total FROM perfumes', (err, total) => {
     db.get('SELECT COUNT(*) as active FROM perfumes WHERE is_active=1', (err2, active) => {
-      const content = `<div class="stats-grid"><div class="stat-card"><div class="stat-info"><h3>${total?.total||0}</h3><p>إجمالي العطور</p></div><div class="stat-icon"><i class="fas fa-perfume"></i></div></div><div class="stat-card"><div class="stat-info"><h3>${active?.active||0}</h3><p>نشطة</p></div><div class="stat-icon"><i class="fas fa-check-circle"></i></div></div></div><div class="card"><div class="card-header"><h2><i class="fas fa-list"></i> الفئات</h2><button onclick="alert('تطوير قريب')" class="btn btn-success">إضافة فئة</button></div><div class="card-body" id="categoriesList">جاري التحميل...</div></div><script>fetch('/api/categories').then(r=>r.json()).then(d=>{if(d.status==='success'){ let html='<div class="table-responsive"><table><thead><tr><th>الاسم</th><th>الوصف</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody>'+d.categories.map(c=>'<tr><td>'+c.name_ar+'</td><td>'+(c.description||'-')+'</td><td><span class="badge '+(c.is_active?'badge-success':'badge-danger')+'">'+(c.is_active?'نشط':'غير نشط')+'</span></td><td><button class="btn btn-danger btn-sm" onclick="deleteCategory('+c.id+')">حذف</button></td></tr>').join('')+'</tbody><table></div>'; document.getElementById('categoriesList').innerHTML=html; }}); async function deleteCategory(id){ if(confirm('حذف الفئة؟')){ await fetch('/api/categories/'+id,{method:'DELETE'}); location.reload(); } }</script>`;
+      const content = `<div class="stats-grid"><div class="stat-card"><div class="stat-info"><h3>${total?.total||0}</h3><p>إجمالي العطور</p></div><div class="stat-icon"><i class="fas fa-perfume"></i></div></div><div class="stat-card"><div class="stat-info"><h3>${active?.active||0}</h3><p>نشطة</p></div><div class="stat-icon"><i class="fas fa-check-circle"></i></div></div></div><div class="card"><div class="card-header"><h2><i class="fas fa-list"></i> الفئات</h2><button onclick="alert('تطوير قريب')" class="btn btn-success">إضافة فئة</button></div><div class="card-body" id="categoriesList">جاري التحميل...</div></div><script>fetch('/api/categories').then(r=>r.json()).then(d=>{if(d.status==='success'){ let html='<div class="table-responsive"><table><thead><tr><th>الاسم</th><th>الوصف</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody>'+d.categories.map(c=>'<tr><td>'+c.name_ar+'</td><td>'+(c.description||'-')+'</td><td><span class="badge '+(c.is_active?'badge-success':'badge-danger')+'">'+(c.is_active?'نشط':'غير نشط')+'</span></td><td><button class="btn btn-danger btn-sm" onclick="deleteCategory('+c.id+')">حذف</button></td></tr>').join('')+'</tbody></table></div>'; document.getElementById('categoriesList').innerHTML=html; }}); async function deleteCategory(id){ if(confirm('حذف الفئة؟')){ await fetch('/api/categories/'+id,{method:'DELETE'}); location.reload(); } }</script>`;
       res.send(adminLayout('إدارة المنتجات', content, 'products'));
     });
   });
@@ -785,27 +815,21 @@ app.get('/admin/advanced', (req, res) => {
   });
 });
 
-// تسجيل الخروج
+// تسجيل الخروج (محاكاة بسيطة)
 app.get('/logout', (req, res) => {
   res.send('<script>alert("تم تسجيل الخروج"); window.location.href="/admin";</script>');
 });
 
-// مسار رئيسي
-app.get('/', (req, res) => {
-  res.json({ status: 'success', message: '🚀 الخادم يعمل', endpoints: ['/admin', '/api/test', '/api/db-test', ...] });
+// ================================
+// ========== تشغيل الخادم ==========
+// ================================
+const server = app.listen(PORT, HOST, () => {
+  console.log(`✅ الخادم يعمل بنجاح على http://${HOST}:${PORT}`);
+  console.log(`🔗 لوحة الإدارة: http://${HOST}:${PORT}/admin`);
+  console.log(`📊 اختبار قاعدة البيانات: http://${HOST}:${PORT}/api/db-test`);
 });
 
-// معالجة الأخطاء
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ status: 'error', message: 'خطأ داخلي في الخادم' });
-});
-app.use((req, res) => {
-  res.status(404).json({ status: 'error', message: 'الصفحة غير موجودة' });
-});
-
-// بدء الخادم
-app.listen(PORT, HOST, () => {
-  console.log(`🚀 الخادم يعمل على http://${HOST}:${PORT}`);
-  console.log(`🔗 لوحة الإدارة: https://database-api-kvxr.onrender.com/admin`);
+server.on('error', (err) => {
+  console.error('❌ فشل بدء الخادم:', err);
+  process.exit(1);
 });
