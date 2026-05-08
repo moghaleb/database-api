@@ -3674,7 +3674,6 @@ app.get('/admin', (req, res) => {
                 <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
                 <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
                 <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
-                <a href="/admin/products" class="nav-btn">🛍️ إدارة المنتجات</a>
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/api/all-data" class="nav-btn">📋 JSON البيانات</a>
                 <a href="/api/test" class="nav-btn">🧪 اختبار الاتصال</a>
@@ -3916,7 +3915,6 @@ app.get('/admin/confirmed-orders', (req, res) => {
                 <a href="/admin/confirmed-orders" class="nav-btn">✅ الطلبات المؤكدة</a>
                 <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
                 <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
-                <a href="/admin/products" class="nav-btn">🛍️ إدارة المنتجات</a>
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
             </div>
@@ -4132,7 +4130,6 @@ app.get('/admin/advanced', (req, res) => {
                 <a href="/admin/confirmed-orders" class="btn btn-primary">✅ الطلبات المؤكدة</a>
                 <a href="/admin/coupons" class="btn btn-info">🎫 إدارة الكوبونات</a>
                 <a href="/admin/gift-cards" class="btn btn-info">💳 إدارة القسائم</a>
-                <a href="/admin/products" class="btn btn-info">🛍️ إدارة المنتجات</a>
                 <a href="/admin/settings" class="btn btn-info">⚙️ إعدادات النظام</a>
                 <a href="/api/all-data" class="btn btn-success">📋 JSON البيانات</a>
                 <a href="/api/orders" class="btn btn-primary">📦 JSON الطلبات</a>
@@ -4303,7 +4300,6 @@ app.get('/admin/orders', (req, res) => {
                 <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
                 <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
                 <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
-                <a href="/admin/products" class="nav-btn">🛍️ إدارة المنتجات</a>
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
             </div>
@@ -4698,7 +4694,6 @@ app.get('/admin/coupons', (req, res) => {
                 <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
                 <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
                 <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
-                <a href="/admin/products" class="nav-btn">🛍️ إدارة المنتجات</a>
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
                 <button onclick="showAddModal()" class="btn btn-success">+ إضافة كوبون جديد</button>
@@ -5239,7 +5234,6 @@ app.get('/admin/gift-cards', (req, res) => {
                 <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
                 <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
                 <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
-                <a href="/admin/products" class="nav-btn">🛍️ إدارة المنتجات</a>
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
                 <button onclick="showAddModal()" class="btn btn-success">+ إضافة قسيمة جديدة</button>
@@ -5730,7 +5724,6 @@ app.get('/admin/settings', (req, res) => {
               <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
               <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
               <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
-              <a href="/admin/products" class="nav-btn">🛍️ إدارة المنتجات</a>
               <a href="/" class="nav-btn">🏠 الرئيسية</a>
           </div>
 
