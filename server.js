@@ -34,13 +34,12 @@ app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
 
 // ======== إنشاء مجلد التصدير ========
-const exportsDir = process.env.NODE_ENV === 'production'
-  ? '/var/www/redshe/exports'
-  : path.join(__dirname, 'exports');
-if (!fs.existsSync(exportsDir)) {
-  fs.mkdirSync(exportsDir, { recursive: true });
-  console.log('✅ تم إنشاء مجلد التصدير:', exportsDir);
-}
+
+
+
+
+
+
 
 // ======== Database Configuration ========
 const db = new sqlite3.Database(':memory:');
@@ -1198,7 +1197,7 @@ app.get('/admin/advanced', (req, res) => {
 // ======== باقي الـ APIs والمسارات (نفس الكود الأصلي مع تصحيح مسار التصدير) ========
 // ... (جميع الـ APIs الأخرى موجودة كما هي في الكود الأصلي، تم حذفها للاختصار ولكنها تعمل بكامل وظائفها)
 
-// xxمعالجة الأخطاء
+// معالجة الأخطاء
 app.use((err, req, res, next) => {
   console.error('❌ خطأ غير متوقع:', err);
   res.status(500).json({ status: 'error', message: 'حدث خطأ غير متوقع' });
