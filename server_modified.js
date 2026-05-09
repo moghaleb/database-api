@@ -675,49 +675,82 @@ app.get('/admin', (req, res) => {
             </div>
           </div>
           <div class="content">
-            <div class="page-hero">
-              <h1>مرحباً بك في لوحة التحكم</h1>
-              <p>متجر ريدشي - نظرة عامة على بيانات المتجر</p>
+            <div class="page-hero" style="background: linear-gradient(135deg, #1a2338 0%, #0f1729 100%);">
+              <h1><i class="fas fa-chart-pie"></i> لوحة البيانات</h1>
+              <p>متجر ريدشي - نظرة عامة على أداء المتجر</p>
             </div>
 
             <div class="stats-grid">
               <div class="stat-card">
-                <div class="stat-icon" style="background: rgba(59,130,246,0.1); color: var(--accent); margin: 0 auto 12px;"><i class="fas fa-shopping-cart"></i></div>
+                <div class="stat-icon" style="background: rgba(59,130,246,0.1); color: var(--accent); margin: 0 auto 8px;"><i class="fas fa-shopping-cart"></i></div>
                 <div class="stat-number" id="orders-count" style="color: var(--accent);">0</div>
                 <div class="stat-label">إجمالي الطلبات</div>
+                <div style="display:flex;gap:8px;justify-content:center;margin-top:6px;font-size:11px;color:var(--text-muted);">
+                  <span>معلق: <strong id="orders-pending" style="color:#f59e0b;">0</strong></span>
+                  <span>قيد المعالجة: <strong id="orders-processing" style="color:#3b82f6;">0</strong></span>
+                  <span>مكتمل: <strong id="orders-completed" style="color:#10b981;">0</strong></span>
+                </div>
               </div>
               <div class="stat-card">
-                <div class="stat-icon" style="background: rgba(16,185,129,0.1); color: var(--success-light); margin: 0 auto 12px;"><i class="fas fa-tags"></i></div>
+                <div class="stat-icon" style="background: rgba(16,185,129,0.1); color: var(--success-light); margin: 0 auto 8px;"><i class="fas fa-money-bill-wave"></i></div>
+                <div class="stat-number" id="total-revenue" style="color: var(--success-light);">0</div>
+                <div class="stat-label">إجمالي الإيرادات</div>
+                <div style="margin-top:6px;font-size:11px;color:var(--text-muted);">من جميع الطلعات المكتملة</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(16,185,129,0.1); color: var(--success-light); margin: 0 auto 8px;"><i class="fas fa-tags"></i></div>
                 <div class="stat-number" id="coupons-count" style="color: var(--success-light);">0</div>
                 <div class="stat-label">كوبونات الخصم</div>
+                <div style="display:flex;gap:8px;justify-content:center;margin-top:6px;font-size:11px;color:var(--text-muted);">
+                  <span>نشط: <strong id="coupons-active" style="color:#10b981;">0</strong></span>
+                  <span>مستخدم: <strong id="coupons-used" style="color:#f59e0b;">0</strong></span>
+                </div>
               </div>
               <div class="stat-card">
-                <div class="stat-icon" style="background: rgba(245,158,11,0.1); color: var(--warning-light); margin: 0 auto 12px;"><i class="fas fa-credit-card"></i></div>
+                <div class="stat-icon" style="background: rgba(245,158,11,0.1); color: var(--warning-light); margin: 0 auto 8px;"><i class="fas fa-credit-card"></i></div>
                 <div class="stat-number" id="gift-cards-count" style="color: var(--warning-light);">0</div>
                 <div class="stat-label">قسائم الشراء</div>
+                <div style="display:flex;gap:8px;justify-content:center;margin-top:6px;font-size:11px;color:var(--text-muted);">
+                  <span>الرصيد: <strong id="gift-balance" style="color:#10b981;">0</strong> ر.س</span>
+                  <span>مستخدم: <strong id="gifts-used" style="color:#ef4444;">0</strong></span>
+                </div>
               </div>
               <div class="stat-card">
-                <div class="stat-icon" style="background: rgba(239,68,68,0.1); color: var(--danger-light); margin: 0 auto 12px;"><i class="fas fa-bell"></i></div>
+                <div class="stat-icon" style="background: rgba(239,68,68,0.1); color: var(--danger-light); margin: 0 auto 8px;"><i class="fas fa-bell"></i></div>
                 <div class="stat-number" id="notifications-count" style="color: var(--danger-light);">0</div>
-                <div class="stat-label">إشعارات غير مقروءة</div>
+                <div class="stat-label">الإشعارات</div>
+                <div style="display:flex;gap:8px;justify-content:center;margin-top:6px;font-size:11px;color:var(--text-muted);">
+                  <span>غير مقروء: <strong id="notifications-unread" style="color:#ef4444;">0</strong></span>
+                  <span>إجمالي: <strong id="notifications-total" style="color:#6b7280;">0</strong></span>
+                </div>
               </div>
             </div>
 
-            <div class="card" style="margin-bottom: 24px;">
-              <div class="card-header">
-                <div class="card-title"><i class="fas fa-link"></i> روابط سريعة</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;">
+              <div class="card">
+                <div class="card-header">
+                  <div class="card-title"><i class="fas fa-chart-bar"></i> حالة الطلبات</div>
+                </div>
+                <div style="padding:16px;">
+                  <div id="status-bars"></div>
+                </div>
               </div>
-              <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                <a href="/admin/orders" class="btn btn-primary"><i class="fas fa-list"></i> إدارة الطلبات</a>
-                <a href="/admin/coupons" class="btn btn-success"><i class="fas fa-tags"></i> إدارة الكوبونات</a>
-                <a href="/admin/gift-cards" class="btn btn-warning"><i class="fas fa-credit-card"></i> إدارة القسائم</a>
-                <a href="/admin/notifications" class="btn btn-danger"><i class="fas fa-bell"></i> إدارة الإشعارات</a>
+              <div class="card">
+                <div class="card-header">
+                  <div class="card-title"><i class="fas fa-link"></i> روابط سريعة</div>
+                </div>
+                <div style="padding:16px;display:flex;gap:10px;flex-wrap:wrap;">
+                  <a href="/admin/orders" class="btn btn-primary"><i class="fas fa-list"></i> إدارة الطلبات</a>
+                  <a href="/admin/coupons" class="btn btn-success"><i class="fas fa-tags"></i> إدارة الكوبونات</a>
+                  <a href="/admin/gift-cards" class="btn btn-warning"><i class="fas fa-credit-card"></i> إدارة القسائم</a>
+                  <a href="/admin/notifications" class="btn btn-danger"><i class="fas fa-bell"></i> إدارة الإشعارات</a>
+                </div>
               </div>
             </div>
 
-            <div class="card">
+            <div class="card" style="margin-bottom:24px;">
               <div class="card-header">
-                <div class="card-title"><i class="fas fa-clock"></i> الطلبات الأخيرة</div>
+                <div class="card-title"><i class="fas fa-clock"></i> آخر 10 طلبات</div>
               </div>
               <div class="table-container">
                 <table id="recent-orders-table">
@@ -725,7 +758,7 @@ app.get('/admin', (req, res) => {
                     <tr>
                       <th>رقم الطلب</th>
                       <th>العميل</th>
-                      <th>المبلغ الإجمالي</th>
+                      <th>المبلغ</th>
                       <th>الحالة</th>
                       <th>التاريخ</th>
                     </tr>
@@ -772,53 +805,78 @@ app.get('/admin', (req, res) => {
 
         // جلب البيانات الإحصائية
         function fetchDashboardStats() {
-          // جلب عدد الطلبات
           fetch('/api/orders-stats')
             .then(response => response.json())
             .then(data => {
               if (data.status === 'success') {
-                document.getElementById('orders-count').textContent = data.stats.total;
+                const s = data.stats;
+                document.getElementById('orders-count').textContent = s.total;
+                document.getElementById('orders-pending').textContent = s.pending;
+                document.getElementById('orders-processing').textContent = s.processing;
+                document.getElementById('orders-completed').textContent = s.completed;
+                document.getElementById('total-revenue').textContent = (s.total_revenue || 0).toLocaleString() + ' ر.س';
+                renderStatusBars(s);
               }
             })
-            .catch(error => {
-              console.error('Error fetching orders stats:', error);
-            });
+            .catch(error => console.error('Error fetching orders stats:', error));
 
-          // جلب عدد الكوبونات
           fetch('/api/coupons-stats')
             .then(response => response.json())
             .then(data => {
               if (data.status === 'success') {
-                document.getElementById('coupons-count').textContent = data.stats.total;
+                const s = data.stats;
+                document.getElementById('coupons-count').textContent = s.total;
+                document.getElementById('coupons-active').textContent = s.active;
+                document.getElementById('coupons-used').textContent = s.total_used || 0;
               }
             })
-            .catch(error => {
-              console.error('Error fetching coupons stats:', error);
-            });
+            .catch(error => console.error('Error fetching coupons stats:', error));
 
-          // جلب عدد القسائم
           fetch('/api/gift-cards-stats')
             .then(response => response.json())
             .then(data => {
               if (data.status === 'success') {
-                document.getElementById('gift-cards-count').textContent = data.stats.total;
+                const s = data.stats;
+                document.getElementById('gift-cards-count').textContent = s.total;
+                document.getElementById('gift-balance').textContent = (s.total_balance || 0).toLocaleString();
+                document.getElementById('gifts-used').textContent = s.used;
               }
             })
-            .catch(error => {
-              console.error('Error fetching gift cards stats:', error);
-            });
+            .catch(error => console.error('Error fetching gift cards stats:', error));
 
-          // جلب عدد الإشعارات
           fetch('/api/notifications-stats')
             .then(response => response.json())
             .then(data => {
               if (data.status === 'success') {
-                document.getElementById('notifications-count').textContent = data.stats.unread;
+                const s = data.stats;
+                document.getElementById('notifications-count').textContent = s.unread;
+                document.getElementById('notifications-unread').textContent = s.unread;
+                document.getElementById('notifications-total').textContent = s.total;
               }
             })
-            .catch(error => {
-              console.error('Error fetching notifications stats:', error);
-            });
+            .catch(error => console.error('Error fetching notifications stats:', error));
+        }
+
+        function renderStatusBars(stats) {
+          const container = document.getElementById('status-bars');
+          const total = stats.total || 1;
+          const items = [
+            { label: 'معلق', count: stats.pending, color: '#f59e0b' },
+            { label: 'قيد المعالجة', count: stats.processing, color: '#3b82f6' },
+            { label: 'مكتمل', count: stats.completed, color: '#10b981' },
+            { label: 'ملغي', count: stats.cancelled, color: '#ef4444' }
+          ];
+          container.innerHTML = items.map(item => `
+            <div style="margin-bottom:12px;">
+              <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
+                <span>${item.label}</span>
+                <span><strong>${item.count}</strong></span>
+              </div>
+              <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
+                <div style="height:100%;width:${(item.count/total*100).toFixed(1)}%;background:${item.color};border-radius:4px;transition:width 0.5s;"></div>
+              </div>
+            </div>
+          `).join('');
         }
 
         // جلب الطلبات الأخيرة
