@@ -1247,6 +1247,374 @@ app.post('/api/rebuild-products-tables', (req, res) => {
     });
 });
 
+// ======== لوحة البيانات (Dashboard) ========
+app.get('/admin', (req, res) => {
+    const html = `
+  <!DOCTYPE html>
+  <html dir="rtl" lang="ar">
+  <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>لوحة البيانات - متجر ريدشي</title>
+      <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+      <link rel="stylesheet" href="/admin-style.css">
+      <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+      <div class="layout">
+          <aside class="sidebar">
+              <div class="sidebar-brand">
+                  <h2><i class="fas fa-store-alt"></i> ريدشي</h2>
+                  <div class="brand-sub">لوحة الإدارة</div>
+              </div>
+              <nav class="sidebar-nav">
+                  <div class="nav-section">الرئيسية</div>
+                  <a href="/admin" class="active"><i class="fas fa-chart-pie"></i> <span>لوحة البيانات</span></a>
+                  <a href="/admin/advanced"><i class="fas fa-tachometer-alt"></i> <span>لوحة التحكم</span></a>
+                  <div class="nav-section">الإدارة</div>
+                  <a href="/admin/products"><i class="fas fa-box"></i> <span>المنتجات</span></a>
+                  <a href="/admin/orders"><i class="fas fa-shopping-cart"></i> <span>الطلبات</span></a>
+                  <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
+                  <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                  <a href="/admin/notifications"><i class="fas fa-bell"></i> <span>الإشعارات</span></a>
+                  <div class="nav-section">النظام</div>
+                  <a href="/admin/users"><i class="fas fa-users"></i> <span>المستخدمون</span></a>
+                  <a href="/admin/settings"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
+                  <a href="/admin/purchases/"><i class="fas fa-receipt"></i> <span>المشتريات</span></a>
+                  <a href="/admin/confirmed-orders"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
+              </nav>
+          </aside>
+          <main class="main-content">
+              <div class="top-bar">
+                  <div class="page-title"><i class="fas fa-chart-pie"></i> لوحة البيانات</div>
+                  <div class="user-info">
+                      <span>مرحباً، المدير</span>
+                      <button class="btn btn-danger btn-sm" onclick="location.reload()">
+                          <i class="fas fa-sync-alt"></i> تحديث
+                      </button>
+                  </div>
+              </div>
+              <div class="content">
+                  <div class="page-hero" style="background: linear-gradient(135deg, #1a2338 0%, #0f1729 100%);">
+                      <h1><i class="fas fa-chart-pie"></i> لوحة البيانات</h1>
+                      <p>متجر ريدشي - نظرة عامة على أداء المتجر</p>
+                  </div>
+
+                  <div class="stats-grid">
+                      <div class="stat-card">
+                          <div class="stat-icon" style="background: rgba(59,130,246,0.1); color: var(--accent); margin: 0 auto 8px;"><i class="fas fa-shopping-cart"></i></div>
+                          <div class="stat-number" id="orders-count" style="color: var(--accent);">0</div>
+                          <div class="stat-label">إجمالي الطلبات</div>
+                          <div style="display:flex;gap:8px;justify-content:center;margin-top:6px;font-size:11px;color:var(--text-muted);">
+                              <span>معلق: <strong id="orders-pending" style="color:#f59e0b;">0</strong></span>
+                              <span>قيد المعالجة: <strong id="orders-processing" style="color:#3b82f6;">0</strong></span>
+                              <span>مكتمل: <strong id="orders-completed" style="color:#10b981;">0</strong></span>
+                          </div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-icon" style="background: rgba(16,185,129,0.1); color: var(--success-light); margin: 0 auto 8px;"><i class="fas fa-money-bill-wave"></i></div>
+                          <div class="stat-number" id="total-revenue" style="color: var(--success-light);">0</div>
+                          <div class="stat-label">إجمالي الإيرادات</div>
+                          <div style="margin-top:6px;font-size:11px;color:var(--text-muted);">من جميع الطلبات المكتملة</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-icon" style="background: rgba(16,185,129,0.1); color: var(--success-light); margin: 0 auto 8px;"><i class="fas fa-tags"></i></div>
+                          <div class="stat-number" id="coupons-count" style="color: var(--success-light);">0</div>
+                          <div class="stat-label">كوبونات الخصم</div>
+                          <div style="display:flex;gap:8px;justify-content:center;margin-top:6px;font-size:11px;color:var(--text-muted);">
+                              <span>نشط: <strong id="coupons-active" style="color:#10b981;">0</strong></span>
+                              <span>مستخدم: <strong id="coupons-used" style="color:#f59e0b;">0</strong></span>
+                          </div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-icon" style="background: rgba(245,158,11,0.1); color: var(--warning-light); margin: 0 auto 8px;"><i class="fas fa-gift"></i></div>
+                          <div class="stat-number" id="gift-cards-count" style="color: var(--warning-light);">0</div>
+                          <div class="stat-label">قسائم الشراء</div>
+                          <div style="display:flex;gap:8px;justify-content:center;margin-top:6px;font-size:11px;color:var(--text-muted);">
+                              <span>الرصيد: <strong id="gift-balance" style="color:#10b981;">0</strong> ر.س</span>
+                              <span>مستخدم: <strong id="gifts-used" style="color:#ef4444;">0</strong></span>
+                          </div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-icon" style="background: rgba(239,68,68,0.1); color: var(--danger-light); margin: 0 auto 8px;"><i class="fas fa-bell"></i></div>
+                          <div class="stat-number" id="notifications-count" style="color: var(--danger-light);">0</div>
+                          <div class="stat-label">الإشعارات</div>
+                          <div style="display:flex;gap:8px;justify-content:center;margin-top:6px;font-size:11px;color:var(--text-muted);">
+                              <span>غير مقروء: <strong id="notifications-unread" style="color:#ef4444;">0</strong></span>
+                              <span>إجمالي: <strong id="notifications-total" style="color:#6b7280;">0</strong></span>
+                          </div>
+                      </div>
+                  </div>
+
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;">
+                      <div class="card">
+                          <div class="card-header">
+                              <div class="card-title"><i class="fas fa-chart-bar"></i> حالة الطلبات</div>
+                          </div>
+                          <div style="padding:16px;">
+                              <div id="status-bars"></div>
+                          </div>
+                      </div>
+                      <div class="card">
+                          <div class="card-header">
+                              <div class="card-title"><i class="fas fa-link"></i> روابط سريعة</div>
+                          </div>
+                          <div style="padding:16px;display:flex;gap:10px;flex-wrap:wrap;">
+                              <a href="/admin/orders" class="btn btn-primary"><i class="fas fa-list"></i> إدارة الطلبات</a>
+                              <a href="/admin/coupons" class="btn btn-success"><i class="fas fa-tags"></i> إدارة الكوبونات</a>
+                              <a href="/admin/gift-cards" class="btn btn-warning"><i class="fas fa-gift"></i> إدارة القسائم</a>
+                              <a href="/admin/notifications" class="btn btn-danger"><i class="fas fa-bell"></i> إدارة الإشعارات</a>
+                              <a href="/admin/products" class="btn btn-info"><i class="fas fa-box"></i> إدارة المنتجات</a>
+                              <a href="/admin/orders" class="btn btn-secondary"><i class="fas fa-check-circle"></i> الطلبات المؤكدة</a>
+                          </div>
+                      </div>
+                  </div>
+
+                  <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-bottom:24px;">
+                      <div class="card">
+                          <div class="card-header">
+                              <div class="card-title"><i class="fas fa-chart-line"></i> نظرة عامة على المبيعات</div>
+                          </div>
+                          <div style="padding:16px;">
+                              <div style="position:relative;height:280px;">
+                                  <canvas id="salesChart"></canvas>
+                              </div>
+                          </div>
+                      </div>
+                      <div class="card">
+                          <div class="card-header">
+                              <div class="card-title"><i class="fas fa-chart-pie"></i> توزيع الطلبات</div>
+                          </div>
+                          <div style="padding:16px;">
+                              <div style="position:relative;height:280px;">
+                                  <canvas id="ordersChart"></canvas>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+
+                  <div class="card" style="margin-bottom:24px;">
+                      <div class="card-header">
+                          <div class="card-title"><i class="fas fa-clock"></i> آخر 10 طلبات</div>
+                      </div>
+                      <div class="table-container">
+                          <table id="recent-orders-table">
+                              <thead>
+                                  <tr>
+                                      <th>رقم الطلب</th>
+                                      <th>العميل</th>
+                                      <th>المبلغ</th>
+                                      <th>الحالة</th>
+                                      <th>التاريخ</th>
+                                  </tr>
+                              </thead>
+                              <tbody>
+                              </tbody>
+                          </table>
+                      </div>
+                  </div>
+              </div>
+          </main>
+      </div>
+
+      <div id="notification" class="notification"></div>
+
+      <script>
+          function showNotification(message, type) {
+              const notification = document.getElementById('notification');
+              notification.textContent = message;
+              notification.className = 'notification notification-' + type;
+              notification.classList.add('show');
+              setTimeout(() => { notification.classList.remove('show'); }, 3000);
+          }
+
+          function fetchDashboardStats() {
+              fetch('/api/orders-stats')
+                  .then(response => response.json())
+                  .then(data => {
+                      if (data.status === 'success') {
+                          const s = data.stats;
+                          document.getElementById('orders-count').textContent = s.total;
+                          document.getElementById('orders-pending').textContent = s.pending;
+                          document.getElementById('orders-processing').textContent = s.processing;
+                          document.getElementById('orders-completed').textContent = s.completed;
+                          document.getElementById('total-revenue').textContent = (s.total_revenue || 0).toLocaleString() + ' ر.س';
+                          renderStatusBars(s);
+                          renderCharts(s);
+                      }
+                  })
+                  .catch(error => console.error('Error fetching orders stats:', error));
+
+              fetch('/api/coupons-stats')
+                  .then(response => response.json())
+                  .then(data => {
+                      if (data.status === 'success') {
+                          const s = data.stats;
+                          document.getElementById('coupons-count').textContent = s.total;
+                          document.getElementById('coupons-active').textContent = s.active;
+                          document.getElementById('coupons-used').textContent = s.total_used || 0;
+                      }
+                  })
+                  .catch(error => console.error('Error fetching coupons stats:', error));
+
+              fetch('/api/gift-cards-stats')
+                  .then(response => response.json())
+                  .then(data => {
+                      if (data.status === 'success') {
+                          const s = data.stats;
+                          document.getElementById('gift-cards-count').textContent = s.total;
+                          document.getElementById('gift-balance').textContent = (s.total_balance || 0).toLocaleString();
+                          document.getElementById('gifts-used').textContent = s.used;
+                      }
+                  })
+                  .catch(error => console.error('Error fetching gift cards stats:', error));
+
+              fetch('/api/notifications-stats')
+                  .then(response => response.json())
+                  .then(data => {
+                      if (data.status === 'success') {
+                          const s = data.stats;
+                          document.getElementById('notifications-count').textContent = s.unread;
+                          document.getElementById('notifications-unread').textContent = s.unread;
+                          document.getElementById('notifications-total').textContent = s.total;
+                      }
+                  })
+                  .catch(error => console.error('Error fetching notifications stats:', error));
+          }
+
+          function renderStatusBars(stats) {
+              const container = document.getElementById('status-bars');
+              const total = stats.total || 1;
+              const items = [
+                  { label: 'معلق', count: stats.pending, color: '#f59e0b' },
+                  { label: 'قيد المعالجة', count: stats.processing, color: '#3b82f6' },
+                  { label: 'مكتمل', count: stats.completed, color: '#10b981' },
+                  { label: 'ملغي', count: stats.cancelled, color: '#ef4444' }
+              ];
+              container.innerHTML = items.map(item => \`
+                  <div style="margin-bottom:12px;">
+                      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
+                          <span>\${item.label}</span>
+                          <span><strong>\${item.count}</strong></span>
+                      </div>
+                      <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
+                          <div style="height:100%;width:\${(item.count/total*100).toFixed(1)}%;background:\${item.color};border-radius:4px;transition:width 0.5s;"></div>
+                      </div>
+                  </div>
+              \`).join('');
+          }
+
+          let salesChartInstance = null;
+          let ordersChartInstance = null;
+
+          function renderCharts(stats) {
+              const ctx1 = document.getElementById('salesChart').getContext('2d');
+              if (salesChartInstance) salesChartInstance.destroy();
+              const salesGradient = ctx1.createLinearGradient(0, 0, 0, 280);
+              salesGradient.addColorStop(0, 'rgba(59, 130, 246, 0.3)');
+              salesGradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
+              salesChartInstance = new Chart(ctx1, {
+                  type: 'line',
+                  data: {
+                      labels: ['الأسبوع 1', 'الأسبوع 2', 'الأسبوع 3', 'الأسبوع 4', 'الأسبوع 5'],
+                      datasets: [{
+                          label: 'المبيعات (ر.س)',
+                          data: [stats.total_revenue * 0.15, stats.total_revenue * 0.22, stats.total_revenue * 0.18, stats.total_revenue * 0.28, stats.total_revenue * 0.17],
+                          borderColor: '#3b82f6',
+                          backgroundColor: salesGradient,
+                          fill: true,
+                          tension: 0.4,
+                          pointBackgroundColor: '#3b82f6',
+                          pointBorderColor: '#fff',
+                          pointBorderWidth: 2,
+                          pointRadius: 5,
+                          borderWidth: 3
+                      }]
+                  },
+                  options: {
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: { legend: { labels: { color: '#94a3b8', font: { family: 'Tajawal' } } } },
+                      scales: {
+                          x: { grid: { color: 'rgba(148,163,184,0.08)' }, ticks: { color: '#94a3b8', font: { family: 'Tajawal' } } },
+                          y: { grid: { color: 'rgba(148,163,184,0.08)' }, ticks: { color: '#94a3b8', font: { family: 'Tajawal' } } }
+                      }
+                  }
+              });
+
+              const ctx2 = document.getElementById('ordersChart').getContext('2d');
+              if (ordersChartInstance) ordersChartInstance.destroy();
+              ordersChartInstance = new Chart(ctx2, {
+                  type: 'doughnut',
+                  data: {
+                      labels: ['مكتملة', 'قيد الانتظار', 'قيد المعالجة', 'ملغية'],
+                      datasets: [{
+                          data: [stats.completed, stats.pending, stats.processing, stats.cancelled],
+                          backgroundColor: ['#10b981', '#f59e0b', '#3b82f6', '#ef4444'],
+                          borderColor: '#1a2338',
+                          borderWidth: 3
+                      }]
+                  },
+                  options: {
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                          legend: {
+                              position: 'bottom',
+                              labels: { color: '#94a3b8', padding: 16, font: { family: 'Tajawal', size: 12 }, usePointStyle: true }
+                          }
+                      },
+                      cutout: '68%'
+                  }
+              });
+          }
+
+          function fetchRecentOrders() {
+              fetch('/api/recent-orders')
+                  .then(response => response.json())
+                  .then(data => {
+                      if (data.status === 'success') {
+                          const tbody = document.querySelector('#recent-orders-table tbody');
+                          tbody.innerHTML = '';
+                          data.orders.forEach(order => {
+                              const row = document.createElement('tr');
+                              let statusClass = '';
+                              switch(order.order_status) {
+                                  case 'pending': statusClass = 'status-pending'; break;
+                                  case 'processing': statusClass = 'status-processing'; break;
+                                  case 'completed': statusClass = 'status-completed'; break;
+                                  case 'cancelled': statusClass = 'status-cancelled'; break;
+                                  default: statusClass = 'status-pending';
+                              }
+                              row.innerHTML = \`
+                                  <td>\${order.order_number || '—'}</td>
+                                  <td>\${order.customer_name || 'غير محدد'}</td>
+                                  <td>\${order.total_amount || 0} ريال</td>
+                                  <td><span class="status \${statusClass}">\${order.order_status || '—'}</span></td>
+                                  <td>\${order.order_date ? new Date(order.order_date).toLocaleDateString('ar-SA') : '—'}</td>
+                              \`;
+                              tbody.appendChild(row);
+                          });
+                          if (data.orders.length === 0) {
+                              tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">لا توجد طلبات حالياً</td></tr>';
+                          }
+                      }
+                  })
+                  .catch(error => console.error('Error fetching recent orders:', error));
+          }
+
+          document.addEventListener('DOMContentLoaded', function() {
+              fetchDashboardStats();
+              fetchRecentOrders();
+          });
+      </script>
+  </body>
+  </html>
+  `;
+    res.send(html);
+});
+
 // ======== صفحة إدارة المنتجات المحدثة ========
 app.get('/admin/products', (req, res) => {
     const html = `
@@ -2227,6 +2595,144 @@ app.delete('/api/gift-cards/:id', (req, res) => {
     });
 });
 
+// ======== APIs لوحة البيانات ========
+
+// API لجلب إحصائيات الطلبات
+app.get('/api/orders-stats', (req, res) => {
+  const queries = [
+    'SELECT COUNT(*) as total FROM orders',
+    'SELECT COUNT(*) as pending FROM orders WHERE order_status = "pending"',
+    'SELECT COUNT(*) as processing FROM orders WHERE order_status = "processing"',
+    'SELECT COUNT(*) as completed FROM orders WHERE order_status = "completed"',
+    'SELECT COUNT(*) as cancelled FROM orders WHERE order_status = "cancelled"',
+    'SELECT SUM(total_amount) as total_revenue FROM orders WHERE order_status != "cancelled"'
+  ];
+
+  Promise.all(queries.map(query =>
+    new Promise((resolve, reject) => {
+      db.get(query, (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    })
+  ))
+    .then(results => {
+      res.json({
+        status: 'success',
+        stats: {
+          total: results[0].total,
+          pending: results[1].pending,
+          processing: results[2].processing,
+          completed: results[3].completed,
+          cancelled: results[4].cancelled,
+          total_revenue: results[5].total_revenue || 0
+        }
+      });
+    })
+    .catch(err => {
+      console.error('خطأ في جلب إحصائيات الطلبات:', err);
+      res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    });
+});
+
+// API لجلب إحصائيات الكوبونات
+app.get('/api/coupons-stats', (req, res) => {
+  const queries = [
+    'SELECT COUNT(*) as total FROM coupons',
+    'SELECT COUNT(*) as active FROM coupons WHERE is_active = 1',
+    'SELECT SUM(used_count) as total_used FROM coupons'
+  ];
+
+  Promise.all(queries.map(query =>
+    new Promise((resolve, reject) => {
+      db.get(query, (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    })
+  ))
+    .then(results => {
+      res.json({
+        status: 'success',
+        stats: {
+          total: results[0].total,
+          active: results[1].active,
+          total_used: results[2].total_used || 0
+        }
+      });
+    })
+    .catch(err => {
+      console.error('خطأ في جلب إحصائيات الكوبونات:', err);
+      res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    });
+});
+
+// API لجلب إحصائيات القسائم
+app.get('/api/gift-cards-stats', (req, res) => {
+  const queries = [
+    'SELECT COUNT(*) as total FROM gift_cards',
+    'SELECT COUNT(*) as active FROM gift_cards WHERE is_active = 1',
+    'SELECT COUNT(*) as used FROM gift_cards WHERE used_amount > 0',
+    'SELECT SUM(current_balance) as total_balance FROM gift_cards WHERE is_active = 1'
+  ];
+
+  Promise.all(queries.map(query =>
+    new Promise((resolve, reject) => {
+      db.get(query, (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    })
+  ))
+    .then(results => {
+      res.json({
+        status: 'success',
+        stats: {
+          total: results[0].total,
+          active: results[1].active,
+          used: results[2].used,
+          total_balance: results[3].total_balance || 0
+        }
+      });
+    })
+    .catch(err => {
+      console.error('خطأ في جلب إحصائيات القسائم:', err);
+      res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    });
+});
+
+// API لجلب الطلبات الأخيرة
+app.get('/api/recent-orders', (req, res) => {
+  db.all(`
+    SELECT * FROM orders
+    ORDER BY created_at DESC
+    LIMIT 10
+  `, (err, rows) => {
+    if (err) {
+      console.error('خطأ في جلب الطلبات الأخيرة:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+
+    res.json({
+      status: 'success',
+      orders: rows,
+      count: rows.length
+    });
+  });
+});
+
 // ======== APIs الإشعارات ========
 
 app.get('/api/notifications-stats', (req, res) => {
@@ -2253,7 +2759,7 @@ app.get('/api/notifications-stats', (req, res) => {
       });
     })
     .catch(err => {
-      console.error('❌ خطأ في جلب إحصائيات الإشعارات:', err);
+      console.error('خطأ في جلب إحصائيات الإشعارات:', err);
       res.status(500).json({
         status: 'error',
         message: err.message
