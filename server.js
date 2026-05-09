@@ -124,11 +124,11 @@ const db = new sqlite3.Database(path.join(__dirname, 'database.db'));
 
 // ======== تهيئة الجداول ========
 db.serialize(() => {
-    // جدول المستخدمين للاختبار
+    // جدول المستخدمين للاختبار - محدث
     db.run(`CREATE TABLE IF NOT EXISTS test_users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    email TEXT NOT NULL,
+    email TEXT,
     phone TEXT,
     message TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -137,6 +137,13 @@ db.serialize(() => {
             console.error('❌ خطأ في إنشاء جدول المستخدمين:', err);
         } else {
             console.log('✅ تم إنشاء جدول المستخدمين بنجاح');
+            
+            // إضافة سجل تجريبي للتأكد من العرض
+            db.get("SELECT COUNT(*) as count FROM test_users", (err, row) => {
+                if (row && row.count === 0) {
+                    db.run("INSERT INTO test_users (name, email, phone, message) VALUES ('عميل تجريبي', 'test@example.com', '0123456789', 'هذا سجل تجريبي للتأكد من عمل لوحة التحكم')");
+                }
+            });
         }
     });
 
@@ -1845,9 +1852,10 @@ app.get('/api/db-test', (req, res) => {
 app.post('/api/save-data', (req, res) => {
     const { name, email, phone, message } = req.body;
 
-    console.log('📨 بيانات مستلمة:', { name, email, phone, message });
+    console.log('📨 [DEBUG] بيانات مستلمة من الجوال:', { name, email, phone, message });
 
     if (!name) {
+        console.log('⚠️ [DEBUG] رفض الطلب: الاسم مفقود');
         return res.status(400).json({
             status: 'error',
             message: 'الاسم مطلوب'
