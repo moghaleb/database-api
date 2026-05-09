@@ -4,6 +4,11 @@ app.get('/admin/orders', (req, res) => {
     const statusFilter = req.query.status || 'all';
 
     let query = 'SELECT * FROM orders ORDER BY created_at DESC';
+    if (storeFilter === 'noon') {
+        query = "SELECT * FROM orders WHERE (cart_items LIKE '%noon%' OR customer_name LIKE '%noon%') ORDER BY created_at DESC";
+    } else if (storeFilter === 'store1') {
+        query = "SELECT * FROM orders WHERE (cart_items NOT LIKE '%noon%' AND (customer_name NOT LIKE '%noon%' OR customer_name IS NULL)) ORDER BY created_at DESC";
+    }
 
     db.all(query, (err, rows) => {
         if (err) {
@@ -180,7 +185,7 @@ app.get('/admin/orders', (req, res) => {
                                     <span class="item-total">= ${(item.price * (item.quantity || 1)).toFixed(2)} ر.س</span>
                                 </div>
                                 <div class="item-mini-links">
-                                    ${item.productUrl ? `<a href="${item.productUrl}" target="_blank" class="item-link"><i class="fas fa-external-link-alt"></i></a>` : ''}
+                                    ${item.productUrl ? `<a href="${item.productUrl}" target="_blank" class="item-link"><i class="fas fa-external-link-alt"></i> رابط المنتج</a>` : ''}
                                     ${item.image ? `<img src="${item.image}" class="item-thumb" alt="">` : ''}
                                 </div>
                             </div>
@@ -198,6 +203,16 @@ app.get('/admin/orders', (req, res) => {
                 <i class="${icon}"></i>
                 <span>${label}</span>
                 <span class="tab-count">${count}</span>
+            </a>`;
+        }
+
+        function renderStoreTab(store, label, icon, color) {
+            const active = storeFilter === store ? 'active' : '';
+            const href = store === 'all' ? `/admin/orders${statusFilter !== 'all' ? '?status=' + statusFilter : ''}` : `/admin/orders?store=${store}${statusFilter !== 'all' ? '&status=' + statusFilter : ''}`;
+            const isNoon = store === 'noon';
+            return `<a href="${href}" class="store-tab ${active} ${isNoon ? 'tab-noon' : ''}" style="${active ? '--tab-color: ' + color + '; background: ' + color + '; color: white; border-color: ' + color + ';' : ''}">
+                <i class="${icon}"></i>
+                <span>${label}</span>
             </a>`;
         }
 
@@ -300,6 +315,35 @@ app.get('/admin/orders', (req, res) => {
             background: rgba(255,255,255,0.2);
         }
         .status-tab i { font-size: 0.9rem; }
+
+        .store-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .store-tab {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 18px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.82rem;
+            font-family: var(--font);
+            background: var(--card);
+            color: var(--text-secondary);
+            border: 1.5px solid var(--border);
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        .store-tab:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-sm);
+        }
+        .store-tab.tab-noon { color: #B8860B; border-color: #F4C430; }
+        .store-tab.tab-noon.active { background: #F4C430; color: #5D4037; border-color: #F4C430; }
 
         .stats-grid-orders {
             display: grid;
@@ -664,13 +708,92 @@ app.get('/admin/orders', (req, res) => {
                     </div>
                 </div>
 
-                <div class="export-bar">
-                    <div style="flex: 1;">
-                        <strong style="color: #2e7d32;"><i class="fas fa-file-excel"></i> تصدير التقارير</strong>
-                        <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">تصدير تقارير المبيعات إلى Excel</div>
+                <div class="store-tabs">
+                    ${renderStoreTab('all', 'جميع المتاجر', 'fas fa-store-alt', '#06b6d4')}
+                    ${renderStoreTab('store1', 'المتجر الأول', 'fas fa-store', '#1976D2')}
+                    ${renderStoreTab('noon', 'طلبات noon', 'fas fa-shopping-bag', '#F4C430')}
+                </div>
+
+                <div class="export-section" style="background: #e8f5e8; border-right: 4px solid #4CAF50;">
+                    <h3 style="margin: 0 0 20px 0; color: #2e7d32;"><i class="fas fa-check-circle"></i> الطلبات المكتملة</h3>
+                    <div id="completed-orders" class="orders-container">
+                        ${rows.filter(o => o.order_status === 'completed').map(order => {
+                const items = JSON.parse(order.cart_items);
+                return `
+                            <div class="order-card" style="border-right-color: #4CAF50;">
+                                <div class="order-header">
+                                    <div>
+                                        <span class="order-number">${order.order_number}</span>
+                                        <span class="order-status status-completed" style="margin-right: 10px;">مكتمل</span>
+                                    </div>
+                                    <div style="color: #666; font-size: 14px;">
+                                        ${new Date(order.order_date).toLocaleString('ar-SA')}
+                                    </div>
+                                </div>
+                                <div class="customer-info">
+                                    <strong>معلومات العميل:</strong><br>
+                                    الاسم: ${order.customer_name || 'غير محدد'} |
+                                    الهاتف: ${order.customer_phone || 'غير محدد'}
+                                </div>
+                                <div class="order-details">
+                                    <div class="detail-item">
+                                        <strong>المجموع النهائي:</strong> ${(order.final_amount || (order.total_amount - order.discount_amount - order.gift_card_amount + parseFloat(order.shipping_fee || 0))).toFixed(2)} ر.س
+                                    </div>
+                                    <div class="detail-item">
+                                        <strong>عدد العناصر:</strong> ${items.length}
+                                    </div>
+                                </div>
+                            </div>
+                            `;
+            }).join('')}
                     </div>
-                    <button onclick="window.open('/api/export-sales','_blank')" class="btn btn-success btn-sm"><i class="fas fa-file-excel"></i> تصدير مفصل</button>
-                    <button onclick="window.open('/api/export-all-sales','_blank')" class="btn btn-info btn-sm"><i class="fas fa-rocket"></i> تصدير سريع</button>
+                    ${rows.filter(o => o.order_status === 'completed').length === 0 ?
+                    '<div style="text-align: center; padding: 20px; color: #666;">لا توجد طلبات مكتملة حالياً</div>' : ''}
+                </div>
+
+                <div class="export-section">
+                    <h3 style="margin: 0 0 20px 0; color: #333;"><i class="fas fa-chart-line"></i> تصدير تقارير المبيعات</h3>
+
+                    <form id="exportForm" class="export-form">
+                        <div class="form-group">
+                            <label class="form-label">من تاريخ</label>
+                            <input type="date" name="start_date" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">إلى تاريخ</label>
+                            <input type="date" name="end_date" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">اسم العميل</label>
+                            <input type="text" name="customer_name" class="form-control" placeholder="بحث بالاسم...">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">حالة الطلب</label>
+                            <select name="order_status" class="form-control">
+                                <option value="all">جميع الحالات</option>
+                                <option value="pending">قيد الانتظار</option>
+                                <option value="confirmed">مؤكد</option>
+                                <option value="completed">مكتمل</option>
+                                <option value="cancelled">ملغي</option>
+                            </select>
+                        </div>
+                    </form>
+
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button onclick="exportSales()" class="btn btn-success"><i class="fas fa-file-excel"></i> تصدير مفصل (Excel)</button>
+                        <button onclick="exportAllSales()" class="btn btn-info"><i class="fas fa-rocket"></i> تصدير سريع (كل البيانات)</button>
+                        <button onclick="resetExportForm()" class="btn" style="background: #6c757d; color: white;"><i class="fas fa-undo"></i> مسح الفلاتر</button>
+                    </div>
+
+                    <div style="margin-top: 15px; padding: 15px; background: #e8f5e8; border-radius: 8px; border-right: 4px solid #4CAF50;">
+                        <strong><i class="fas fa-lightbulb"></i> ملاحظة:</strong>
+                        <ul style="margin: 10px 0 0 20px; color: #555;">
+                            <li>التصدير المفصل يحتوي على 3 أوراق: ملخص، تفاصيل الطلبات، تحليل المنتجات</li>
+                            <li>التصدير السريع يحتوي على البيانات الأساسية فقط</li>
+                            <li>يمكنك استخدام الفلاتر لتصدير بيانات محددة</li>
+                            <li>التصدير الآن يشمل روابط المنتجات</li>
+                        </ul>
+                    </div>
                 </div>
 
                 <div class="status-tabs">
@@ -788,6 +911,25 @@ app.get('/admin/orders', (req, res) => {
             .catch(error => {
                 alert('❌ حدث خطأ: ' + error);
             });
+        }
+
+        function exportSales() {
+            const formData = new FormData(document.getElementById('exportForm'));
+            const params = new URLSearchParams();
+            for (let [key, value] of formData.entries()) {
+                if (value) {
+                    params.append(key, value);
+                }
+            }
+            window.open('/api/export-sales?' + params.toString(), '_blank');
+        }
+
+        function exportAllSales() {
+            window.open('/api/export-all-sales', '_blank');
+        }
+
+        function resetExportForm() {
+            document.getElementById('exportForm').reset();
         }
 
         filterOrders();
