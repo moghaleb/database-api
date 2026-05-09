@@ -2816,6 +2816,20 @@ app.put('/api/orders/:id/status', (req, res) => {
     );
 });
 
+// API للتحقق من وجود طلبات جديدة (للتنبيهات)
+app.get('/api/orders/check-new', (req, res) => {
+    db.get('SELECT MAX(id) as lastId, COUNT(*) as count FROM orders', (err, result) => {
+        if (err) {
+            return res.status(500).json({ status: 'error', message: err.message });
+        }
+        res.json({
+            status: 'success',
+            lastOrderId: result ? (result.lastId || 0) : 0,
+            totalOrders: result ? (result.count || 0) : 0
+        });
+    });
+});
+
 // ======== تتبع الطلبات ========
 app.get('/api/track-order', (req, res) => {
     const { order_number, phone } = req.query;
@@ -3900,7 +3914,112 @@ app.get('/admin/confirmed-orders', (req, res) => {
                     alert('❌ حدث خطأ: ' + error);
                 });
             }
+
+            // ======== نظام التنبيهات للطلبات الجديدة ========
+            let lastOrderId = ${rows.length > 0 ? Math.max(...rows.map(o => o.id)) : 0};
+            let notificationsEnabled = false;
+
+            function enableNotifications() {
+                notificationsEnabled = true;
+                const audio = document.getElementById('notificationSound');
+                audio.play().then(() => {
+                    audio.pause();
+                    audio.currentTime = 0;
+                    document.getElementById('notifBtn').innerHTML = '✅ التنبيهات نشطة حالياً';
+                    document.getElementById('notifBtn').style.background = '#4CAF50';
+                    
+                    if ("Notification" in window) {
+                        Notification.requestPermission();
+                    }
+                }).catch(e => {
+                    alert('يرجى السماح بتشغيل الصوت في المتصفح');
+                });
+            }
+
+            function checkNewOrders() {
+                fetch('/api/orders/check-new')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            if (data.lastOrderId > lastOrderId) {
+                                if (notificationsEnabled) {
+                                    playNotification();
+                                    showNotificationToast();
+                                }
+                                lastOrderId = data.lastOrderId;
+                            }
+                        }
+                    })
+                    .catch(err => console.error('Error checking for new orders:', err));
+            }
+
+            function playNotification() {
+                const audio = document.getElementById('notificationSound');
+                if (audio) {
+                    audio.play().catch(e => console.log('Audio play failed:', e));
+                }
+            }
+
+            function showNotificationToast() {
+                const toast = document.createElement('div');
+                toast.style.cssText = \`
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: #4CAF50;
+                    color: white;
+                    padding: 20px;
+                    border-radius: 10px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                    z-index: 10000;
+                    display: flex;
+                    align-items: center;
+                    gap: 15px;
+                    animation: slideIn 0.5s ease-out;
+                    direction: rtl;
+                \`;
+                toast.innerHTML = \`
+                    <div style="font-size: 24px;">🔔</div>
+                    <div>
+                        <div style="font-weight: bold;">طلب جديد!</div>
+                        <div style="font-size: 14px;">وصل طلب جديد للمتجر حالاً</div>
+                        <button onclick="location.reload()" style="margin-top: 10px; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer; background: white; color: #4CAF50; font-weight: bold;">تحديث الصفحة</button>
+                    </div>
+                \`;
+                document.body.appendChild(toast);
+                
+                // التنبيه عبر المتصفح إذا سمح المستخدم
+                if ("Notification" in window && Notification.permission === "granted") {
+                    new Notification("طلب جديد!", {
+                        body: "وصل طلب جديد للمتجر حالاً",
+                        icon: "/favicon.ico"
+                    });
+                }
+
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    toast.style.transition = 'opacity 1s';
+                    setTimeout(() => toast.remove(), 1000);
+                }, 15000);
+            }
+
+            // فحص كل 30 ثانية
+            setInterval(checkNewOrders, 30000);
+
+            // إضافة الأنيميشن
+            const style = document.createElement('style');
+            style.innerHTML = \`
+                @keyframes slideIn {
+                    from { transform: translateX(100%); opacity: 0; }
+                    to { transform: translateX(0); opacity: 1; }
+                }
+            \`;
+            document.head.appendChild(style);
         </script>
+        
+        <audio id="notificationSound" preload="auto">
+            <source src="https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3" type="audio/mpeg">
+        </audio>
     </body>
     </html>
     `;
@@ -4125,6 +4244,9 @@ app.get('/admin/orders', (req, res) => {
 
                 <h1 style="margin: 0;">🛒 إدارة الطلبات - نظام المتجر</h1>
                 <p style="margin: 10px 0 0 0; opacity: 0.9;">جميع الطلبات المرسلة من تطبيق الجوال</p>
+                <div style="margin-top: 15px;">
+                    <button onclick="enableNotifications()" id="notifBtn" class="btn" style="background: #FF9800; color: white;">🔔 تفعيل تنبيهات الطلبات الجديدة</button>
+                </div>
             </div>
             
             <div class="nav">
