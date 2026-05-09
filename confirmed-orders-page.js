@@ -1,16 +1,16 @@
 // صفحة الطلبات المؤكدة
 app.get('/admin/confirmed-orders', (req, res) => {
-  const storeFilter = req.query.store || 'all';
-  let query = 'SELECT * FROM orders WHERE order_status = "confirmed"';
-  if (storeFilter === 'noon') {
-    query += " AND (cart_items LIKE '%noon%' OR customer_name LIKE '%noon%')";
-  } else if (storeFilter === 'store1') {
-    query += " AND (cart_items NOT LIKE '%noon%' AND customer_name NOT LIKE '%noon%')";
-  }
-  query += ' ORDER BY created_at DESC';
+    const storeFilter = req.query.store || 'all';
+    let query = 'SELECT * FROM orders WHERE order_status = "confirmed"';
+    if (storeFilter === 'noon') {
+        query += " AND (cart_items LIKE '%noon%' OR customer_name LIKE '%noon%')";
+    } else if (storeFilter === 'store1') {
+        query += " AND (cart_items NOT LIKE '%noon%' AND customer_name NOT LIKE '%noon%')";
+    }
+    query += ' ORDER BY created_at DESC';
 
-  db.all(query, (err, rows) => {
-    let html = `
+    db.all(query, (err, rows) => {
+        let html = `
     <!DOCTYPE html>
     <html dir="rtl">
     <head>
@@ -56,9 +56,6 @@ app.get('/admin/confirmed-orders', (req, res) => {
                 <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
                 <h1 style="margin: 0;">✅ الطلبات المؤكدة - نظام المتجر</h1>
                 <p style="margin: 10px 0 0 0; opacity: 0.9;">جميع الطلبات التي تم تأكيدها</p>
-                <div style="margin-top: 15px;">
-                    <button onclick="enableNotifications()" id="notifBtn" class="btn" style="background: #FF9800; color: white;">🔔 تفعيل تنبيهات الطلبات الجديدة</button>
-                </div>
             </div>
 
             <div class="nav">
@@ -108,33 +105,33 @@ app.get('/admin/confirmed-orders', (req, res) => {
             </div>
     `;
 
-    if (rows.length === 0) {
-      html += `
+        if (rows.length === 0) {
+            html += `
             <div class="empty-state">
                 <h3 style="color: #666; margin-bottom: 10px;">📭 لا توجد طلبات مؤكدة حتى الآن</h3>
                 <p style="color: #999;">لم يتم تأكيد أي طلبات بعد</p>
             </div>
       `;
-    } else {
-      rows.forEach(order => {
-        const items = JSON.parse(order.cart_items);
-        const statusClass = `status-${order.order_status}`;
-        const statusText = {
-          'pending': 'قيد الانتظار',
-          'confirmed': 'مؤكد',
-          'completed': 'مكتمل',
-          'cancelled': 'ملغي'
-        }[order.order_status] || order.order_status;
+        } else {
+            rows.forEach(order => {
+                const items = JSON.parse(order.cart_items);
+                const statusClass = `status-${order.order_status}`;
+                const statusText = {
+                    'pending': 'قيد الانتظار',
+                    'confirmed': 'مؤكد',
+                    'completed': 'مكتمل',
+                    'cancelled': 'ملغي'
+                }[order.order_status] || order.order_status;
 
-        const paymentMethodText = {
-          'mobicash': 'موبي كاش',
-          'yemenwallet': 'محفظة جيب',
-          'bank_babalmandab': 'حوالة بنكية - باب المندب',
-          'khameri': 'الكريمي',
-          'online': 'دفع إلكتروني'
-        }[order.payment_method] || order.payment_method;
+                const paymentMethodText = {
+                    'mobicash': 'موبي كاش',
+                    'yemenwallet': 'محفظة جيب',
+                    'bank_babalmandab': 'حوالة بنكية - باب المندب',
+                    'khameri': 'الكريمي',
+                    'online': 'دفع إلكتروني'
+                }[order.payment_method] || order.payment_method;
 
-        html += `
+                html += `
             <div class="order-card">
                 <div class="order-header">
                     <div>
@@ -218,10 +215,10 @@ app.get('/admin/confirmed-orders', (req, res) => {
                 </div>
             </div>
         `;
-      });
-    }
+            });
+        }
 
-    html += `
+        html += `
         </div>
 
         <script>
@@ -246,117 +243,12 @@ app.get('/admin/confirmed-orders', (req, res) => {
                     alert('❌ حدث خطأ: ' + error);
                 });
             }
-
-            // ======== نظام التنبيهات للطلبات الجديدة ========
-            let lastOrderId = ${rows.length > 0 ? Math.max(...rows.map(o => o.id)) : 0};
-            let notificationsEnabled = false;
-
-            function enableNotifications() {
-                notificationsEnabled = true;
-                const audio = document.getElementById('notificationSound');
-                audio.play().then(() => {
-                    audio.pause();
-                    audio.currentTime = 0;
-                    document.getElementById('notifBtn').innerHTML = '✅ التنبيهات نشطة حالياً';
-                    document.getElementById('notifBtn').style.background = '#4CAF50';
-                    
-                    if ("Notification" in window) {
-                        Notification.requestPermission();
-                    }
-                }).catch(e => {
-                    alert('يرجى السماح بتشغيل الصوت في المتصفح');
-                });
-            }
-
-            function checkNewOrders() {
-                fetch('/api/orders/check-new')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.status === 'success') {
-                            if (data.lastOrderId > lastOrderId) {
-                                if (notificationsEnabled) {
-                                    playNotification();
-                                    showNotificationToast();
-                                }
-                                lastOrderId = data.lastOrderId;
-                            }
-                        }
-                    })
-                    .catch(err => console.error('Error checking for new orders:', err));
-            }
-
-            function playNotification() {
-                const audio = document.getElementById('notificationSound');
-                if (audio) {
-                    audio.play().catch(e => console.log('Audio play failed:', e));
-                }
-            }
-
-            function showNotificationToast() {
-                const toast = document.createElement('div');
-                toast.style.cssText = \`
-                    position: fixed;
-                    top: 20px;
-                    right: 20px;
-                    background: #4CAF50;
-                    color: white;
-                    padding: 20px;
-                    border-radius: 10px;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-                    z-index: 10000;
-                    display: flex;
-                    align-items: center;
-                    gap: 15px;
-                    animation: slideIn 0.5s ease-out;
-                    direction: rtl;
-                \`;
-                toast.innerHTML = \`
-                    <div style="font-size: 24px;">🔔</div>
-                    <div>
-                        <div style="font-weight: bold;">طلب جديد!</div>
-                        <div style="font-size: 14px;">وصل طلب جديد للمتجر حالاً</div>
-                        <button onclick="location.reload()" style="margin-top: 10px; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer; background: white; color: #4CAF50; font-weight: bold;">تحديث الصفحة</button>
-                    </div>
-                \`;
-                document.body.appendChild(toast);
-                
-                // التنبيه عبر المتصفح إذا سمح المستخدم
-                if ("Notification" in window && Notification.permission === "granted") {
-                    new Notification("طلب جديد!", {
-                        body: "وصل طلب جديد للمتجر حالاً",
-                        icon: "/favicon.ico"
-                    });
-                }
-
-                setTimeout(() => {
-                    toast.style.opacity = '0';
-                    toast.style.transition = 'opacity 1s';
-                    setTimeout(() => toast.remove(), 1000);
-                }, 15000);
-            }
-
-            // فحص كل 30 ثانية
-            setInterval(checkNewOrders, 30000);
-
-            // إضافة الأنيميشن
-            const style = document.createElement('style');
-            style.innerHTML = \`
-                @keyframes slideIn {
-                    from { transform: translateX(100%); opacity: 0; }
-                    to { transform: translateX(0); opacity: 1; }
-                }
-            \`;
-            document.head.appendChild(style);
         </script>
-        
-        <audio id="notificationSound" preload="auto">
-            <source src="https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3" type="audio/mpeg">
-        </audio>
     </body>
     </html>
     `;
 
-    res.send(html);
-  });
+        res.send(html);
+    });
 });
 
