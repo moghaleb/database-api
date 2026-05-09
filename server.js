@@ -4498,6 +4498,10 @@ app.get('/admin/coupons', (req, res) => {
                 }
             </script>
 
+            <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
+                <button onclick="document.getElementById('addCouponModal').style.display='block'" class="btn btn-success">➕ إضافة كوبون جديد</button>
+            </div>
+
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-number">${rows.length}</div>
