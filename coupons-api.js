@@ -333,62 +333,46 @@ app.get('/admin/coupons', (req, res) => {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>إدارة الكوبونات - نظام المتجر</title>
-        <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
-            .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; }
-            .coupon-card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-right: 4px solid #4CAF50; transition: all 0.3s; }
-            .coupon-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
-            .coupon-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
-            .coupon-code { background: #4CAF50; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 16px; }
-            .coupon-status { padding: 6px 12px; border-radius: 15px; font-size: 14px; font-weight: bold; }
-            .status-active { background: #d1ecf1; color: #0c5460; }
-            .status-inactive { background: #f8d7da; color: #721c24; }
-            .status-expired { background: #fff3cd; color: #856404; }
-            .coupon-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
-            .detail-item { background: #f8f9fa; padding: 12px; border-radius: 8px; border-left: 3px solid #4CAF50; }
-            .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-            .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
-            .nav-btn:hover { background: #4CAF50; color: white; transform: translateY(-2px); }
-            .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
-            .btn-primary { background: #2196F3; color: white; }
-            .btn-primary:hover { background: #1976D2; transform: translateY(-2px); }
-            .btn-danger { background: #f44336; color: white; }
-            .btn-danger:hover { background: #d32f2f; transform: translateY(-2px); }
-            .btn-success { background: #4CAF50; color: white; }
-            .btn-success:hover { background: #388E3C; transform: translateY(-2px); }
-            .btn-warning { background: #ff9800; color: white; }
-            .btn-warning:hover { background: #f57c00; transform: translateY(-2px); }
-            .empty-state { text-align: center; padding: 60px; color: #666; background: white; border-radius: 15px; }
-            .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1000; }
-            .modal-content { background-color: white; margin: 5% auto; padding: 30px; border-radius: 15px; width: 80%; max-width: 600px; max-height: 80vh; overflow-y: auto; }
-            .form-group { margin-bottom: 15px; }
-            .form-control { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
-            .form-label { display: block; margin-bottom: 5px; font-weight: 600; color: #333; }
-            .form-help { font-size: 12px; color: #666; margin-top: 4px; }
-            .close { float: left; font-size: 28px; font-weight: bold; cursor: pointer; color: #666; }
-            .close:hover { color: #000; }
-            .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
-            .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-            .stat-number { font-size: 24px; font-weight: bold; color: #4CAF50; }
-            .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
-        </style>
+        <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <link rel="stylesheet" href="/admin-style.css">
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-                <h1 style="margin: 0;">🎫 إدارة الكوبونات - نظام المتجر</h1>
-                <p style="margin: 10px 0 0 0; opacity: 0.9;">إنشاء وتعديل وحذف كوبونات الخصم مع تحديد الصلاحية</p>
-            </div>
-
-            <div class="nav">
-                <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
-                <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
-                <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
-                <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
-                <a href="/" class="nav-btn">🏠 الرئيسية</a>
-                <button onclick="showAddModal()" class="btn btn-success">+ إضافة كوبون جديد</button>
-            </div>
+        <div class="layout">
+            <aside class="sidebar">
+                <div class="sidebar-brand">
+                    <h2><i class="fas fa-store-alt"></i> ريدشي</h2>
+                    <div class="brand-sub">لوحة الإدارة</div>
+                </div>
+                <nav class="sidebar-nav">
+                    <div class="nav-section">الرئيسية</div>
+                    <a href="/admin"><i class="fas fa-chart-pie"></i> <span>لوحة البيانات</span></a>
+                    <a href="/admin/advanced"><i class="fas fa-tachometer-alt"></i> <span>لوحة التحكم</span></a>
+                    <div class="nav-section">الإدارة</div>
+                    <a href="/admin/orders"><i class="fas fa-shopping-cart"></i> <span>الطلبات</span></a>
+                    <a href="/admin/products"><i class="fas fa-box"></i> <span>المنتجات</span></a>
+                    <a href="/admin/coupons" class="active"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
+                    <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                    <a href="/admin/confirmed-orders"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
+                    <div class="nav-section">النظام</div>
+                    <a href="/admin/settings"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
+                    <a href="/admin/users"><i class="fas fa-users"></i> <span>العملاء</span></a>
+                    <a href="/logout"><i class="fas fa-sign-out-alt"></i> <span>تسجيل الخروج</span></a>
+                </nav>
+            </aside>
+            <main class="main-content">
+                <div class="top-bar">
+                    <div class="page-title"><i class="fas fa-tags"></i> إدارة الكوبونات</div>
+                    <div class="user-info">
+                        <span>مرحباً، المدير</span>
+                        <button onclick="showAddModal()" class="btn btn-success btn-sm">+ إضافة كوبون جديد</button>
+                    </div>
+                </div>
+                <div class="content">
+                    <div class="page-hero" style="background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);">
+                        <h1>🎫 إدارة الكوبونات</h1>
+                        <p>إنشاء وتعديل وحذف كوبونات الخصم مع تحديد الصلاحية</p>
+                    </div>
 
             <div class="stats-grid">
                 <div class="stat-card">
@@ -499,6 +483,8 @@ app.get('/admin/coupons', (req, res) => {
     }
 
     html += `
+            </div>
+            </main>
         </div>
 
         <!-- نموذج إضافة كوبون -->

@@ -403,25 +403,153 @@ function handleLoginRequest(req, res) {
 }
 
 function renderLoginPageHTML(req, res, message = '') {
-  const msgHtml = message ? `<p style="color:#d32f2f;text-align:center;margin-top:8px">${message}</p>` : '';
+  const msgHtml = message ? `<p style="color:#ef4444;text-align:center;margin-top:12px;font-size:14px">${message}</p>` : '';
   return res.send(`
     <!DOCTYPE html>
     <html dir="rtl">
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
-      <title>تسجيل الدخول</title>
-      <style>body{font-family:Segoe UI,Arial;background:#f4f6fb;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0} .card{background:#fff;padding:24px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.08);width:360px} label{display:block;margin:8px 0 6px} input{width:100%;padding:10px;border:1px solid #ddd;border-radius:6px} button{width:100%;padding:10px;background:#1976D2;color:#fff;border:0;border-radius:6px;margin-top:12px} .help{font-size:13px;color:#666;text-align:center;margin-top:8px}</style>
+      <title>تسجيل الدخول - لوحة الإدارة</title>
+      <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: 'Tajawal', sans-serif;
+          background: linear-gradient(135deg, #0f1729 0%, #1a2338 50%, #0f1729 100%);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          margin: 0;
+          padding: 20px;
+        }
+        body::before {
+          content: '';
+          position: fixed;
+          top: 0; left: 0; width: 100%; height: 100%;
+          background: radial-gradient(ellipse 60% 50% at 50% 30%, rgba(59, 130, 246, 0.06) 0%, transparent 50%);
+          pointer-events: none;
+        }
+        .login-card {
+          background: rgba(26, 35, 50, 0.9);
+          backdrop-filter: blur(20px);
+          border: 1px solid rgba(148, 163, 184, 0.1);
+          padding: 40px;
+          border-radius: 20px;
+          width: 400px;
+          max-width: 100%;
+          box-shadow: 0 24px 80px rgba(0,0,0,0.4);
+          position: relative;
+        }
+        .login-logo {
+          width: 60px;
+          height: 60px;
+          background: linear-gradient(135deg, #3b82f6, #10b981);
+          border-radius: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 20px;
+          font-size: 24px;
+          color: white;
+          box-shadow: 0 0 30px rgba(59, 130, 246, 0.3);
+        }
+        h3 {
+          text-align: center;
+          color: #f1f5f9;
+          margin: 0 0 8px;
+          font-size: 20px;
+        }
+        .login-sub {
+          text-align: center;
+          color: #94a3b8;
+          font-size: 14px;
+          margin-bottom: 28px;
+        }
+        label {
+          display: block;
+          margin: 12px 0 6px;
+          color: #cbd5e1;
+          font-size: 14px;
+          font-weight: 500;
+        }
+        .input-group {
+          position: relative;
+        }
+        .input-group i {
+          position: absolute;
+          right: 14px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: #64748b;
+        }
+        input {
+          width: 100%;
+          padding: 12px 14px 12px 40px;
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          border-radius: 10px;
+          background: rgba(15, 23, 41, 0.6);
+          color: #f1f5f9;
+          font-size: 15px;
+          font-family: 'Tajawal', sans-serif;
+          transition: all 0.2s;
+        }
+        input:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+        }
+        input::placeholder { color: #475569; }
+        button {
+          width: 100%;
+          padding: 12px;
+          background: linear-gradient(135deg, #3b82f6, #2563eb);
+          color: white;
+          border: none;
+          border-radius: 10px;
+          margin-top: 20px;
+          font-size: 16px;
+          font-weight: 600;
+          font-family: 'Tajawal', sans-serif;
+          cursor: pointer;
+          transition: all 0.3s;
+        }
+        button:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3);
+        }
+        .help {
+          font-size: 13px;
+          color: #64748b;
+          text-align: center;
+          margin-top: 20px;
+          padding-top: 20px;
+          border-top: 1px solid rgba(148, 163, 184, 0.1);
+        }
+        .help strong {
+          color: #94a3b8;
+        }
+      </style>
     </head>
     <body>
-      <div class="card">
-        <h3 style="text-align:center;margin:0 0 12px 0">تسجيل الدخول إلى لوحة الإدارة</h3>
+      <div class="login-card">
+        <div class="login-logo"><i class="fas fa-store-alt"></i></div>
+        <h3>تسجيل الدخول</h3>
+        <p class="login-sub">لوحة إدارة متجر ريدشي</p>
         <form method="post" action="/login">
           <label for="username">اسم المستخدم</label>
-          <input id="username" name="username" type="text" required>
+          <div class="input-group">
+            <i class="fas fa-user"></i>
+            <input id="username" name="username" type="text" placeholder="أدخل اسم المستخدم" required>
+          </div>
           <label for="password">كلمة المرور</label>
-          <input id="password" name="password" type="password" required>
-          <button type="submit">دخول</button>
+          <div class="input-group">
+            <i class="fas fa-lock"></i>
+            <input id="password" name="password" type="password" placeholder="أدخل كلمة المرور" required>
+          </div>
+          <button type="submit"><i class="fas fa-sign-in-alt"></i> دخول</button>
         </form>
         ${msgHtml}
         <div class="help">المستخدم الافتراضي: <strong>admin</strong> / كلمة المرور: <strong>admin1234</strong></div>
@@ -515,287 +643,100 @@ app.get('/admin', (req, res) => {
       <title>لوحة التحكم - متجر ريدشي</title>
       <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
       <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-      <style>
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-        body {
-          font-family: 'Tajawal', sans-serif;
-          background-color: #f5f7fa;
-          color: #333;
-          line-height: 1.6;
-        }
-        .container {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 20px;
-        }
-        header {
-          background-color: #2c3e50;
-          color: white;
-          padding: 1rem 2rem;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .logo {
-          font-size: 1.5rem;
-          font-weight: 700;
-        }
-        .user-info {
-          display: flex;
-          align-items: center;
-          gap: 15px;
-        }
-        .logout-btn {
-          background-color: #e74c3c;
-          color: white;
-          border: none;
-          padding: 8px 15px;
-          border-radius: 4px;
-          cursor: pointer;
-          transition: background-color 0.3s;
-        }
-        .logout-btn:hover {
-          background-color: #c0392b;
-        }
-        .dashboard {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-          gap: 20px;
-          margin-top: 30px;
-        }
-        .card {
-          background-color: white;
-          border-radius: 8px;
-          box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-          padding: 20px;
-          transition: transform 0.3s, box-shadow 0.3s;
-        }
-        .card:hover {
-          transform: translateY(-5px);
-          box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-        }
-        .card-title {
-          font-size: 1.2rem;
-          margin-bottom: 15px;
-          color: #2c3e50;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-        .card-title i {
-          color: #3498db;
-        }
-        .card-content {
-          font-size: 2rem;
-          font-weight: 700;
-          color: #3498db;
-          margin-bottom: 10px;
-        }
-        .card-description {
-          color: #7f8c8d;
-          font-size: 0.9rem;
-        }
-        .actions {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 15px;
-          margin-top: 30px;
-        }
-        .btn {
-          padding: 10px 20px;
-          border-radius: 4px;
-          text-decoration: none;
-          color: white;
-          font-weight: 500;
-          transition: background-color 0.3s;
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-        }
-        .btn-primary {
-          background-color: #3498db;
-        }
-        .btn-primary:hover {
-          background-color: #2980b9;
-        }
-        .btn-success {
-          background-color: #2ecc71;
-        }
-        .btn-success:hover {
-          background-color: #27ae60;
-        }
-        .btn-warning {
-          background-color: #f39c12;
-        }
-        .btn-warning:hover {
-          background-color: #e67e22;
-        }
-        .btn-danger {
-          background-color: #e74c3c;
-        }
-        .btn-danger:hover {
-          background-color: #c0392b;
-        }
-        .recent-orders {
-          margin-top: 30px;
-        }
-        .table-container {
-          overflow-x: auto;
-          background-color: white;
-          border-radius: 8px;
-          box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-        th, td {
-          padding: 12px 15px;
-          text-align: right;
-          border-bottom: 1px solid #eee;
-        }
-        th {
-          background-color: #f8f9fa;
-          font-weight: 600;
-          color: #2c3e50;
-        }
-        tr:hover {
-          background-color: #f8f9fa;
-        }
-        .status {
-          padding: 4px 8px;
-          border-radius: 4px;
-          font-size: 0.8rem;
-          font-weight: 500;
-        }
-        .status-pending {
-          background-color: #fef9e7;
-          color: #f39c12;
-        }
-        .status-processing {
-          background-color: #e8f5e9;
-          color: #2ecc71;
-        }
-        .status-completed {
-          background-color: #e3f2fd;
-          color: #3498db;
-        }
-        .status-cancelled {
-          background-color: #ffebee;
-          color: #e74c3c;
-        }
-        .notification {
-          position: fixed;
-          top: 20px;
-          left: 20px;
-          padding: 15px 20px;
-          border-radius: 4px;
-          color: white;
-          font-weight: 500;
-          z-index: 1000;
-          transform: translateX(-150%);
-          transition: transform 0.3s ease;
-        }
-        .notification.show {
-          transform: translateX(0);
-        }
-        .notification-success {
-          background-color: #2ecc71;
-        }
-        .notification-error {
-          background-color: #e74c3c;
-        }
-        .notification-info {
-          background-color: #3498db;
-        }
-      </style>
+      <link rel="stylesheet" href="/admin-style.css">
     </head>
     <body>
-      <header>
-        <div class="logo">متجر ريدشي - لوحة التحكم</div>
-        <div class="user-info">
-          <span>مرحباً، ${ADMIN_CREDENTIALS.username}</span>
-          <button class="logout-btn" onclick="logout()">
-            <i class="fas fa-sign-out-alt"></i> تسجيل الخروج
-          </button>
-        </div>
-      </header>
+      <div class="layout">
+        <aside class="sidebar">
+          <div class="sidebar-brand">
+            <h2><i class="fas fa-store-alt"></i> ريدشي</h2>
+            <div class="brand-sub">لوحة الإدارة</div>
+          </div>
+          <nav class="sidebar-nav">
+            <div class="nav-section">الرئيسية</div>
+            <a href="/admin" class="active"><i class="fas fa-chart-pie"></i> <span>لوحة البيانات</span></a>
+            <div class="nav-section">الإدارة</div>
+            <a href="/admin/orders"><i class="fas fa-shopping-cart"></i> <span>الطلبات</span></a>
+            <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
+            <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+            <a href="/admin/notifications"><i class="fas fa-bell"></i> <span>الإشعارات</span></a>
+            <div class="nav-section">النظام</div>
+            <a href="/logout"><i class="fas fa-sign-out-alt"></i> <span>تسجيل الخروج</span></a>
+          </nav>
+        </aside>
+        <main class="main-content">
+          <div class="top-bar">
+            <div class="page-title"><i class="fas fa-chart-pie"></i> لوحة التحكم</div>
+            <div class="user-info">
+              <span>مرحباً، ${ADMIN_CREDENTIALS.username}</span>
+              <button class="btn btn-danger btn-sm" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i> تسجيل الخروج
+              </button>
+            </div>
+          </div>
+          <div class="content">
+            <div class="page-hero">
+              <h1>مرحباً بك في لوحة التحكم</h1>
+              <p>متجر ريدشي - نظرة عامة على بيانات المتجر</p>
+            </div>
 
-      <div class="container">
-        <div class="dashboard">
-          <div class="card">
-            <div class="card-title">
-              <i class="fas fa-shopping-cart"></i>
-              الطلبات
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(59,130,246,0.1); color: var(--accent); margin: 0 auto 12px;"><i class="fas fa-shopping-cart"></i></div>
+                <div class="stat-number" id="orders-count" style="color: var(--accent);">0</div>
+                <div class="stat-label">إجمالي الطلبات</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(16,185,129,0.1); color: var(--success-light); margin: 0 auto 12px;"><i class="fas fa-tags"></i></div>
+                <div class="stat-number" id="coupons-count" style="color: var(--success-light);">0</div>
+                <div class="stat-label">كوبونات الخصم</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(245,158,11,0.1); color: var(--warning-light); margin: 0 auto 12px;"><i class="fas fa-credit-card"></i></div>
+                <div class="stat-number" id="gift-cards-count" style="color: var(--warning-light);">0</div>
+                <div class="stat-label">قسائم الشراء</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(239,68,68,0.1); color: var(--danger-light); margin: 0 auto 12px;"><i class="fas fa-bell"></i></div>
+                <div class="stat-number" id="notifications-count" style="color: var(--danger-light);">0</div>
+                <div class="stat-label">إشعارات غير مقروءة</div>
+              </div>
             </div>
-            <div class="card-content" id="orders-count">0</div>
-            <div class="card-description">إجمالي الطلبات</div>
-          </div>
-          <div class="card">
-            <div class="card-title">
-              <i class="fas fa-tags"></i>
-              الكوبونات
-            </div>
-            <div class="card-content" id="coupons-count">0</div>
-            <div class="card-description">كوبونات الخصم</div>
-          </div>
-          <div class="card">
-            <div class="card-title">
-              <i class="fas fa-credit-card"></i>
-              القسائم
-            </div>
-            <div class="card-content" id="gift-cards-count">0</div>
-            <div class="card-description">قسائم الشراء</div>
-          </div>
-          <div class="card">
-            <div class="card-title">
-              <i class="fas fa-bell"></i>
-              الإشعارات
-            </div>
-            <div class="card-content" id="notifications-count">0</div>
-            <div class="card-description">إشعارات غير مقروءة</div>
-          </div>
-        </div>
 
-        <div class="actions">
-          <a href="/admin/orders" class="btn btn-primary">
-            <i class="fas fa-list"></i> إدارة الطلبات
-          </a>
-          <a href="/admin/coupons" class="btn btn-success">
-            <i class="fas fa-tags"></i> إدارة الكوبونات
-          </a>
-          <a href="/admin/gift-cards" class="btn btn-warning">
-            <i class="fas fa-credit-card"></i> إدارة القسائم
-          </a>
-          <a href="/admin/notifications" class="btn btn-danger">
-            <i class="fas fa-bell"></i> إدارة الإشعارات
-          </a>
-        </div>
+            <div class="card" style="margin-bottom: 24px;">
+              <div class="card-header">
+                <div class="card-title"><i class="fas fa-link"></i> روابط سريعة</div>
+              </div>
+              <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <a href="/admin/orders" class="btn btn-primary"><i class="fas fa-list"></i> إدارة الطلبات</a>
+                <a href="/admin/coupons" class="btn btn-success"><i class="fas fa-tags"></i> إدارة الكوبونات</a>
+                <a href="/admin/gift-cards" class="btn btn-warning"><i class="fas fa-credit-card"></i> إدارة القسائم</a>
+                <a href="/admin/notifications" class="btn btn-danger"><i class="fas fa-bell"></i> إدارة الإشعارات</a>
+              </div>
+            </div>
 
-        <div class="recent-orders">
-          <h2>الطلبات الأخيرة</h2>
-          <div class="table-container">
-            <table id="recent-orders-table">
-              <thead>
-                <tr>
-                  <th>رقم الطلب</th>
-                  <th>العميل</th>
-                  <th>المبلغ الإجمالي</th>
-                  <th>الحالة</th>
-                  <th>التاريخ</th>
-                </tr>
-              </thead>
-              <tbody>
-                <!-- سيتم ملء هذه البيانات بواسطة JavaScript -->
-              </tbody>
-            </table>
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title"><i class="fas fa-clock"></i> الطلبات الأخيرة</div>
+              </div>
+              <div class="table-container">
+                <table id="recent-orders-table">
+                  <thead>
+                    <tr>
+                      <th>رقم الطلب</th>
+                      <th>العميل</th>
+                      <th>المبلغ الإجمالي</th>
+                      <th>الحالة</th>
+                      <th>التاريخ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
-        </div>
+        </main>
       </div>
 
       <div id="notification" class="notification"></div>
@@ -3348,335 +3289,52 @@ app.get('/admin/orders', (req, res) => {
       <title>إدارة الطلبات - متجر ريدشي</title>
       <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
       <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+      <link rel="stylesheet" href="/admin-style.css">
       <style>
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-        body {
-          font-family: 'Tajawal', sans-serif;
-          background-color: #f5f7fa;
-          color: #333;
-          line-height: 1.6;
-        }
-        .container {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 20px;
-        }
-        header {
-          background-color: #2c3e50;
-          color: white;
-          padding: 1rem 2rem;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .logo {
-          font-size: 1.5rem;
-          font-weight: 700;
-        }
-        .user-info {
-          display: flex;
-          align-items: center;
-          gap: 15px;
-        }
-        .logout-btn {
-          background-color: #e74c3c;
-          color: white;
-          border: none;
-          padding: 8px 15px;
-          border-radius: 4px;
-          cursor: pointer;
-          transition: background-color 0.3s;
-        }
-        .logout-btn:hover {
-          background-color: #c0392b;
-        }
-        .page-title {
-          margin: 20px 0;
-          font-size: 1.8rem;
-          color: #2c3e50;
-        }
-        .filters {
-          background-color: white;
-          padding: 20px;
-          border-radius: 8px;
-          box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-          margin-bottom: 20px;
-          display: flex;
-          flex-wrap: wrap;
-          gap: 15px;
-          align-items: center;
-        }
-        .form-group {
-          display: flex;
-          flex-direction: column;
-          min-width: 200px;
-        }
-        .form-group label {
-          margin-bottom: 5px;
-          font-weight: 500;
-          color: #555;
-        }
-        .form-control {
-          padding: 8px 12px;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          font-family: inherit;
-        }
-        .btn {
-          padding: 8px 15px;
-          border-radius: 4px;
-          border: none;
-          cursor: pointer;
-          font-weight: 500;
-          transition: background-color 0.3s;
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-        }
-        .btn-primary {
-          background-color: #3498db;
-          color: white;
-        }
-        .btn-primary:hover {
-          background-color: #2980b9;
-        }
-        .btn-success {
-          background-color: #2ecc71;
-          color: white;
-        }
-        .btn-success:hover {
-          background-color: #27ae60;
-        }
-        .btn-warning {
-          background-color: #f39c12;
-          color: white;
-        }
-        .btn-warning:hover {
-          background-color: #e67e22;
-        }
-        .btn-danger {
-          background-color: #e74c3c;
-          color: white;
-        }
-        .btn-danger:hover {
-          background-color: #c0392b;
-        }
-        .table-container {
-          background-color: white;
-          border-radius: 8px;
-          box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-          overflow: hidden;
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-        th, td {
-          padding: 12px 15px;
-          text-align: right;
-          border-bottom: 1px solid #eee;
-        }
-        th {
-          background-color: #f8f9fa;
-          font-weight: 600;
-          color: #2c3e50;
-        }
-        tr:hover {
-          background-color: #f8f9fa;
-        }
-        .status {
-          padding: 4px 8px;
-          border-radius: 4px;
-          font-size: 0.8rem;
-          font-weight: 500;
-        }
-        .status-pending {
-          background-color: #fef9e7;
-          color: #f39c12;
-        }
-        .status-processing {
-          background-color: #e8f5e9;
-          color: #2ecc71;
-        }
-        .status-completed {
-          background-color: #e3f2fd;
-          color: #3498db;
-        }
-        .status-cancelled {
-          background-color: #ffebee;
-          color: #e74c3c;
-        }
-        .actions {
-          display: flex;
-          gap: 5px;
-        }
-        .pagination {
-          display: flex;
-          justify-content: center;
-          margin-top: 20px;
-          gap: 5px;
-        }
-        .page-btn {
-          padding: 8px 12px;
-          border: 1px solid #ddd;
-          background-color: white;
-          cursor: pointer;
-          border-radius: 4px;
-        }
-        .page-btn.active {
-          background-color: #3498db;
-          color: white;
-          border-color: #3498db;
-        }
-        .page-btn:disabled {
-          cursor: not-allowed;
-          opacity: 0.5;
-        }
-        .notification {
-          position: fixed;
-          top: 20px;
-          left: 20px;
-          padding: 15px 20px;
-          border-radius: 4px;
-          color: white;
-          font-weight: 500;
-          z-index: 1000;
-          transform: translateX(-150%);
-          transition: transform 0.3s ease;
-        }
-        .notification.show {
-          transform: translateX(0);
-        }
-        .notification-success {
-          background-color: #2ecc71;
-        }
-        .notification-error {
-          background-color: #e74c3c;
-        }
-        .notification-info {
-          background-color: #3498db;
-        }
-        .modal {
-          display: none;
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background-color: rgba(0,0,0,0.5);
-          z-index: 1000;
-          justify-content: center;
-          align-items: center;
-        }
-        .modal-content {
-          background-color: white;
-          padding: 20px;
-          border-radius: 8px;
-          width: 80%;
-          max-width: 800px;
-          max-height: 80vh;
-          overflow-y: auto;
-        }
-        .modal-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 20px;
-          border-bottom: 1px solid #eee;
-          padding-bottom: 10px;
-        }
-        .modal-title {
-          font-size: 1.5rem;
-          color: #2c3e50;
-        }
-        .close-btn {
-          background: none;
-          border: none;
-          font-size: 1.5rem;
-          cursor: pointer;
-          color: #999;
-        }
-        .close-btn:hover {
-          color: #333;
-        }
-        .form-row {
-          display: flex;
-          gap: 15px;
-          margin-bottom: 15px;
-        }
-        .form-group {
-          flex: 1;
-        }
-        .order-details {
-          margin-top: 20px;
-        }
-        .order-items {
-          margin-top: 15px;
-        }
-        .order-item {
-          display: flex;
-          justify-content: space-between;
-          padding: 10px;
-          border-bottom: 1px solid #eee;
-        }
-        .item-info {
-          flex: 1;
-        }
-        .item-price {
-          font-weight: 600;
-          color: #2c3e50;
-        }
-        .order-summary {
-          margin-top: 15px;
-          padding: 15px;
-          background-color: #f8f9fa;
-          border-radius: 4px;
-        }
-        .summary-row {
-          display: flex;
-          justify-content: space-between;
-          margin-bottom: 8px;
-        }
-        .summary-row.total {
-          font-weight: 700;
-          font-size: 1.1rem;
-          border-top: 1px solid #ddd;
-          padding-top: 8px;
-        }
-        .empty-state {
-          text-align: center;
-          padding: 40px;
-          color: #999;
-        }
-        .empty-state i {
-          font-size: 3rem;
-          margin-bottom: 15px;
-          color: #ddd;
-        }
+        .filters { background: var(--card-bg); padding: 20px; border-radius: 12px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
+        .actions { display: flex; gap: 5px; }
+        .order-item { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid var(--border); }
+        .item-info { flex: 1; }
+        .item-price { font-weight: 600; color: var(--text); }
+        .order-summary { margin-top: 15px; padding: 15px; background: var(--bg); border-radius: 8px; }
+        .summary-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .summary-row.total { font-weight: 700; font-size: 1.1rem; border-top: 1px solid var(--border); padding-top: 8px; }
       </style>
     </head>
     <body>
-      <header>
-        <div class="logo">
-          <a href="/admin" style="color: white; text-decoration: none;">
-            <i class="fas fa-arrow-left"></i> متجر ريدشي - إدارة الطلبات
-          </a>
-        </div>
-        <div class="user-info">
-          <span>مرحباً، ${ADMIN_CREDENTIALS.username}</span>
-          <button class="logout-btn" onclick="logout()">
-            <i class="fas fa-sign-out-alt"></i> تسجيل الخروج
-          </button>
-        </div>
-      </header>
-
-      <div class="container">
-        <h1 class="page-title">إدارة الطلبات</h1>
+      <div class="layout">
+        <aside class="sidebar">
+          <div class="sidebar-brand">
+            <h2><i class="fas fa-store-alt"></i> ريدشي</h2>
+            <div class="brand-sub">لوحة الإدارة</div>
+          </div>
+          <nav class="sidebar-nav">
+            <div class="nav-section">الرئيسية</div>
+            <a href="/admin"><i class="fas fa-chart-pie"></i> <span>لوحة البيانات</span></a>
+            <div class="nav-section">الإدارة</div>
+            <a href="/admin/orders" class="active"><i class="fas fa-shopping-cart"></i> <span>الطلبات</span></a>
+            <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
+            <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+            <a href="/admin/notifications"><i class="fas fa-bell"></i> <span>الإشعارات</span></a>
+            <div class="nav-section">النظام</div>
+            <a href="/logout"><i class="fas fa-sign-out-alt"></i> <span>تسجيل الخروج</span></a>
+          </nav>
+        </aside>
+        <main class="main-content">
+          <div class="top-bar">
+            <div class="page-title"><i class="fas fa-shopping-cart"></i> إدارة الطلبات</div>
+            <div class="user-info">
+              <span>مرحباً، ${ADMIN_CREDENTIALS.username}</span>
+              <button class="btn btn-danger btn-sm" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i> تسجيل الخروج
+              </button>
+            </div>
+          </div>
+          <div class="content">
+            <div class="page-hero" style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);">
+              <h1><i class="fas fa-shopping-cart"></i> إدارة الطلبات</h1>
+              <p>جميع الطلبات المرسلة من تطبيق الجوال</p>
+            </div>
 
         <div class="filters">
           <div class="form-group">
@@ -3768,6 +3426,10 @@ app.get('/admin/orders', (req, res) => {
             </div>
           </div>
         </div>
+      </div>
+
+      </div>
+        </main>
       </div>
 
       <div id="notification" class="notification"></div>
@@ -4230,313 +3892,55 @@ app.get('/admin/coupons', (req, res) => {
       <title>إدارة الكوبونات - متجر ريدشي</title>
       <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
       <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+      <link rel="stylesheet" href="/admin-style.css">
       <style>
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-        body {
-          font-family: 'Tajawal', sans-serif;
-          background-color: #f5f7fa;
-          color: #333;
-          line-height: 1.6;
-        }
-        .container {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 20px;
-        }
-        header {
-          background-color: #2c3e50;
-          color: white;
-          padding: 1rem 2rem;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .logo {
-          font-size: 1.5rem;
-          font-weight: 700;
-        }
-        .user-info {
-          display: flex;
-          align-items: center;
-          gap: 15px;
-        }
-        .logout-btn {
-          background-color: #e74c3c;
-          color: white;
-          border: none;
-          padding: 8px 15px;
-          border-radius: 4px;
-          cursor: pointer;
-          transition: background-color 0.3s;
-        }
-        .logout-btn:hover {
-          background-color: #c0392b;
-        }
-        .page-title {
-          margin: 20px 0;
-          font-size: 1.8rem;
-          color: #2c3e50;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        .btn {
-          padding: 8px 15px;
-          border-radius: 4px;
-          border: none;
-          cursor: pointer;
-          font-weight: 500;
-          transition: background-color 0.3s;
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 0.9rem;
-        }
-        .btn-primary {
-          background-color: #3498db;
-          color: white;
-        }
-        .btn-primary:hover {
-          background-color: #2980b9;
-        }
-        .btn-success {
-          background-color: #2ecc71;
-          color: white;
-        }
-        .btn-success:hover {
-          background-color: #27ae60;
-        }
-        .btn-warning {
-          background-color: #f39c12;
-          color: white;
-        }
-        .btn-warning:hover {
-          background-color: #e67e22;
-        }
-        .btn-danger {
-          background-color: #e74c3c;
-          color: white;
-        }
-        .btn-danger:hover {
-          background-color: #c0392b;
-        }
-        .filters {
-          background-color: white;
-          padding: 20px;
-          border-radius: 8px;
-          box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-          margin-bottom: 20px;
-          display: flex;
-          flex-wrap: wrap;
-          gap: 15px;
-          align-items: center;
-        }
-        .form-group {
-          display: flex;
-          flex-direction: column;
-          min-width: 200px;
-        }
-        .form-group label {
-          margin-bottom: 5px;
-          font-weight: 500;
-          color: #555;
-        }
-        .form-control {
-          padding: 8px 12px;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          font-family: inherit;
-        }
-        .table-container {
-          background-color: white;
-          border-radius: 8px;
-          box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-          overflow: hidden;
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-        th, td {
-          padding: 12px 15px;
-          text-align: right;
-          border-bottom: 1px solid #eee;
-        }
-        th {
-          background-color: #f8f9fa;
-          font-weight: 600;
-          color: #2c3e50;
-        }
-        tr:hover {
-          background-color: #f8f9fa;
-        }
-        .status {
-          padding: 4px 8px;
-          border-radius: 4px;
-          font-size: 0.8rem;
-          font-weight: 500;
-        }
-        .status-active {
-          background-color: #e8f5e9;
-          color: #2ecc71;
-        }
-        .status-inactive {
-          background-color: #ffebee;
-          color: #e74c3c;
-        }
-        .actions {
-          display: flex;
-          gap: 5px;
-        }
-        .pagination {
-          display: flex;
-          justify-content: center;
-          margin-top: 20px;
-          gap: 5px;
-        }
-        .page-btn {
-          padding: 8px 12px;
-          border: 1px solid #ddd;
-          background-color: white;
-          cursor: pointer;
-          border-radius: 4px;
-        }
-        .page-btn.active {
-          background-color: #3498db;
-          color: white;
-          border-color: #3498db;
-        }
-        .page-btn:disabled {
-          cursor: not-allowed;
-          opacity: 0.5;
-        }
-        .notification {
-          position: fixed;
-          top: 20px;
-          left: 20px;
-          padding: 15px 20px;
-          border-radius: 4px;
-          color: white;
-          font-weight: 500;
-          z-index: 1000;
-          transform: translateX(-150%);
-          transition: transform 0.3s ease;
-        }
-        .notification.show {
-          transform: translateX(0);
-        }
-        .notification-success {
-          background-color: #2ecc71;
-        }
-        .notification-error {
-          background-color: #e74c3c;
-        }
-        .notification-info {
-          background-color: #3498db;
-        }
-        .modal {
-          display: none;
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background-color: rgba(0,0,0,0.5);
-          z-index: 1000;
-          justify-content: center;
-          align-items: center;
-        }
-        .modal-content {
-          background-color: white;
-          padding: 20px;
-          border-radius: 8px;
-          width: 80%;
-          max-width: 600px;
-          max-height: 80vh;
-          overflow-y: auto;
-        }
-        .modal-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 20px;
-          border-bottom: 1px solid #eee;
-          padding-bottom: 10px;
-        }
-        .modal-title {
-          font-size: 1.5rem;
-          color: #2c3e50;
-        }
-        .close-btn {
-          background: none;
-          border: none;
-          font-size: 1.5rem;
-          cursor: pointer;
-          color: #999;
-        }
-        .close-btn:hover {
-          color: #333;
-        }
-        .form-row {
-          display: flex;
-          gap: 15px;
-          margin-bottom: 15px;
-        }
-        .form-group {
-          flex: 1;
-        }
-        .empty-state {
-          text-align: center;
-          padding: 40px;
-          color: #999;
-        }
-        .empty-state i {
-          font-size: 3rem;
-          margin-bottom: 15px;
-          color: #ddd;
-        }
-        .discount-type {
-          display: flex;
-          gap: 15px;
-          margin-bottom: 15px;
-        }
-        .radio-group {
-          display: flex;
-          align-items: center;
-          gap: 5px;
-        }
-        .radio-group input {
-          margin-left: 5px;
-        }
+        .filters { background: var(--card-bg); padding: 20px; border-radius: 12px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
+        .actions { display: flex; gap: 5px; }
+        .discount-type { display: flex; gap: 15px; margin-bottom: 15px; }
+        .radio-group { display: flex; align-items: center; gap: 5px; }
+        .radio-group input { margin-left: 5px; }
       </style>
     </head>
     <body>
-      <header>
-        <div class="logo">
-          <a href="/admin" style="color: white; text-decoration: none;">
-            <i class="fas fa-arrow-left"></i> متجر ريدشي - إدارة الكوبونات
-          </a>
-        </div>
-        <div class="user-info">
-          <span>مرحباً، ${ADMIN_CREDENTIALS.username}</span>
+      <div class="layout">
+        <aside class="sidebar">
+          <div class="sidebar-brand">
+            <h2><i class="fas fa-store-alt"></i> ريدشي</h2>
+            <div class="brand-sub">لوحة الإدارة</div>
+          </div>
+          <nav class="sidebar-nav">
+            <div class="nav-section">الرئيسية</div>
+            <a href="/admin"><i class="fas fa-chart-pie"></i> <span>لوحة البيانات</span></a>
+            <div class="nav-section">الإدارة</div>
+            <a href="/admin/orders"><i class="fas fa-shopping-cart"></i> <span>الطلبات</span></a>
+            <a href="/admin/coupons" class="active"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
+            <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+            <a href="/admin/notifications"><i class="fas fa-bell"></i> <span>الإشعارات</span></a>
+            <div class="nav-section">النظام</div>
+            <a href="/logout"><i class="fas fa-sign-out-alt"></i> <span>تسجيل الخروج</span></a>
+          </nav>
+        </aside>
+        <main class="main-content">
+          <div class="top-bar">
+            <div class="page-title"><i class="fas fa-tags"></i> إدارة الكوبونات</div>
+            <div class="user-info">
+              <span>مرحباً، ${ADMIN_CREDENTIALS.username}</span>
           <button class="logout-btn" onclick="logout()">
             <i class="fas fa-sign-out-alt"></i> تسجيل الخروج
           </button>
         </div>
-      </header>
+          </div>
+          <div class="content">
+            <div class="page-hero" style="background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);">
+              <h1><i class="fas fa-tags"></i> إدارة الكوبونات</h1>
+              <p>إنشاء وتعديل وحذف كوبونات الخصم مع تحديد الصلاحية</p>
+            </div>
 
-      <div class="container">
-        <div class="page-title">
-          <h1>إدارة الكوبونات</h1>
-          <button class="btn btn-success" onclick="openAddModal()">
-            <i class="fas fa-plus"></i> إضافة كوبون جديد
-          </button>
-        </div>
+            <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
+              <button class="btn btn-success" onclick="openAddModal()">
+                <i class="fas fa-plus"></i> إضافة كوبون جديد
+              </button>
+            </div>
 
         <div class="filters">
           <div class="form-group">
@@ -5016,6 +4420,9 @@ app.get('/admin/coupons', (req, res) => {
           fetchCoupons();
         });
       </script>
+      </div>
+        </main>
+      </div>
     </body>
     </html>
   `);
@@ -5036,315 +4443,55 @@ app.get('/admin/gift-cards', (req, res) => {
       <title>إدارة القسائم الشرائية - متجر ريدشي</title>
       <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
       <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+      <link rel="stylesheet" href="/admin-style.css">
       <style>
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-        body {
-          font-family: 'Tajawal', sans-serif;
-          background-color: #f5f7fa;
-          color: #333;
-          line-height: 1.6;
-        }
-        .container {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 20px;
-        }
-        header {
-          background-color: #2c3e50;
-          color: white;
-          padding: 1rem 2rem;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .logo {
-          font-size: 1.5rem;
-          font-weight: 700;
-        }
-        .user-info {
-          display: flex;
-          align-items: center;
-          gap: 15px;
-        }
-        .logout-btn {
-          background-color: #e74c3c;
-          color: white;
-          border: none;
-          padding: 8px 15px;
-          border-radius: 4px;
-          cursor: pointer;
-          transition: background-color 0.3s;
-        }
-        .logout-btn:hover {
-          background-color: #c0392b;
-        }
-        .page-title {
-          margin: 20px 0;
-          font-size: 1.8rem;
-          color: #2c3e50;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        .btn {
-          padding: 8px 15px;
-          border-radius: 4px;
-          border: none;
-          cursor: pointer;
-          font-weight: 500;
-          transition: background-color 0.3s;
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 0.9rem;
-        }
-        .btn-primary {
-          background-color: #3498db;
-          color: white;
-        }
-        .btn-primary:hover {
-          background-color: #2980b9;
-        }
-        .btn-success {
-          background-color: #2ecc71;
-          color: white;
-        }
-        .btn-success:hover {
-          background-color: #27ae60;
-        }
-        .btn-warning {
-          background-color: #f39c12;
-          color: white;
-        }
-        .btn-warning:hover {
-          background-color: #e67e22;
-        }
-        .btn-danger {
-          background-color: #e74c3c;
-          color: white;
-        }
-        .btn-danger:hover {
-          background-color: #c0392b;
-        }
-        .filters {
-          background-color: white;
-          padding: 20px;
-          border-radius: 8px;
-          box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-          margin-bottom: 20px;
-          display: flex;
-          flex-wrap: wrap;
-          gap: 15px;
-          align-items: center;
-        }
-        .form-group {
-          display: flex;
-          flex-direction: column;
-          min-width: 200px;
-        }
-        .form-group label {
-          margin-bottom: 5px;
-          font-weight: 500;
-          color: #555;
-        }
-        .form-control {
-          padding: 8px 12px;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          font-family: inherit;
-        }
-        .table-container {
-          background-color: white;
-          border-radius: 8px;
-          box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-          overflow: hidden;
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-        th, td {
-          padding: 12px 15px;
-          text-align: right;
-          border-bottom: 1px solid #eee;
-        }
-        th {
-          background-color: #f8f9fa;
-          font-weight: 600;
-          color: #2c3e50;
-        }
-        tr:hover {
-          background-color: #f8f9fa;
-        }
-        .status {
-          padding: 4px 8px;
-          border-radius: 4px;
-          font-size: 0.8rem;
-          font-weight: 500;
-        }
-        .status-active {
-          background-color: #e8f5e9;
-          color: #2ecc71;
-        }
-        .status-inactive {
-          background-color: #ffebee;
-          color: #e74c3c;
-        }
-        .actions {
-          display: flex;
-          gap: 5px;
-        }
-        .pagination {
-          display: flex;
-          justify-content: center;
-          margin-top: 20px;
-          gap: 5px;
-        }
-        .page-btn {
-          padding: 8px 12px;
-          border: 1px solid #ddd;
-          background-color: white;
-          cursor: pointer;
-          border-radius: 4px;
-        }
-        .page-btn.active {
-          background-color: #3498db;
-          color: white;
-          border-color: #3498db;
-        }
-        .page-btn:disabled {
-          cursor: not-allowed;
-          opacity: 0.5;
-        }
-        .notification {
-          position: fixed;
-          top: 20px;
-          left: 20px;
-          padding: 15px 20px;
-          border-radius: 4px;
-          color: white;
-          font-weight: 500;
-          z-index: 1000;
-          transform: translateX(-150%);
-          transition: transform 0.3s ease;
-        }
-        .notification.show {
-          transform: translateX(0);
-        }
-        .notification-success {
-          background-color: #2ecc71;
-        }
-        .notification-error {
-          background-color: #e74c3c;
-        }
-        .notification-info {
-          background-color: #3498db;
-        }
-        .modal {
-          display: none;
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background-color: rgba(0,0,0,0.5);
-          z-index: 1000;
-          justify-content: center;
-          align-items: center;
-        }
-        .modal-content {
-          background-color: white;
-          padding: 20px;
-          border-radius: 8px;
-          width: 80%;
-          max-width: 600px;
-          max-height: 80vh;
-          overflow-y: auto;
-        }
-        .modal-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 20px;
-          border-bottom: 1px solid #eee;
-          padding-bottom: 10px;
-        }
-        .modal-title {
-          font-size: 1.5rem;
-          color: #2c3e50;
-        }
-        .close-btn {
-          background: none;
-          border: none;
-          font-size: 1.5rem;
-          cursor: pointer;
-          color: #999;
-        }
-        .close-btn:hover {
-          color: #333;
-        }
-        .form-row {
-          display: flex;
-          gap: 15px;
-          margin-bottom: 15px;
-        }
-        .form-group {
-          flex: 1;
-        }
-        .empty-state {
-          text-align: center;
-          padding: 40px;
-          color: #999;
-        }
-        .empty-state i {
-          font-size: 3rem;
-          margin-bottom: 15px;
-          color: #ddd;
-        }
-        .balance-bar {
-          height: 10px;
-          background-color: #eee;
-          border-radius: 5px;
-          margin-top: 5px;
-          overflow: hidden;
-        }
-        .balance-used {
-          height: 100%;
-          background-color: #e74c3c;
-        }
-        .balance-remaining {
-          height: 100%;
-          background-color: #2ecc71;
-        }
+        .filters { background: var(--card-bg); padding: 20px; border-radius: 12px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
+        .actions { display: flex; gap: 5px; }
+        .balance-bar { height: 10px; background-color: var(--border); border-radius: 5px; margin-top: 5px; overflow: hidden; }
+        .balance-used { height: 100%; background-color: var(--danger); }
+        .balance-remaining { height: 100%; background-color: var(--success); }
       </style>
     </head>
     <body>
-      <header>
-        <div class="logo">
-          <a href="/admin" style="color: white; text-decoration: none;">
-            <i class="fas fa-arrow-left"></i> متجر ريدشي - إدارة القسائم الشرائية
-          </a>
-        </div>
-        <div class="user-info">
-          <span>مرحباً، ${ADMIN_CREDENTIALS.username}</span>
-          <button class="logout-btn" onclick="logout()">
-            <i class="fas fa-sign-out-alt"></i> تسجيل الخروج
-          </button>
-        </div>
-      </header>
+      <div class="layout">
+        <aside class="sidebar">
+          <div class="sidebar-brand">
+            <h2><i class="fas fa-store-alt"></i> ريدشي</h2>
+            <div class="brand-sub">لوحة الإدارة</div>
+          </div>
+          <nav class="sidebar-nav">
+            <div class="nav-section">الرئيسية</div>
+            <a href="/admin"><i class="fas fa-chart-pie"></i> <span>لوحة البيانات</span></a>
+            <div class="nav-section">الإدارة</div>
+            <a href="/admin/orders"><i class="fas fa-shopping-cart"></i> <span>الطلبات</span></a>
+            <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
+            <a href="/admin/gift-cards" class="active"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+            <a href="/admin/notifications"><i class="fas fa-bell"></i> <span>الإشعارات</span></a>
+            <div class="nav-section">النظام</div>
+            <a href="/logout"><i class="fas fa-sign-out-alt"></i> <span>تسجيل الخروج</span></a>
+          </nav>
+        </aside>
+        <main class="main-content">
+          <div class="top-bar">
+            <div class="page-title"><i class="fas fa-gift"></i> إدارة القسائم الشرائية</div>
+            <div class="user-info">
+              <span>مرحباً، ${ADMIN_CREDENTIALS.username}</span>
+              <button class="btn btn-danger btn-sm" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i> تسجيل الخروج
+              </button>
+            </div>
+          </div>
+          <div class="content">
+            <div class="page-hero" style="background: linear-gradient(135deg, #9C27B0 0%, #6A1B9A 100%);">
+              <h1><i class="fas fa-gift"></i> إدارة القسائم الشرائية</h1>
+              <p>إنشاء وتعديل وحذف القسائم الشرائية مع إدارة الرصيد والصلاحية</p>
+            </div>
 
-      <div class="container">
-        <div class="page-title">
-          <h1>إدارة القسائم الشرائية</h1>
-          <button class="btn btn-success" onclick="openAddModal()">
-            <i class="fas fa-plus"></i> إضافة قسيمة جديدة
-          </button>
-        </div>
+            <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
+              <button class="btn btn-success" onclick="openAddModal()">
+                <i class="fas fa-plus"></i> إضافة قسيمة جديدة
+              </button>
+            </div>
 
         <div class="filters">
           <div class="form-group">
@@ -5796,6 +4943,9 @@ app.get('/admin/gift-cards', (req, res) => {
           fetchGiftCards();
         });
       </script>
+      </div>
+        </main>
+      </div>
     </body>
     </html>
   `);
@@ -5816,313 +4966,55 @@ app.get('/admin/notifications', (req, res) => {
       <title>إدارة الإشعارات - متجر ريدشي</title>
       <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
       <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+      <link rel="stylesheet" href="/admin-style.css">
       <style>
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-        body {
-          font-family: 'Tajawal', sans-serif;
-          background-color: #f5f7fa;
-          color: #333;
-          line-height: 1.6;
-        }
-        .container {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 20px;
-        }
-        header {
-          background-color: #2c3e50;
-          color: white;
-          padding: 1rem 2rem;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .logo {
-          font-size: 1.5rem;
-          font-weight: 700;
-        }
-        .user-info {
-          display: flex;
-          align-items: center;
-          gap: 15px;
-        }
-        .logout-btn {
-          background-color: #e74c3c;
-          color: white;
-          border: none;
-          padding: 8px 15px;
-          border-radius: 4px;
-          cursor: pointer;
-          transition: background-color 0.3s;
-        }
-        .logout-btn:hover {
-          background-color: #c0392b;
-        }
-        .page-title {
-          margin: 20px 0;
-          font-size: 1.8rem;
-          color: #2c3e50;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        .btn {
-          padding: 8px 15px;
-          border-radius: 4px;
-          border: none;
-          cursor: pointer;
-          font-weight: 500;
-          transition: background-color 0.3s;
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 0.9rem;
-        }
-        .btn-primary {
-          background-color: #3498db;
-          color: white;
-        }
-        .btn-primary:hover {
-          background-color: #2980b9;
-        }
-        .btn-success {
-          background-color: #2ecc71;
-          color: white;
-        }
-        .btn-success:hover {
-          background-color: #27ae60;
-        }
-        .btn-warning {
-          background-color: #f39c12;
-          color: white;
-        }
-        .btn-warning:hover {
-          background-color: #e67e22;
-        }
-        .btn-danger {
-          background-color: #e74c3c;
-          color: white;
-        }
-        .btn-danger:hover {
-          background-color: #c0392b;
-        }
-        .filters {
-          background-color: white;
-          padding: 20px;
-          border-radius: 8px;
-          box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-          margin-bottom: 20px;
-          display: flex;
-          flex-wrap: wrap;
-          gap: 15px;
-          align-items: center;
-        }
-        .form-group {
-          display: flex;
-          flex-direction: column;
-          min-width: 200px;
-        }
-        .form-group label {
-          margin-bottom: 5px;
-          font-weight: 500;
-          color: #555;
-        }
-        .form-control {
-          padding: 8px 12px;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          font-family: inherit;
-        }
-        .table-container {
-          background-color: white;
-          border-radius: 8px;
-          box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-          overflow: hidden;
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-        th, td {
-          padding: 12px 15px;
-          text-align: right;
-          border-bottom: 1px solid #eee;
-        }
-        th {
-          background-color: #f8f9fa;
-          font-weight: 600;
-          color: #2c3e50;
-        }
-        tr:hover {
-          background-color: #f8f9fa;
-        }
-        .status {
-          padding: 4px 8px;
-          border-radius: 4px;
-          font-size: 0.8rem;
-          font-weight: 500;
-        }
-        .status-read {
-          background-color: #e8f5e9;
-          color: #2ecc71;
-        }
-        .status-unread {
-          background-color: #e3f2fd;
-          color: #3498db;
-        }
-        .actions {
-          display: flex;
-          gap: 5px;
-        }
-        .pagination {
-          display: flex;
-          justify-content: center;
-          margin-top: 20px;
-          gap: 5px;
-        }
-        .page-btn {
-          padding: 8px 12px;
-          border: 1px solid #ddd;
-          background-color: white;
-          cursor: pointer;
-          border-radius: 4px;
-        }
-        .page-btn.active {
-          background-color: #3498db;
-          color: white;
-          border-color: #3498db;
-        }
-        .page-btn:disabled {
-          cursor: not-allowed;
-          opacity: 0.5;
-        }
-        .notification {
-          position: fixed;
-          top: 20px;
-          left: 20px;
-          padding: 15px 20px;
-          border-radius: 4px;
-          color: white;
-          font-weight: 500;
-          z-index: 1000;
-          transform: translateX(-150%);
-          transition: transform 0.3s ease;
-        }
-        .notification.show {
-          transform: translateX(0);
-        }
-        .notification-success {
-          background-color: #2ecc71;
-        }
-        .notification-error {
-          background-color: #e74c3c;
-        }
-        .notification-info {
-          background-color: #3498db;
-        }
-        .modal {
-          display: none;
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background-color: rgba(0,0,0,0.5);
-          z-index: 1000;
-          justify-content: center;
-          align-items: center;
-        }
-        .modal-content {
-          background-color: white;
-          padding: 20px;
-          border-radius: 8px;
-          width: 80%;
-          max-width: 600px;
-          max-height: 80vh;
-          overflow-y: auto;
-        }
-        .modal-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 20px;
-          border-bottom: 1px solid #eee;
-          padding-bottom: 10px;
-        }
-        .modal-title {
-          font-size: 1.5rem;
-          color: #2c3e50;
-        }
-        .close-btn {
-          background: none;
-          border: none;
-          font-size: 1.5rem;
-          cursor: pointer;
-          color: #999;
-        }
-        .close-btn:hover {
-          color: #333;
-        }
-        .form-row {
-          display: flex;
-          gap: 15px;
-          margin-bottom: 15px;
-        }
-        .form-group {
-          flex: 1;
-        }
-        .empty-state {
-          text-align: center;
-          padding: 40px;
-          color: #999;
-        }
-        .empty-state i {
-          font-size: 3rem;
-          margin-bottom: 15px;
-          color: #ddd;
-        }
-        .notification-type {
-          display: flex;
-          gap: 15px;
-          margin-bottom: 15px;
-        }
-        .radio-group {
-          display: flex;
-          align-items: center;
-          gap: 5px;
-        }
-        .radio-group input {
-          margin-left: 5px;
-        }
+        .filters { background: var(--card-bg); padding: 20px; border-radius: 12px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
+        .actions { display: flex; gap: 5px; }
+        .notification-type { display: flex; gap: 15px; margin-bottom: 15px; }
+        .radio-group { display: flex; align-items: center; gap: 5px; }
+        .radio-group input { margin-left: 5px; }
       </style>
     </head>
     <body>
-      <header>
-        <div class="logo">
-          <a href="/admin" style="color: white; text-decoration: none;">
-            <i class="fas fa-arrow-left"></i> متجر ريدشي - إدارة الإشعارات
-          </a>
-        </div>
-        <div class="user-info">
-          <span>مرحباً، ${ADMIN_CREDENTIALS.username}</span>
-          <button class="logout-btn" onclick="logout()">
-            <i class="fas fa-sign-out-alt"></i> تسجيل الخروج
-          </button>
-        </div>
-      </header>
+      <div class="layout">
+        <aside class="sidebar">
+          <div class="sidebar-brand">
+            <h2><i class="fas fa-store-alt"></i> ريدشي</h2>
+            <div class="brand-sub">لوحة الإدارة</div>
+          </div>
+          <nav class="sidebar-nav">
+            <div class="nav-section">الرئيسية</div>
+            <a href="/admin"><i class="fas fa-chart-pie"></i> <span>لوحة البيانات</span></a>
+            <div class="nav-section">الإدارة</div>
+            <a href="/admin/orders"><i class="fas fa-shopping-cart"></i> <span>الطلبات</span></a>
+            <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
+            <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+            <a href="/admin/notifications" class="active"><i class="fas fa-bell"></i> <span>الإشعارات</span></a>
+            <div class="nav-section">النظام</div>
+            <a href="/logout"><i class="fas fa-sign-out-alt"></i> <span>تسجيل الخروج</span></a>
+          </nav>
+        </aside>
+        <main class="main-content">
+          <div class="top-bar">
+            <div class="page-title"><i class="fas fa-bell"></i> إدارة الإشعارات</div>
+            <div class="user-info">
+              <span>مرحباً، ${ADMIN_CREDENTIALS.username}</span>
+              <button class="btn btn-danger btn-sm" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i> تسجيل الخروج
+              </button>
+            </div>
+          </div>
+          <div class="content">
+            <div class="page-hero" style="background: linear-gradient(135deg, #2196F3 0%, #1565C0 100%);">
+              <h1><i class="fas fa-bell"></i> إدارة الإشعارات</h1>
+              <p>إنشاء وتعديل وحذف الإشعارات مع إدارة الحالة والصلاحية</p>
+            </div>
 
-      <div class="container">
-        <div class="page-title">
-          <h1>إدارة الإشعارات</h1>
-          <button class="btn btn-success" onclick="openAddModal()">
-            <i class="fas fa-plus"></i> إضافة إشعار جديد
-          </button>
-        </div>
+            <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
+              <button class="btn btn-success" onclick="openAddModal()">
+                <i class="fas fa-plus"></i> إضافة إشعار جديد
+              </button>
+            </div>
 
         <div class="filters">
           <div class="form-group">
@@ -6587,6 +5479,9 @@ app.get('/admin/notifications', (req, res) => {
           fetchNotifications();
         });
       </script>
+      </div>
+        </main>
+      </div>
     </body>
     </html>
   `);

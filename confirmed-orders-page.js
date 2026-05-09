@@ -17,77 +17,65 @@ app.get('/admin/confirmed-orders', (req, res) => {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>الطلبات المؤكدة - نظام المتجر</title>
+        <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <link rel="stylesheet" href="/admin-style.css">
         <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
-            .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #8e24aa 0%, #6a1b9a 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; position: relative; }
-            .order-card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-right: 4px solid #8e24aa; }
-            .order-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
-            .order-number { background: #8e24aa; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; }
-            .order-status { padding: 6px 12px; border-radius: 15px; font-size: 14px; font-weight: bold; }
-            .status-confirmed { background: #e1bee7; color: #6a1b9a; }
-            .order-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
-            .detail-item { background: #f8f9fa; padding: 12px; border-radius: 8px; }
-            .items-list { background: #f8f9fa; padding: 15px; border-radius: 8px; }
-            .item-card { background: white; padding: 10px; margin-bottom: 8px; border-radius: 6px; border-left: 3px solid #8e24aa; }
-            .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-            .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
-            .nav-btn:hover { background: #8e24aa; color: white; transform: translateY(-2px); }
-            .logout-btn { position: absolute; left: 20px; top: 20px; background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
-            .logout-btn:hover { background: #d32f2f; transform: translateY(-2px); }
-            .empty-state { text-align: center; padding: 60px; color: #666; background: white; border-radius: 15px; }
-            .customer-info { background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
-            .btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
-            .btn-success { background: #4CAF50; color: white; }
-            .btn-success:hover { background: #388E3C; transform: translateY(-2px); }
-            .btn-primary { background: #2196F3; color: white; }
-            .btn-primary:hover { background: #1976D2; transform: translateY(-2px); }
-            .product-url { color: #1976D2; text-decoration: none; font-size: 12px; }
-            .product-url:hover { text-decoration: underline; }
-            .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
-            .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-            .stat-number { font-size: 24px; font-weight: bold; }
-            .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
+            .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 2px solid var(--border); padding-bottom: 0; }
+            .tab { padding: 10px 20px; border: none; background: transparent; cursor: pointer; font-weight: 500; font-family: var(--font); color: var(--text-muted); transition: all 0.2s ease; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+            .tab:hover { color: var(--text); }
+            .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+            .tab.active-noon { color: #F4C430; border-bottom-color: #F4C430; }
         </style>
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-                <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
-                <h1 style="margin: 0;">✅ الطلبات المؤكدة - نظام المتجر</h1>
-                <p style="margin: 10px 0 0 0; opacity: 0.9;">جميع الطلبات التي تم تأكيدها</p>
-            </div>
-
-            <div class="nav">
-                <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
-                <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
-                <a href="/admin/confirmed-orders" class="nav-btn">✅ الطلبات المؤكدة</a>
-                <a href="/admin/users" class="nav-btn">👥 بيانات العملاء</a>
-                <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
-                <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
-                <a href="/admin/products" class="nav-btn">🛍️ إدارة المنتجات</a>
-                <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
-                <a href="/" class="nav-btn">🏠 الرئيسية</a>
-            </div>
+        <div class="layout">
+            <aside class="sidebar">
+                <div class="sidebar-brand">
+                    <h2><i class="fas fa-store-alt"></i> ريدشي</h2>
+                    <div class="brand-sub">لوحة الإدارة</div>
+                </div>
+                <nav class="sidebar-nav">
+                    <div class="nav-section">الرئيسية</div>
+                    <a href="/admin"><i class="fas fa-chart-pie"></i> <span>لوحة البيانات</span></a>
+                    <a href="/admin/advanced"><i class="fas fa-tachometer-alt"></i> <span>لوحة التحكم</span></a>
+                    <div class="nav-section">الإدارة</div>
+                    <a href="/admin/orders"><i class="fas fa-shopping-cart"></i> <span>الطلبات</span></a>
+                    <a href="/admin/products"><i class="fas fa-box"></i> <span>المنتجات</span></a>
+                    <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
+                    <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                    <a href="/admin/confirmed-orders" class="active"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
+                    <div class="nav-section">النظام</div>
+                    <a href="/admin/settings"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
+                    <a href="/admin/users"><i class="fas fa-users"></i> <span>العملاء</span></a>
+                    <a href="/logout"><i class="fas fa-sign-out-alt"></i> <span>تسجيل الخروج</span></a>
+                </nav>
+            </aside>
+            <main class="main-content">
+                <div class="top-bar">
+                    <div class="page-title"><i class="fas fa-check-circle"></i> الطلبات المؤكدة</div>
+                    <div class="user-info">
+                        <span>مرحباً، المدير</span>
+                    </div>
+                </div>
+                <div class="content">
+                    <div class="page-hero" style="background: linear-gradient(135deg, #8e24aa 0%, #6a1b9a 100%);">
+                        <h1>✅ الطلبات المؤكدة</h1>
+                        <p>جميع الطلبات التي تم تأكيدها</p>
+                    </div>
 
             <!-- تبويبات تصفية الطلبات -->
-            <div class="tabs" style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ddd; padding-bottom: 10px;">
-                <button class="tab" id="tabAll" onclick="location.href='/admin/confirmed-orders'" style="padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer; font-weight: 500; transition: all 0.3s;">📋 جميع الطلبات</button>
-                <button class="tab" id="tabStore1" onclick="location.href='/admin/confirmed-orders?store=store1'" style="padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer; font-weight: 500; transition: all 0.3s; color: #1976D2;">🏪 المتجر الأول (lib/pages)</button>
-                <button class="tab noon" id="tabNoon" onclick="location.href='/admin/confirmed-orders?store=noon'" style="padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer; font-weight: 500; transition: all 0.3s;">🛒 طلبات noon</button>
+            <div class="tabs">
+                <button class="tab" id="tabAll" onclick="location.href='/admin/confirmed-orders'">📋 جميع الطلبات</button>
+                <button class="tab" id="tabStore1" onclick="location.href='/admin/confirmed-orders?store=store1'">🏪 المتجر الأول (lib/pages)</button>
+                <button class="tab" id="tabNoon" onclick="location.href='/admin/confirmed-orders?store=noon'">🛒 طلبات noon</button>
             </div>
-            <style>
-                .tab.active { background: #4CAF50 !important; color: white !important; }
-                .tab.active-noon { background: #F4C430 !important; color: #000 !important; }
-                .tab:hover:not(.active) { background: #f0f0f0; }
-            </style>
             <script>
                 const urlParams = new URLSearchParams(window.location.search);
                 if (urlParams.get('store') === 'noon') {
                     document.getElementById('tabNoon').classList.add('active-noon');
                 } else if (urlParams.get('store') === 'store1') {
                     document.getElementById('tabStore1').classList.add('active');
-                    document.getElementById('tabStore1').style.color = 'white';
                 } else {
                     document.getElementById('tabAll').classList.add('active');
                 }
@@ -98,8 +86,8 @@ app.get('/admin/confirmed-orders', (req, res) => {
                     <div class="stat-number" style="color: #8e24aa;">${rows.length}</div>
                     <div class="stat-label">إجمالي الطلبات المؤكدة</div>
                 </div>
-                <div class="stat-card" style="border-right: 4px solid #6c757d;">
-                    <div class="stat-number" style="color: #6c757d;">${rows.reduce((sum, order) => sum + parseFloat(order.total_amount), 0).toFixed(2)} ر.س</div>
+                <div class="stat-card" style="border-right: 4px solid var(--text-muted);">
+                    <div class="stat-number" style="color: var(--text-muted);">${rows.reduce((sum, order) => sum + parseFloat(order.total_amount), 0).toFixed(2)} ر.س</div>
                     <div class="stat-label">إجمالي المبيعات المؤكدة</div>
                 </div>
             </div>
@@ -108,8 +96,9 @@ app.get('/admin/confirmed-orders', (req, res) => {
         if (rows.length === 0) {
             html += `
             <div class="empty-state">
-                <h3 style="color: #666; margin-bottom: 10px;">📭 لا توجد طلبات مؤكدة حتى الآن</h3>
-                <p style="color: #999;">لم يتم تأكيد أي طلبات بعد</p>
+                <div class="empty-icon">📭</div>
+                <h3>لا توجد طلبات مؤكدة حتى الآن</h3>
+                <p>لم يتم تأكيد أي طلبات بعد</p>
             </div>
       `;
         } else {
@@ -136,9 +125,9 @@ app.get('/admin/confirmed-orders', (req, res) => {
                 <div class="order-header">
                     <div>
                         <span class="order-number">${order.order_number}</span>
-                        <span class="order-status ${statusClass}" style="margin-right: 10px;">${statusText}</span>
+                        <span class="status ${statusClass}" style="margin-right: 10px;">${statusText}</span>
                     </div>
-                    <div style="color: #666; font-size: 14px;">
+                    <div style="color: var(--text-muted); font-size: 14px;">
                         ${new Date(order.order_date).toLocaleString('ar-SA')}
                     </div>
                 </div>
@@ -151,14 +140,12 @@ app.get('/admin/confirmed-orders', (req, res) => {
                     البريد: ${order.customer_email || 'غير محدد'}<br>
                     طريقة الدفع: <strong>${paymentMethodText}</strong>
 
-                    <!-- عرض معلومات الحوالة إذا كانت موجودة -->
-                    ${order.transfer_name ? `<div style="background: #e8f5e8; padding: 12px; border-radius: 8px; margin-top: 10px; border-right: 3px solid #4CAF50;">
+                    ${order.transfer_name ? `<div class="payment-info">
                         <strong>معلومات الحوالة:</strong><br>
                         اسم المرسل: ${order.transfer_name} |
                         رقم الحوالة: ${order.transfer_number}
                     </div>` : ''}
 
-                    <!-- عرض العنوان الجديد -->
                     ${order.customer_address ? `<br><strong>العنوان:</strong> ${order.customer_address}` : ''}
                     ${order.address_city ? ` | <strong>المدينة:</strong> ${order.address_city}` : ''}
                     ${order.address_area ? ` | <strong>المنطقة:</strong> ${order.address_area}` : ''}
@@ -199,11 +186,11 @@ app.get('/admin/confirmed-orders', (req, res) => {
                 </div>
 
                 <div class="items-list">
-                    <h4 style="margin: 0 0 15px 0;">🛍️ العناصر المطلوبة:</h4>
+                    <h4 style="margin: 0 0 15px 0;"><i class="fas fa-shopping-bag"></i> العناصر المطلوبة:</h4>
                     ${items.map(item => `
                         <div class="item-card">
                             <strong>${item.name || 'منتج'}</strong><br>
-                            <span style="color: #2196F3; font-weight: bold;">رقم المنتج: ${item.id || item.product_id || 'غير معروف'}</span><br>
+                            <span style="color: var(--accent); font-weight: bold;">رقم المنتج: ${item.id || item.product_id || 'غير معروف'}</span><br>
                             السعر: ${item.price} ر.س × ${item.quantity || 1}
                             = <strong>${(item.price * (item.quantity || 1)).toFixed(2)} ر.س</strong>
                             ${item.selectedSize && item.selectedSize !== 'غير محدد' ? `<br>المقاس: ${item.selectedSize}` : ''}
@@ -219,6 +206,8 @@ app.get('/admin/confirmed-orders', (req, res) => {
         }
 
         html += `
+            </div>
+            </main>
         </div>
 
         <script>
@@ -251,4 +240,3 @@ app.get('/admin/confirmed-orders', (req, res) => {
         res.send(html);
     });
 });
-

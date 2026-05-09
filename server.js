@@ -1263,174 +1263,41 @@ app.get('/admin/products', (req, res) => {
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>إدارة الفئات والعطور - نظام المتجر</title>
-      <style>
-          body { 
-              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-              margin: 0; 
-              padding: 20px; 
-              background: #f0f2f5; 
-              min-height: 100vh; 
-          }
-          .container { 
-              max-width: 1400px; 
-              margin: 0 auto; 
-          }
-          .header { 
-              background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%); 
-              color: white; 
-              padding: 30px; 
-              border-radius: 15px; 
-              margin-bottom: 20px; 
-              text-align: center; 
-              position: relative; 
-          }
-          .nav { 
-              display: flex; 
-              gap: 10px; 
-              margin-bottom: 20px; 
-              flex-wrap: wrap; 
-          }
-          .nav-btn { 
-              background: #fff; 
-              padding: 10px 20px; 
-              border: none; 
-              border-radius: 25px; 
-              text-decoration: none; 
-              color: #333; 
-              box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
-              transition: all 0.3s; 
-          }
-          .nav-btn:hover { 
-              background: #2196F3; 
-              color: white; 
-              transform: translateY(-2px); 
-          }
-          .logout-btn { 
-              position: absolute; 
-              left: 20px; 
-              top: 20px; 
-              background: #f44336; 
-              color: white; 
-              padding: 10px 20px; 
-              border: none; 
-              border-radius: 25px; 
-              text-decoration: none; 
-          }
-          .loading { 
-              text-align: center; 
-              padding: 50px; 
-              color: #666; 
-          }
-          .error { 
-              background: #ffebee; 
-              color: #c62828; 
-              padding: 15px; 
-              border-radius: 8px; 
-              margin: 10px 0; 
-          }
-          .stats-grid { 
-              display: grid; 
-              grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
-              gap: 15px; 
-              margin-bottom: 20px; 
-          }
-          .stat-card { 
-              background: white; 
-              padding: 20px; 
-              border-radius: 10px; 
-              text-align: center; 
-              box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
-          }
-          .category-grid { 
-              display: grid; 
-              grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); 
-              gap: 15px; 
-              margin-bottom: 20px;
-          }
-          .category-card { 
-              background: white; 
-              padding: 20px; 
-              border-radius: 10px; 
-              box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-              border-left: 4px solid #2196F3;
-          }
-          .btn { 
-              padding: 8px 16px; 
-              border: none; 
-              border-radius: 8px; 
-              cursor: pointer; 
-              text-decoration: none; 
-              display: inline-flex; 
-              align-items: center; 
-              gap: 8px; 
-              transition: all 0.3s; 
-              font-weight: 500; 
-              margin: 5px;
-          }
-          .btn-primary { 
-              background: #2196F3; 
-              color: white; 
-          }
-          .btn-success { 
-              background: #4CAF50; 
-              color: white; 
-          }
-          .modal { 
-              position: fixed; 
-              top: 0; 
-              left: 0; 
-              width: 100%; 
-              height: 100%; 
-              background: rgba(0,0,0,0.5); 
-              display: none; 
-              align-items: center; 
-              justify-content: center; 
-              z-index: 1000; 
-          }
-          .modal-content { 
-              background: white; 
-              padding: 30px; 
-              border-radius: 15px; 
-              width: 90%; 
-              max-width: 600px; 
-              max-height: 80vh; 
-              overflow-y: auto; 
-          }
-          .form-group { 
-              margin-bottom: 15px; 
-          }
-          .form-label { 
-              display: block; 
-              margin-bottom: 5px; 
-              font-weight: bold; 
-              color: #333; 
-          }
-          .form-control { 
-              width: 100%; 
-              padding: 8px 12px; 
-              border: 1px solid #ddd; 
-              border-radius: 5px; 
-              font-size: 14px; 
-          }
-      </style>
+      <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+      <link rel="stylesheet" href="/admin-style.css">
   </head>
   <body>
-      <div class="container">
-          <div class="header">
-              <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
-              <h1 style="margin: 0;">🛍️ إدارة الفئات والعطور</h1>
-              <p style="margin: 10px 0 0 0; opacity: 0.9;">إدارة كتالوج المنتجات والعطور</p>
-          </div>
-
-          <div class="nav">
-              <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
-              <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
-              <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
-              <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
-              <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
-              <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
-              <a href="/" class="nav-btn">🏠 الرئيسية</a>
-          </div>
+      <div class="layout">
+          <aside class="sidebar">
+              <div class="sidebar-brand">
+                  <h2><i class="fas fa-store-alt"></i> ريدشي</h2>
+                  <div class="brand-sub">لوحة الإدارة</div>
+              </div>
+              <nav class="sidebar-nav">
+                  <div class="nav-section">الرئيسية</div>
+                  <a href="/admin"><i class="fas fa-chart-pie"></i> <span>لوحة البيانات</span></a>
+                  <a href="/admin/advanced"><i class="fas fa-tachometer-alt"></i> <span>لوحة التحكم</span></a>
+                  <div class="nav-section">الإدارة</div>
+                  <a href="/admin/orders"><i class="fas fa-shopping-cart"></i> <span>الطلبات</span></a>
+                  <a href="/admin/products" class="active"><i class="fas fa-box"></i> <span>المنتجات</span></a>
+                  <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
+                  <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                  <a href="/admin/confirmed-orders"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
+                  <div class="nav-section">النظام</div>
+                  <a href="/admin/settings"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
+                  <a href="/admin/users"><i class="fas fa-users"></i> <span>العملاء</span></a>
+                  <a href="/logout"><i class="fas fa-sign-out-alt"></i> <span>تسجيل الخروج</span></a>
+              </nav>
+          </aside>
+          <main class="main-content">
+              <div class="top-bar">
+                  <div class="page-title"><i class="fas fa-box"></i> إدارة الفئات والعطور</div>
+                  <div class="user-info">
+                      <span>مرحباً، المدير</span>
+                  </div>
+              </div>
+              <div class="content">
 
           <div id="app">
               <div class="loading">
@@ -1701,6 +1568,9 @@ app.get('/admin/products', (req, res) => {
               }
           }
       </script>
+          </div>
+          </main>
+      </div>
   </body>
   </html>
   `;
@@ -1708,7 +1578,6 @@ app.get('/admin/products', (req, res) => {
     res.send(html);
 });
 
-// ======== باقي الـ APIs والمسارات (بدون تغيير) ========
 
 // API إعدادات الـ admin
 app.get('/api/admin-settings', (req, res) => {
@@ -3617,35 +3486,45 @@ app.get('/admin/purchases/:phone', (req, res) => {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>مشتريات العميل: ${name}</title>
-        <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background: #f0f2f5; min-height: 100vh; }
-            .container { max-width: 1200px; margin: 0 auto; }
-            .header { background: #fff; padding: 30px; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
-            .order-card { background: #fff; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-right: 5px solid #2196F3; }
-            .order-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-            .order-number { background: #2196F3; color: white; padding: 5px 15px; border-radius: 20px; font-weight: bold; font-size: 14px; }
-            .status-badge { padding: 4px 10px; border-radius: 10px; font-size: 12px; font-weight: bold; }
-            .status-pending { background: #fff3e0; color: #ef6c00; }
-            .status-confirmed { background: #e8f5e9; color: #2e7d32; }
-            .status-completed { background: #e3f2fd; color: #1565c0; }
-            .status-cancelled { background: #ffebee; color: #c62828; }
-            .back-btn { background: #2196F3; color: white; padding: 10px 25px; border-radius: 25px; text-decoration: none; font-weight: bold; transition: all 0.3s; }
-            .back-btn:hover { background: #1976D2; transform: translateY(-2px); }
-            .item-list { background: #f9f9f9; padding: 15px; border-radius: 10px; margin-top: 15px; }
-            .item-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed #ddd; }
-            .item-row:last-child { border-bottom: none; }
-            .total-row { margin-top: 15px; text-align: left; font-size: 18px; font-weight: bold; color: #2196F3; }
-        </style>
+        <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <link rel="stylesheet" href="/admin-style.css">
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-                <div>
-                    <h1 style="margin: 0; color: #333;">🛍️ مشتريات العميل: ${name}</h1>
-                    <p style="margin: 5px 0 0 0; color: #666;">رقم الهاتف: <strong style="color: #2196F3;">${phone}</strong></p>
+        <div class="layout">
+            <aside class="sidebar">
+                <div class="sidebar-brand">
+                    <h2><i class="fas fa-store-alt"></i> ريدشي</h2>
+                    <div class="brand-sub">لوحة الإدارة</div>
                 </div>
-                <a href="/admin" class="back-btn">⬅️ العودة لقائمة المستخدمين</a>
-            </div>
+                <nav class="sidebar-nav">
+                    <div class="nav-section">الرئيسية</div>
+                    <a href="/admin"><i class="fas fa-chart-pie"></i> <span>لوحة البيانات</span></a>
+                    <a href="/admin/advanced"><i class="fas fa-tachometer-alt"></i> <span>لوحة التحكم</span></a>
+                    <div class="nav-section">الإدارة</div>
+                    <a href="/admin/orders"><i class="fas fa-shopping-cart"></i> <span>الطلبات</span></a>
+                    <a href="/admin/products"><i class="fas fa-box"></i> <span>المنتجات</span></a>
+                    <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
+                    <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                    <a href="/admin/confirmed-orders"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
+                    <div class="nav-section">النظام</div>
+                    <a href="/admin/settings"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
+                    <a href="/admin/users"><i class="fas fa-users"></i> <span>العملاء</span></a>
+                    <a href="/logout"><i class="fas fa-sign-out-alt"></i> <span>تسجيل الخروج</span></a>
+                </nav>
+            </aside>
+            <main class="main-content">
+                <div class="top-bar">
+                    <div class="page-title"><i class="fas fa-shopping-bag"></i> مشتريات العميل</div>
+                    <div class="user-info">
+                        <a href="/admin" class="btn btn-primary btn-sm"><i class="fas fa-arrow-right"></i> العودة</a>
+                    </div>
+                </div>
+                <div class="content">
+                    <div class="page-hero" style="background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);">
+                        <h1>🛍️ مشتريات العميل: ${name}</h1>
+                        <p>رقم الهاتف: <strong>${phone}</strong></p>
+                    </div>
     `;
 
         if (rows.length === 0) {
@@ -3702,6 +3581,8 @@ app.get('/admin/purchases/:phone', (req, res) => {
         }
 
         html += `
+            </div>
+            </main>
         </div>
     </body>
     </html>
@@ -3720,58 +3601,45 @@ app.get('/admin/confirmed-orders', (req, res) => {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>الطلبات المؤكدة - نظام المتجر</title>
-        <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
-            .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #8e24aa 0%, #6a1b9a 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; position: relative; }
-            .order-card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-right: 4px solid #8e24aa; }
-            .order-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
-            .order-number { background: #8e24aa; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; }
-            .order-status { padding: 6px 12px; border-radius: 15px; font-size: 14px; font-weight: bold; }
-            .status-confirmed { background: #e1bee7; color: #6a1b9a; }
-            .order-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
-            .detail-item { background: #f8f9fa; padding: 12px; border-radius: 8px; }
-            .items-list { background: #f8f9fa; padding: 15px; border-radius: 8px; }
-            .item-card { background: white; padding: 10px; margin-bottom: 8px; border-radius: 6px; border-left: 3px solid #8e24aa; }
-            .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-            .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
-            .nav-btn:hover { background: #8e24aa; color: white; transform: translateY(-2px); }
-            .logout-btn { position: absolute; left: 20px; top: 20px; background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
-            .logout-btn:hover { background: #d32f2f; transform: translateY(-2px); }
-            .empty-state { text-align: center; padding: 60px; color: #666; background: white; border-radius: 15px; }
-            .customer-info { background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
-            .btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
-            .btn-success { background: #4CAF50; color: white; }
-            .btn-success:hover { background: #388E3C; transform: translateY(-2px); }
-            .btn-primary { background: #2196F3; color: white; }
-            .btn-primary:hover { background: #1976D2; transform: translateY(-2px); }
-            .product-url { color: #1976D2; text-decoration: none; font-size: 12px; }
-            .product-url:hover { text-decoration: underline; }
-            .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
-            .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-            .stat-number { font-size: 24px; font-weight: bold; }
-            .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
-        </style>
+        <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <link rel="stylesheet" href="/admin-style.css">
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-
-                <h1 style="margin: 0;">✅ الطلبات المؤكدة - نظام المتجر</h1>
-                <p style="margin: 10px 0 0 0; opacity: 0.9;">جميع الطلبات التي تم تأكيدها</p>
-            </div>
-
-            <div class="nav">
-                <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
-                <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
-                <a href="/admin/confirmed-orders" class="nav-btn">✅ الطلبات المؤكدة</a>
-                <a href="/admin/users" class="nav-btn">👥 بيانات العملاء</a>
-                <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
-                <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
-                <a href="/admin/products" class="nav-btn">🛍️ إدارة المنتجات</a>
-                <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
-                <a href="/" class="nav-btn">🏠 الرئيسية</a>
-            </div>
+        <div class="layout">
+            <aside class="sidebar">
+                <div class="sidebar-brand">
+                    <h2><i class="fas fa-store-alt"></i> ريدشي</h2>
+                    <div class="brand-sub">لوحة الإدارة</div>
+                </div>
+                <nav class="sidebar-nav">
+                    <div class="nav-section">الرئيسية</div>
+                    <a href="/admin"><i class="fas fa-chart-pie"></i> <span>لوحة البيانات</span></a>
+                    <a href="/admin/advanced"><i class="fas fa-tachometer-alt"></i> <span>لوحة التحكم</span></a>
+                    <div class="nav-section">الإدارة</div>
+                    <a href="/admin/orders"><i class="fas fa-shopping-cart"></i> <span>الطلبات</span></a>
+                    <a href="/admin/products"><i class="fas fa-box"></i> <span>المنتجات</span></a>
+                    <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
+                    <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                    <a href="/admin/confirmed-orders" class="active"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
+                    <div class="nav-section">النظام</div>
+                    <a href="/admin/settings"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
+                    <a href="/admin/users"><i class="fas fa-users"></i> <span>العملاء</span></a>
+                    <a href="/logout"><i class="fas fa-sign-out-alt"></i> <span>تسجيل الخروج</span></a>
+                </nav>
+            </aside>
+            <main class="main-content">
+                <div class="top-bar">
+                    <div class="page-title"><i class="fas fa-check-circle"></i> الطلبات المؤكدة</div>
+                    <div class="user-info">
+                        <span>مرحباً، المدير</span>
+                    </div>
+                </div>
+                <div class="content">
+                    <div class="page-hero" style="background: linear-gradient(135deg, #8e24aa 0%, #6a1b9a 100%);">
+                        <h1>✅ الطلبات المؤكدة</h1>
+                        <p>جميع الطلبات التي تم تأكيدها</p>
+                    </div>
 
             <div class="stats-grid">
                 <div class="stat-card" style="border-right: 4px solid #8e24aa;">
@@ -3899,6 +3767,8 @@ app.get('/admin/confirmed-orders', (req, res) => {
         }
 
         html += `
+            </div>
+            </main>
         </div>
 
         <script>
@@ -3943,62 +3813,70 @@ app.get('/admin/advanced', (req, res) => {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>الإدارة المتقدمة - نظام الاختبار</title>
+        <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <link rel="stylesheet" href="/admin-style.css">
         <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
-            .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; position: relative; }
-            .controls { background: white; padding: 25px; border-radius: 15px; margin-bottom: 25px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-            .btn { padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
-            .btn-primary { background: #2196F3; color: white; }
-            .btn-primary:hover { background: #1976D2; transform: translateY(-2px); }
-            .btn-danger { background: #f44336; color: white; }
-            .btn-danger:hover { background: #d32f2f; transform: translateY(-2px); }
-            .btn-success { background: #4CAF50; color: white; }
-            .btn-success:hover { background: #388E3C; transform: translateY(-2px); }
-            .btn-secondary { background: #6c757d; color: white; }
-            .btn-secondary:hover { background: #545b62; transform: translateY(-2px); }
-            .logout-btn { position: absolute; left: 20px; top: 20px; background: #f44336; color: white; padding: 12px 24px; border: none; border-radius: 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
-            .logout-btn:hover { background: #d32f2f; transform: translateY(-2px); }
-            .table-container { background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.1); margin-bottom: 30px; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { padding: 16px 20px; text-align: right; border-bottom: 1px solid #e0e0e0; }
-            th { background: #f8f9fa; font-weight: 600; color: #333; font-size: 14px; }
-            tr:hover { background: #f8f9fa; }
-            .badge { background: #2196F3; color: white; padding: 4px 12px; border-radius: 15px; font-size: 12px; font-weight: bold; }
-            .empty-state { text-align: center; padding: 60px; color: #666; }
-            .stats-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+            .controls { background: var(--card); padding: 20px; border-radius: var(--radius); margin-bottom: 24px; box-shadow: var(--shadow); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+            .stats-card { background: var(--bg); padding: 12px 20px; border-radius: var(--radius-sm); }
         </style>
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-
-                <h1 style="margin: 0; font-size: 2.5rem;">🛠️ لوحة التحكم - نظام الاختبار</h1>
-                <p style="margin: 10px 0 0 0; font-size: 1.1rem; opacity: 0.9;">إدارة وعرض جميع البيانات من تطبيق الجوال</p>
-            </div>
-            
-            <div class="controls">
-
-                <a href="/admin/advanced" class="btn btn-success">🛠️ لوحة التحكم</a>
-                <a href="/admin/orders" class="btn btn-success">🛒 إدارة الطلبات</a>
-                <a href="/admin/confirmed-orders" class="btn btn-primary">✅ الطلبات المؤكدة</a>
-                <a href="/admin/users" class="btn btn-info">👥 بيانات العملاء</a>
-                <a href="/admin/coupons" class="btn btn-info">🎫 إدارة الكوبونات</a>
-                <a href="/admin/gift-cards" class="btn btn-info">💳 إدارة القسائم</a>
-                <a href="/admin/products" class="btn btn-info">🛍️ إدارة المنتجات</a>
-                <a href="/admin/settings" class="btn btn-info">⚙️ إعدادات النظام</a>
-
-                <a href="/" class="btn btn-secondary">🏠 الرئيسية</a>
-                <button onclick="clearAllData()" class="btn btn-danger">🗑️ مسح جميع البيانات</button>
-                <div style="margin-left: auto; display: flex; align-items: center; gap: 15px;">
-                    <div class="stats-card">
-                        <strong>عدد السجلات:</strong> <span style="color: #2196F3; font-weight: bold;">${rows.length}</span>
-                    </div>
-                    <div class="stats-card">
-                        <strong>الحالة:</strong> <span style="color: #4CAF50; font-weight: bold;">✅ نشط</span>
+        <div class="layout">
+            <aside class="sidebar">
+                <div class="sidebar-brand">
+                    <h2><i class="fas fa-store-alt"></i> ريدشي</h2>
+                    <div class="brand-sub">لوحة الإدارة</div>
+                </div>
+                <nav class="sidebar-nav">
+                    <div class="nav-section">الرئيسية</div>
+                    <a href="/admin"><i class="fas fa-chart-pie"></i> <span>لوحة البيانات</span></a>
+                    <a href="/admin/advanced" class="active"><i class="fas fa-tachometer-alt"></i> <span>لوحة التحكم</span></a>
+                    <div class="nav-section">الإدارة</div>
+                    <a href="/admin/orders"><i class="fas fa-shopping-cart"></i> <span>الطلبات</span></a>
+                    <a href="/admin/products"><i class="fas fa-box"></i> <span>المنتجات</span></a>
+                    <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
+                    <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                    <a href="/admin/confirmed-orders"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
+                    <div class="nav-section">النظام</div>
+                    <a href="/admin/settings"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
+                    <a href="/admin/users"><i class="fas fa-users"></i> <span>العملاء</span></a>
+                    <a href="/logout"><i class="fas fa-sign-out-alt"></i> <span>تسجيل الخروج</span></a>
+                </nav>
+            </aside>
+            <main class="main-content">
+                <div class="top-bar">
+                    <div class="page-title"><i class="fas fa-tachometer-alt"></i> لوحة التحكم</div>
+                    <div class="user-info">
+                        <span>مرحباً، المدير</span>
                     </div>
                 </div>
-            </div>
+                <div class="content">
+                    <div class="page-hero" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <h1>🛠️ لوحة التحكم</h1>
+                        <p>إدارة وعرض جميع البيانات من تطبيق الجوال</p>
+                    </div>
+                    
+                    <div class="controls">
+                        <a href="/admin/advanced" class="btn btn-success">🛠️ لوحة التحكم</a>
+                        <a href="/admin/orders" class="btn btn-primary">🛒 إدارة الطلبات</a>
+                        <a href="/admin/confirmed-orders" class="btn btn-info">✅ الطلبات المؤكدة</a>
+                        <a href="/admin/users" class="btn btn-info">👥 بيانات العملاء</a>
+                        <a href="/admin/coupons" class="btn btn-info">🎫 إدارة الكوبونات</a>
+                        <a href="/admin/gift-cards" class="btn btn-info">💳 إدارة القسائم</a>
+                        <a href="/admin/products" class="btn btn-info">🛍️ إدارة المنتجات</a>
+                        <a href="/admin/settings" class="btn btn-info">⚙️ إعدادات النظام</a>
+                        <a href="/" class="btn btn-secondary">🏠 الرئيسية</a>
+                        <button onclick="clearAllData()" class="btn btn-danger">🗑️ مسح جميع البيانات</button>
+                        <div style="margin-right: auto; display: flex; align-items: center; gap: 15px;">
+                            <div class="stats-card">
+                                <strong>عدد السجلات:</strong> <span style="color: var(--accent); font-weight: bold;">${rows.length}</span>
+                            </div>
+                            <div class="stats-card">
+                                <strong>الحالة:</strong> <span style="color: var(--success); font-weight: bold;">✅ نشط</span>
+                            </div>
+                        </div>
+                    </div>
             
             <div class="table-container">
                 <table>
@@ -4043,6 +3921,8 @@ app.get('/admin/advanced', (req, res) => {
                     </tbody>
                 </table>
             </div>
+            </div>
+            </main>
         </div>
 
         <script>
@@ -4087,54 +3967,68 @@ app.get('/admin/users', (req, res) => {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>بيانات العملاء - نظام المتجر</title>
-        <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; }
-            .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%); color: white; padding: 30px; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-            .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-            .nav-btn { background: white; padding: 10px 20px; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.05); transition: all 0.3s; font-weight: 500; }
-            .nav-btn:hover { background: #2196F3; color: white; transform: translateY(-2px); }
-            .user-card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-right: 5px solid #2196F3; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
-            .user-info { flex-grow: 1; }
-            .user-name { font-size: 1.2rem; font-weight: bold; color: #1976D2; margin-bottom: 5px; }
-            .user-meta { color: #666; font-size: 0.9rem; }
-            .user-date { color: #999; font-size: 0.8rem; }
-            .empty-state { text-align: center; padding: 50px; background: white; border-radius: 15px; color: #666; }
-        </style>
+        <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <link rel="stylesheet" href="/admin-style.css">
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-                <h1 style="margin: 0;">👥 بيانات العملاء المسجلين</h1>
-                <p style="margin: 10px 0 0 0; opacity: 0.9;">إدارة وعرض بيانات العملاء الذين قاموا بالتسجيل في التطبيق</p>
-            </div>
-
-            <div class="nav">
-                <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
-                <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
-                <a href="/admin/confirmed-orders" class="nav-btn">✅ الطلبات المؤكدة</a>
-                <a href="/admin/users" class="nav-btn" style="background: #2196F3; color: white;">👥 بيانات العملاء</a>
-                <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
-                <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
-                <a href="/" class="nav-btn">🏠 الرئيسية</a>
-            </div>
-
-            ${rows.length === 0 ? `
-                <div class="empty-state">
-                    <h3>📭 لا يوجد عملاء مسجلين حتى الآن</h3>
+        <div class="layout">
+            <aside class="sidebar">
+                <div class="sidebar-brand">
+                    <h2><i class="fas fa-store-alt"></i> ريدشي</h2>
+                    <div class="brand-sub">لوحة الإدارة</div>
                 </div>
-            ` : rows.map(user => `
-                <div class="user-card">
+                <nav class="sidebar-nav">
+                    <div class="nav-section">الرئيسية</div>
+                    <a href="/admin"><i class="fas fa-chart-pie"></i> <span>لوحة البيانات</span></a>
+                    <a href="/admin/advanced"><i class="fas fa-tachometer-alt"></i> <span>لوحة التحكم</span></a>
+                    <div class="nav-section">الإدارة</div>
+                    <a href="/admin/orders"><i class="fas fa-shopping-cart"></i> <span>الطلبات</span></a>
+                    <a href="/admin/products"><i class="fas fa-box"></i> <span>المنتجات</span></a>
+                    <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
+                    <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                    <a href="/admin/confirmed-orders"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
+                    <div class="nav-section">النظام</div>
+                    <a href="/admin/settings"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
+                    <a href="/admin/users" class="active"><i class="fas fa-users"></i> <span>العملاء</span></a>
+                    <a href="/logout"><i class="fas fa-sign-out-alt"></i> <span>تسجيل الخروج</span></a>
+                </nav>
+            </aside>
+            <main class="main-content">
+                <div class="top-bar">
+                    <div class="page-title"><i class="fas fa-users"></i> بيانات العملاء</div>
                     <div class="user-info">
-                        <div class="user-name">${user.name}</div>
-                        <div class="user-meta">
-                            📧 البريد: ${user.email} | 📱 الهاتف: ${user.phone || 'غير متوفر'}
-                        </div>
-                        ${user.message ? `<div style="margin-top: 10px; background: #f8f9fa; padding: 10px; border-radius: 5px; font-size: 0.9rem;">💬 الرسالة: ${user.message}</div>` : ''}
-                        <div class="user-date" style="margin-top: 10px;">📅 تاريخ التسجيل: ${new Date(user.created_at).toLocaleString('ar-SA')}</div>
+                        <span>مرحباً، المدير</span>
                     </div>
                 </div>
-            `).join('')}
+                <div class="content">
+                    <div class="page-hero" style="background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);">
+                        <h1>👥 بيانات العملاء المسجلين</h1>
+                        <p>إدارة وعرض بيانات العملاء الذين قاموا بالتسجيل في التطبيق</p>
+                    </div>
+
+                    ${rows.length === 0 ? `
+                        <div class="empty-state">
+                            <div class="empty-icon">📭</div>
+                            <h3>لا يوجد عملاء مسجلين حتى الآن</h3>
+                        </div>
+                    ` : rows.map(user => `
+                        <div class="card" style="margin-bottom: 16px; border-right: 4px solid var(--accent);">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+                                <div>
+                                    <h3 style="color: var(--accent); margin: 0 0 8px;">${user.name}</h3>
+                                    <div style="color: var(--text-muted); font-size: 0.9rem;">
+                                        <i class="fas fa-envelope"></i> ${user.email} | <i class="fas fa-phone"></i> ${user.phone || 'غير متوفر'}
+                                    </div>
+                                    ${user.message ? `<div style="margin-top: 10px; background: var(--bg); padding: 12px; border-radius: 6px; font-size: 0.9rem;"><i class="fas fa-comment"></i> ${user.message}</div>` : ''}
+                                    <div style="margin-top: 10px; font-size: 0.8rem; color: var(--text-light);"><i class="fas fa-calendar"></i> تاريخ التسجيل: ${new Date(user.created_at).toLocaleString('ar-SA')}</div>
+                                </div>
+                                <a href="/admin/purchases/${user.phone || ''}?name=${encodeURIComponent(user.name)}" class="btn btn-primary btn-sm"><i class="fas fa-shopping-bag"></i> المشتريات</a>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </main>
         </div>
     </body>
     </html>
@@ -4160,76 +4054,52 @@ app.get('/admin/orders', (req, res) => {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>إدارة الطلبات - نظام المتجر</title>
+        <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <link rel="stylesheet" href="/admin-style.css">
         <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
-            .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; position: relative; }
-            .order-card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-right: 4px solid #ff6b6b; }
-            .order-card.noon { border-right-color: #F4C430; }
-            .order-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
-            .order-number { background: #ff6b6b; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; }
-            .order-number-noon { background: #F4C430; color: #000; padding: 8px 16px; border-radius: 20px; font-weight: bold; }
-            .order-status { padding: 6px 12px; border-radius: 15px; font-size: 14px; font-weight: bold; }
-            .status-pending { background: #fff3cd; color: #856404; }
-            .status-confirmed { background: #e1bee7; color: #6a1b9a; }
-            .status-completed { background: #d1ecf1; color: #0c5460; }
-            .status-cancelled { background: #f8d7da; color: #721c24; }
-            .order-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
-            .detail-item { background: #f8f9fa; padding: 12px; border-radius: 8px; }
-            .items-list { background: #f8f9fa; padding: 15px; border-radius: 8px; }
-            .item-card { background: white; padding: 10px; margin-bottom: 8px; border-radius: 6px; border-left: 3px solid #ff6b6b; }
-            .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-            .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
-            .nav-btn:hover { background: #ff6b6b; color: white; transform: translateY(-2px); }
-            .nav-btn-noon { background: #F4C430; color: #000; }
-            .nav-btn-noon:hover { background: #E6B800; color: #000; }
-            .logout-btn { position: absolute; left: 20px; top: 20px; background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
-            .logout-btn:hover { background: #d32f2f; transform: translateY(-2px); }
-            .empty-state { text-align: center; padding: 60px; color: #666; background: white; border-radius: 15px; }
-            .customer-info { background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
-            .export-section { background: white; padding: 25px; border-radius: 15px; margin-bottom: 30px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
-            .orders-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; }
-            .export-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px; }
-            .form-group { display: flex; flex-direction: column; }
-            .form-label { margin-bottom: 5px; font-weight: 600; color: #333; }
-            .form-control { padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
-            .btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
-            .btn-success { background: #4CAF50; color: white; }
-            .btn-success:hover { background: #388E3C; transform: translateY(-2px); }
-            .btn-info { background: #2196F3; color: white; }
-            .btn-info:hover { background: #1976D2; transform: translateY(-2px); }
-            .quick-export { display: flex; gap: 10px; flex-wrap: wrap; }
-            .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
-            .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-            .stat-number { font-size: 24px; font-weight: bold; }
-            .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
-            .payment-info { background: #e8f5e8; padding: 12px; border-radius: 8px; margin-top: 10px; border-right: 3px solid #4CAF50; }
-            .product-url { color: #1976D2; text-decoration: none; font-size: 12px; }
-            .product-url:hover { text-decoration: underline; }
-            .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
-            .tab { padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer; font-weight: 500; transition: all 0.3s; }
-            .tab.active { background: #ff6b6b; color: white; }
-            .tab.active-noon { background: #F4C430; color: #000; }
-            .tab:hover:not(.active) { background: #f0f0f0; }
-            .tab.noon:hover { background: #F4C430; }
+            .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 2px solid var(--border); padding-bottom: 0; }
+            .tab { padding: 10px 20px; border: none; background: transparent; cursor: pointer; font-weight: 500; font-family: var(--font); color: var(--text-muted); transition: all 0.2s ease; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+            .tab:hover { color: var(--text); }
+            .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+            .tab.active-noon { color: #F4C430; border-bottom-color: #F4C430; }
         </style>
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-
-                <h1 style="margin: 0;">🛒 إدارة الطلبات - نظام المتجر</h1>
-                <p style="margin: 10px 0 0 0; opacity: 0.9;">جميع الطلبات المرسلة من تطبيق الجوال</p>
-            </div>
-            
-            <div class="nav">
-
-                <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
-                <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
-                <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
-                <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
-                <a href="/" class="nav-btn">🏠 الرئيسية</a>
-            </div>
+        <div class="layout">
+            <aside class="sidebar">
+                <div class="sidebar-brand">
+                    <h2><i class="fas fa-store-alt"></i> ريدشي</h2>
+                    <div class="brand-sub">لوحة الإدارة</div>
+                </div>
+                <nav class="sidebar-nav">
+                    <div class="nav-section">الرئيسية</div>
+                    <a href="/admin"><i class="fas fa-chart-pie"></i> <span>لوحة البيانات</span></a>
+                    <a href="/admin/advanced"><i class="fas fa-tachometer-alt"></i> <span>لوحة التحكم</span></a>
+                    <div class="nav-section">الإدارة</div>
+                    <a href="/admin/orders" class="active"><i class="fas fa-shopping-cart"></i> <span>الطلبات</span></a>
+                    <a href="/admin/products"><i class="fas fa-box"></i> <span>المنتجات</span></a>
+                    <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
+                    <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                    <a href="/admin/confirmed-orders"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
+                    <div class="nav-section">النظام</div>
+                    <a href="/admin/settings"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
+                    <a href="/admin/users"><i class="fas fa-users"></i> <span>العملاء</span></a>
+                    <a href="/logout"><i class="fas fa-sign-out-alt"></i> <span>تسجيل الخروج</span></a>
+                </nav>
+            </aside>
+            <main class="main-content">
+                <div class="top-bar">
+                    <div class="page-title"><i class="fas fa-shopping-cart"></i> إدارة الطلبات</div>
+                    <div class="user-info">
+                        <span>مرحباً، المدير</span>
+                    </div>
+                </div>
+                <div class="content">
+                    <div class="page-hero" style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);">
+                        <h1>🛒 إدارة الطلبات</h1>
+                        <p>جميع الطلبات المرسلة من تطبيق الجوال</p>
+                    </div>
 
             <!-- تبويبات تصفية الطلبات -->
             <div class="tabs">
@@ -4472,6 +4342,8 @@ app.get('/admin/orders', (req, res) => {
         }
 
         html += `
+            </div>
+            </main>
         </div>
 
         <script>
@@ -4561,74 +4433,52 @@ app.get('/admin/coupons', (req, res) => {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>إدارة الكوبونات - نظام المتجر</title>
+        <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <link rel="stylesheet" href="/admin-style.css">
         <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
-            .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; position: relative; }
-            .coupon-card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-right: 4px solid #4CAF50; transition: all 0.3s; }
-            .coupon-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
-            .coupon-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
-            .coupon-code { background: #4CAF50; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 16px; }
-            .coupon-status { padding: 6px 12px; border-radius: 15px; font-size: 14px; font-weight: bold; }
-            .status-active { background: #d1ecf1; color: #0c5460; }
-            .status-inactive { background: #f8d7da; color: #721c24; }
-            .status-expired { background: #fff3cd; color: #856404; }
-            .coupon-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
-            .detail-item { background: #f8f9fa; padding: 12px; border-radius: 8px; border-left: 3px solid #4CAF50; }
-            .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-            .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
-            .nav-btn:hover { background: #4CAF50; color: white; transform: translateY(-2px); }
-            .logout-btn { position: absolute; left: 20px; top: 20px; background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
-            .logout-btn:hover { background: #d32f2f; transform: translateY(-2px); }
-            .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
-            .btn-primary { background: #2196F3; color: white; }
-            .btn-primary:hover { background: #1976D2; transform: translateY(-2px); }
-            .btn-danger { background: #f44336; color: white; }
-            .btn-danger:hover { background: #d32f2f; transform: translateY(-2px); }
-            .btn-success { background: #4CAF50; color: white; }
-            .btn-success:hover { background: #388E3C; transform: translateY(-2px); }
-            .btn-warning { background: #ff9800; color: white; }
-            .btn-warning:hover { background: #f57c00; transform: translateY(-2px); }
-            .empty-state { text-align: center; padding: 60px; color: #666; background: white; border-radius: 15px; }
-            .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1000; }
-            .modal-content { background-color: white; margin: 5% auto; padding: 30px; border-radius: 15px; width: 80%; max-width: 600px; max-height: 80vh; overflow-y: auto; }
-            .form-group { margin-bottom: 15px; }
-            .form-control { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
-            .form-label { display: block; margin-bottom: 5px; font-weight: 600; color: #333; }
-            .form-help { font-size: 12px; color: #666; margin-top: 4px; }
-            .close { float: left; font-size: 28px; font-weight: bold; cursor: pointer; color: #666; }
-            .close:hover { color: #000; }
-            .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
-            .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-            .stat-number { font-size: 24px; font-weight: bold; color: #4CAF50; }
-            .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
-            .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
-            .tab { padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer; font-weight: 500; transition: all 0.3s; }
-            .tab.active { background: #4CAF50; color: white; }
-            .tab.active-noon { background: #F4C430; color: #000; }
-            .tab:hover:not(.active) { background: #f0f0f0; }
-            .tab.noon:hover { background: #F4C430; }
-            .coupon-card.noon { border-right-color: #F4C430; }
-            .coupon-code-noon { background: #F4C430; color: #000; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 16px; }
+            .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 2px solid var(--border); padding-bottom: 0; }
+            .tab { padding: 10px 20px; border: none; background: transparent; cursor: pointer; font-weight: 500; font-family: var(--font); color: var(--text-muted); transition: all 0.2s ease; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+            .tab:hover { color: var(--text); }
+            .tab.active { color: var(--success); border-bottom-color: var(--success); }
+            .tab.active-noon { color: #F4C430; border-bottom-color: #F4C430; }
         </style>
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-
-                <h1 style="margin: 0;">🎫 إدارة الكوبونات - نظام المتجر</h1>
-                <p style="margin: 10px 0 0 0; opacity: 0.9;">إنشاء وتعديل وحذف كوبونات الخصم مع تحديد الصلاحية</p>
-            </div>
-
-            <div class="nav">
-
-                <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
-                <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
-                <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
-                <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
-                <a href="/" class="nav-btn">🏠 الرئيسية</a>
-                <button onclick="showAddModal()" class="btn btn-success">+ إضافة كوبون جديد</button>
-            </div>
+        <div class="layout">
+            <aside class="sidebar">
+                <div class="sidebar-brand">
+                    <h2><i class="fas fa-store-alt"></i> ريدشي</h2>
+                    <div class="brand-sub">لوحة الإدارة</div>
+                </div>
+                <nav class="sidebar-nav">
+                    <div class="nav-section">الرئيسية</div>
+                    <a href="/admin"><i class="fas fa-chart-pie"></i> <span>لوحة البيانات</span></a>
+                    <a href="/admin/advanced"><i class="fas fa-tachometer-alt"></i> <span>لوحة التحكم</span></a>
+                    <div class="nav-section">الإدارة</div>
+                    <a href="/admin/orders"><i class="fas fa-shopping-cart"></i> <span>الطلبات</span></a>
+                    <a href="/admin/products"><i class="fas fa-box"></i> <span>المنتجات</span></a>
+                    <a href="/admin/coupons" class="active"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
+                    <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                    <a href="/admin/confirmed-orders"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
+                    <div class="nav-section">النظام</div>
+                    <a href="/admin/settings"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
+                    <a href="/admin/users"><i class="fas fa-users"></i> <span>العملاء</span></a>
+                    <a href="/logout"><i class="fas fa-sign-out-alt"></i> <span>تسجيل الخروج</span></a>
+                </nav>
+            </aside>
+            <main class="main-content">
+                <div class="top-bar">
+                    <div class="page-title"><i class="fas fa-tags"></i> إدارة الكوبونات</div>
+                    <div class="user-info">
+                        <span>مرحباً، المدير</span>
+                    </div>
+                </div>
+                <div class="content">
+                    <div class="page-hero" style="background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);">
+                        <h1>🎫 إدارة الكوبونات</h1>
+                        <p>إنشاء وتعديل وحذف كوبونات الخصم مع تحديد الصلاحية</p>
+                    </div>
 
             <!-- تبويبات تصفية الكوبونات -->
             <div class="tabs">
@@ -5088,6 +4938,9 @@ app.get('/admin/coupons', (req, res) => {
                 });
             }
         </script>
+            </div>
+            </main>
+        </div>
     </body>
     </html>
     `;
@@ -5106,65 +4959,45 @@ app.get('/admin/gift-cards', (req, res) => {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>إدارة القسائم الشرائية - نظام المتجر</title>
-        <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
-            .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #9C27B0 0%, #6A1B9A 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; position: relative; }
-            .gift-card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-right: 4px solid #9C27B0; transition: all 0.3s; }
-            .gift-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
-            .gift-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
-            .gift-card-number { background: #9C27B0; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 16px; }
-            .gift-card-status { padding: 6px 12px; border-radius: 15px; font-size: 14px; font-weight: bold; }
-            .status-active { background: #d1ecf1; color: #0c5460; }
-            .status-inactive { background: #f8d7da; color: #721c24; }
-            .status-expired { background: #fff3cd; color: #856404; }
-            .status-used { background: #e2e3e5; color: #383d41; }
-            .gift-card-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
-            .detail-item { background: #f8f9fa; padding: 12px; border-radius: 8px; border-left: 3px solid #9C27B0; }
-            .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-            .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
-            .nav-btn:hover { background: #9C27B0; color: white; transform: translateY(-2px); }
-            .logout-btn { position: absolute; left: 20px; top: 20px; background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
-            .logout-btn:hover { background: #d32f2f; transform: translateY(-2px); }
-            .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
-            .btn-primary { background: #2196F3; color: white; }
-            .btn-primary:hover { background: #1976D2; transform: translateY(-2px); }
-            .btn-danger { background: #f44336; color: white; }
-            .btn-danger:hover { background: #d32f2f; transform: translateY(-2px); }
-            .btn-success { background: #4CAF50; color: white; }
-            .btn-success:hover { background: #388E3C; transform: translateY(-2px); }
-            .btn-warning { background: #ff9800; color: white; }
-            .btn-warning:hover { background: #f57c00; transform: translateY(-2px); }
-            .empty-state { text-align: center; padding: 60px; color: #666; background: white; border-radius: 15px; }
-            .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1000; }
-            .modal-content { background-color: white; margin: 5% auto; padding: 30px; border-radius: 15px; width: 80%; max-width: 600px; max-height: 80vh; overflow-y: auto; }
-            .form-group { margin-bottom: 15px; }
-            .form-control { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
-            .form-label { display: block; margin-bottom: 5px; font-weight: 600; color: #333; }
-            .form-help { font-size: 12px; color: #666; margin-top: 4px; }
-            .close { float: left; font-size: 28px; font-weight: bold; cursor: pointer; color: #666; }
-            .close:hover { color: #000; }
-            .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
-            .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-            .stat-number { font-size: 24px; font-weight: bold; color: #9C27B0; }
-            .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
-            .balance-bar { background: #e9ecef; border-radius: 10px; height: 10px; margin-top: 5px; overflow: hidden; }
-            .balance-fill { background: #4CAF50; height: 100%; border-radius: 10px; }
-        </style>
+        <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <link rel="stylesheet" href="/admin-style.css">
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-
-                <h1 style="margin: 0;">💳 إدارة القسائم الشرائية - نظام المتجر</h1>
-                <p style="margin: 10px 0 0 0; opacity: 0.9;">إنشاء وتعديل وحذف القسائم الشرائية مع إدارة الرصيد والصلاحية</p>
-            </div>
-
-            <div class="nav">
-
-                <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
-                <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
-                <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
+        <div class="layout">
+            <aside class="sidebar">
+                <div class="sidebar-brand">
+                    <h2><i class="fas fa-store-alt"></i> ريدشي</h2>
+                    <div class="brand-sub">لوحة الإدارة</div>
+                </div>
+                <nav class="sidebar-nav">
+                    <div class="nav-section">الرئيسية</div>
+                    <a href="/admin"><i class="fas fa-chart-pie"></i> <span>لوحة البيانات</span></a>
+                    <a href="/admin/advanced"><i class="fas fa-tachometer-alt"></i> <span>لوحة التحكم</span></a>
+                    <div class="nav-section">الإدارة</div>
+                    <a href="/admin/orders"><i class="fas fa-shopping-cart"></i> <span>الطلبات</span></a>
+                    <a href="/admin/products"><i class="fas fa-box"></i> <span>المنتجات</span></a>
+                    <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
+                    <a href="/admin/gift-cards" class="active"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                    <a href="/admin/confirmed-orders"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
+                    <div class="nav-section">النظام</div>
+                    <a href="/admin/settings"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
+                    <a href="/admin/users"><i class="fas fa-users"></i> <span>العملاء</span></a>
+                    <a href="/logout"><i class="fas fa-sign-out-alt"></i> <span>تسجيل الخروج</span></a>
+                </nav>
+            </aside>
+            <main class="main-content">
+                <div class="top-bar">
+                    <div class="page-title"><i class="fas fa-gift"></i> إدارة القسائم الشرائية</div>
+                    <div class="user-info">
+                        <span>مرحباً، المدير</span>
+                    </div>
+                </div>
+                <div class="content">
+                    <div class="page-hero" style="background: linear-gradient(135deg, #9C27B0 0%, #6A1B9A 100%);">
+                        <h1>💳 إدارة القسائم الشرائية</h1>
+                        <p>إنشاء وتعديل وحذف القسائم الشرائية مع إدارة الرصيد والصلاحية</p>
+                    </div>
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
                 <button onclick="showAddModal()" class="btn btn-success">+ إضافة قسيمة جديدة</button>
@@ -5589,6 +5422,9 @@ app.get('/admin/gift-cards', (req, res) => {
                 });
             }
         </script>
+            </div>
+            </main>
+        </div>
     </body>
     </html>
     `;
@@ -5606,57 +5442,45 @@ app.get('/admin/settings', (req, res) => {
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>إعدادات النظام - لوحة التحكم</title>
-      <style>
-          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; min-height: 100vh; }
-          .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%); color: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; position: relative; }
-          .nav { display: flex; gap: 10px; margin-bottom: 30px; flex-wrap: wrap; }
-          .nav-btn { background: #fff; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
-          .nav-btn:hover { background: #4CAF50; color: white; transform: translateY(-2px); }
-          .logout-btn { position: absolute; left: 20px; top: 20px; background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 25px; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
-          .logout-btn:hover { background: #d32f2f; transform: translateY(-2px); }
-          .settings-card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); margin-bottom: 30px; }
-          .setting-item { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid #eee; }
-          .setting-item:last-child { border-bottom: none; }
-          .setting-label { font-weight: 600; color: #333; }
-          .setting-description { font-size: 14px; color: #666; margin-top: 5px; }
-          .setting-control { flex: 1; max-width: 300px; }
-          .form-control { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
-          .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; font-weight: 500; }
-          .btn-primary { background: #2196F3; color: white; }
-          .btn-primary:hover { background: #1976D2; }
-          .btn-success { background: #4CAF50; color: white; }
-          .btn-success:hover { background: #388E3C; }
-          .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
-          .switch input { opacity: 0; width: 0; height: 0; }
-          .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
-          .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
-          input:checked + .slider { background-color: #4CAF50; }
-          input:checked + .slider:before { transform: translateX(26px); }
-          .toast { position: fixed; bottom: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 25px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: none; z-index: 1000; }
-          .toast.show { display: block; animation: fadeIn 0.5s, fadeOut 0.5s 2.5s; }
-          @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-          @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
-          .loading { display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(255,255,255,.3); border-radius: 50%; border-top-color: #fff; animation: spin 1s ease-in-out infinite; }
-          @keyframes spin { to { transform: rotate(360deg); } }
-      </style>
+      <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+      <link rel="stylesheet" href="/admin-style.css">
   </head>
   <body>
-      <div class="container">
-          <div class="header">
-              <a href="/logout" class="logout-btn">🚪 تسجيل الخروج</a>
-              <h1 style="margin: 0;">⚙️ إعدادات النظام</h1>
-              <p style="margin: 10px 0 0 0; opacity: 0.9;">تخصيص إعدادات لوحة التحكم والمتجر</p>
-          </div>
-
-          <div class="nav">
-
-              <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
-              <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
-              <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
-              <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
-              <a href="/" class="nav-btn">🏠 الرئيسية</a>
-          </div>
+      <div class="layout">
+          <aside class="sidebar">
+              <div class="sidebar-brand">
+                  <h2><i class="fas fa-store-alt"></i> ريدشي</h2>
+                  <div class="brand-sub">لوحة الإدارة</div>
+              </div>
+              <nav class="sidebar-nav">
+                  <div class="nav-section">الرئيسية</div>
+                  <a href="/admin"><i class="fas fa-chart-pie"></i> <span>لوحة البيانات</span></a>
+                  <a href="/admin/advanced"><i class="fas fa-tachometer-alt"></i> <span>لوحة التحكم</span></a>
+                  <div class="nav-section">الإدارة</div>
+                  <a href="/admin/orders"><i class="fas fa-shopping-cart"></i> <span>الطلبات</span></a>
+                  <a href="/admin/products"><i class="fas fa-box"></i> <span>المنتجات</span></a>
+                  <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
+                  <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                  <a href="/admin/confirmed-orders"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
+                  <div class="nav-section">النظام</div>
+                  <a href="/admin/settings" class="active"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
+                  <a href="/admin/users"><i class="fas fa-users"></i> <span>العملاء</span></a>
+                  <a href="/logout"><i class="fas fa-sign-out-alt"></i> <span>تسجيل الخروج</span></a>
+              </nav>
+          </aside>
+          <main class="main-content">
+              <div class="top-bar">
+                  <div class="page-title"><i class="fas fa-cog"></i> إعدادات النظام</div>
+                  <div class="user-info">
+                      <span>مرحباً، المدير</span>
+                  </div>
+              </div>
+              <div class="content">
+                  <div class="page-hero" style="background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);">
+                      <h1>⚙️ إعدادات النظام</h1>
+                      <p>تخصيص إعدادات لوحة التحكم والمتجر</p>
+                  </div>
 
           <div class="settings-card">
               <h2 style="margin-top: 0; color: #333;">الإعدادات العامة</h2>
@@ -5795,6 +5619,9 @@ app.get('/admin/settings', (req, res) => {
               }, 3000);
           }
       </script>
+          </div>
+          </main>
+      </div>
   </body>
   </html>
   `);
