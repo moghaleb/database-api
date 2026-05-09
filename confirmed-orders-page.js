@@ -1,6 +1,15 @@
 // صفحة الطلبات المؤكدة
 app.get('/admin/confirmed-orders', (req, res) => {
-  db.all('SELECT * FROM orders WHERE order_status = "confirmed" ORDER BY created_at DESC', (err, rows) => {
+  const storeFilter = req.query.store || 'all';
+  let query = 'SELECT * FROM orders WHERE order_status = "confirmed"';
+  if (storeFilter === 'noon') {
+    query += " AND (cart_items LIKE '%noon%' OR customer_name LIKE '%noon%')";
+  } else if (storeFilter === 'store1') {
+    query += " AND (cart_items NOT LIKE '%noon%' AND customer_name NOT LIKE '%noon%')";
+  }
+  query += ' ORDER BY created_at DESC';
+
+  db.all(query, (err, rows) => {
     let html = `
     <!DOCTYPE html>
     <html dir="rtl">
@@ -50,7 +59,7 @@ app.get('/admin/confirmed-orders', (req, res) => {
             </div>
 
             <div class="nav">
-                <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
+
                 <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
                 <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
                 <a href="/admin/confirmed-orders" class="nav-btn">✅ الطلبات المؤكدة</a>
@@ -60,6 +69,29 @@ app.get('/admin/confirmed-orders', (req, res) => {
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
             </div>
+
+            <!-- تبويبات تصفية الطلبات -->
+            <div class="tabs" style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ddd; padding-bottom: 10px;">
+                <button class="tab" id="tabAll" onclick="location.href='/admin/confirmed-orders'" style="padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer; font-weight: 500; transition: all 0.3s;">📋 جميع الطلبات</button>
+                <button class="tab" id="tabStore1" onclick="location.href='/admin/confirmed-orders?store=store1'" style="padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer; font-weight: 500; transition: all 0.3s; color: #1976D2;">🏪 المتجر الأول (lib/pages)</button>
+                <button class="tab noon" id="tabNoon" onclick="location.href='/admin/confirmed-orders?store=noon'" style="padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer; font-weight: 500; transition: all 0.3s;">🛒 طلبات noon</button>
+            </div>
+            <style>
+                .tab.active { background: #4CAF50 !important; color: white !important; }
+                .tab.active-noon { background: #F4C430 !important; color: #000 !important; }
+                .tab:hover:not(.active) { background: #f0f0f0; }
+            </style>
+            <script>
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.get('store') === 'noon') {
+                    document.getElementById('tabNoon').classList.add('active-noon');
+                } else if (urlParams.get('store') === 'store1') {
+                    document.getElementById('tabStore1').classList.add('active');
+                    document.getElementById('tabStore1').style.color = 'white';
+                } else {
+                    document.getElementById('tabAll').classList.add('active');
+                }
+            </script>
 
             <div class="stats-grid">
                 <div class="stat-card" style="border-right: 4px solid #8e24aa;">

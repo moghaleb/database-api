@@ -4054,6 +4054,8 @@ app.get('/admin/orders', (req, res) => {
     let query = 'SELECT * FROM orders ORDER BY created_at DESC';
     if (storeFilter === 'noon') {
         query = "SELECT * FROM orders WHERE cart_items LIKE '%noon%' OR customer_name LIKE '%noon%' ORDER BY created_at DESC";
+    } else if (storeFilter === 'store1') {
+        query = "SELECT * FROM orders WHERE cart_items NOT LIKE '%noon%' AND customer_name NOT LIKE '%noon%' ORDER BY created_at DESC";
     }
     db.all(query, (err, rows) => {
         let html = `
@@ -4137,12 +4139,16 @@ app.get('/admin/orders', (req, res) => {
             <!-- تبويبات تصفية الطلبات -->
             <div class="tabs">
                 <button class="tab" id="tabAll" onclick="location.href='/admin/orders'">📋 جميع الطلبات</button>
+                <button class="tab" id="tabStore1" onclick="location.href='/admin/orders?store=store1'" style="color: #1976D2;">🏪 المتجر الأول (lib/pages)</button>
                 <button class="tab noon" id="tabNoon" onclick="location.href='/admin/orders?store=noon'">🛒 طلبات noon</button>
             </div>
             <script>
                 const urlParams = new URLSearchParams(window.location.search);
                 if (urlParams.get('store') === 'noon') {
                     document.getElementById('tabNoon').classList.add('active-noon');
+                } else if (urlParams.get('store') === 'store1') {
+                    document.getElementById('tabStore1').classList.add('active');
+                    document.getElementById('tabStore1').style.color = 'white';
                 } else {
                     document.getElementById('tabAll').classList.add('active');
                 }
