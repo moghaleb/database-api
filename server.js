@@ -1856,7 +1856,7 @@ app.post('/api/save-data', (req, res) => {
 
     db.run(
         'INSERT INTO test_users (name, email, phone, message) VALUES (?, ?, ?, ?)',
-        [name, email, phone || '', message || ''],
+        [name, email || '', phone || '', message || ''],
         function (err) {
             if (err) {
                 console.error('❌ خطأ في حفظ البيانات:', err);
