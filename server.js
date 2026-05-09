@@ -4048,6 +4048,76 @@ app.get('/admin/advanced', (req, res) => {
     });
 });
 
+// صفحة بيانات المستخدمين (العملاء)
+app.get('/admin/users', (req, res) => {
+    db.all('SELECT * FROM test_users ORDER BY created_at DESC', (err, rows) => {
+        if (err) {
+            return res.status(500).send('خطأ في قاعدة البيانات');
+        }
+
+        let html = `
+    <!DOCTYPE html>
+    <html dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>بيانات العملاء - نظام المتجر</title>
+        <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; }
+            .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%); color: white; padding: 30px; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+            .nav { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+            .nav-btn { background: white; padding: 10px 20px; border-radius: 25px; text-decoration: none; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.05); transition: all 0.3s; font-weight: 500; }
+            .nav-btn:hover { background: #2196F3; color: white; transform: translateY(-2px); }
+            .user-card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-right: 5px solid #2196F3; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
+            .user-info { flex-grow: 1; }
+            .user-name { font-size: 1.2rem; font-weight: bold; color: #1976D2; margin-bottom: 5px; }
+            .user-meta { color: #666; font-size: 0.9rem; }
+            .user-date { color: #999; font-size: 0.8rem; }
+            .empty-state { text-align: center; padding: 50px; background: white; border-radius: 15px; color: #666; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">👥 بيانات العملاء المسجلين</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">إدارة وعرض بيانات العملاء الذين قاموا بالتسجيل في التطبيق</p>
+            </div>
+
+            <div class="nav">
+                <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
+                <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
+                <a href="/admin/confirmed-orders" class="nav-btn">✅ الطلبات المؤكدة</a>
+                <a href="/admin/users" class="nav-btn" style="background: #2196F3; color: white;">👥 بيانات العملاء</a>
+                <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
+                <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
+                <a href="/" class="nav-btn">🏠 الرئيسية</a>
+            </div>
+
+            ${rows.length === 0 ? `
+                <div class="empty-state">
+                    <h3>📭 لا يوجد عملاء مسجلين حتى الآن</h3>
+                </div>
+            ` : rows.map(user => `
+                <div class="user-card">
+                    <div class="user-info">
+                        <div class="user-name">${user.name}</div>
+                        <div class="user-meta">
+                            📧 البريد: ${user.email} | 📱 الهاتف: ${user.phone || 'غير متوفر'}
+                        </div>
+                        ${user.message ? `<div style="margin-top: 10px; background: #f8f9fa; padding: 10px; border-radius: 5px; font-size: 0.9rem;">💬 الرسالة: ${user.message}</div>` : ''}
+                        <div class="user-date" style="margin-top: 10px;">📅 تاريخ التسجيل: ${new Date(user.created_at).toLocaleString('ar-SA')}</div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    </body>
+    </html>
+        `;
+        res.send(html);
+    });
+});
+
 // صفحة إدارة الطلبات
 app.get('/admin/orders', (req, res) => {
     const storeFilter = req.query.store || 'all';
