@@ -89,6 +89,7 @@ app.use(cors({
     origin: [
         'https://redme.cfd',
         'http://redme.cfd',
+        'https://database-api-kvxr.onrender.com',
         'https://www.redme.cfd',
         'http://www.redme.cfd',
         'http://localhost:3000',
