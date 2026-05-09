@@ -4126,7 +4126,7 @@ app.get('/admin/orders', (req, res) => {
             </div>
             
             <div class="nav">
-                <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
+
                 <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
                 <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
                 <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
@@ -4520,7 +4520,7 @@ app.get('/admin/coupons', (req, res) => {
             </div>
 
             <div class="nav">
-                <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
+
                 <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
                 <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
                 <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
@@ -5060,7 +5060,7 @@ app.get('/admin/gift-cards', (req, res) => {
             </div>
 
             <div class="nav">
-                <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
+
                 <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
                 <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
                 <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
@@ -5549,7 +5549,7 @@ app.get('/admin/settings', (req, res) => {
           </div>
 
           <div class="nav">
-              <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
+
               <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
               <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
               <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
