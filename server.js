@@ -4135,22 +4135,6 @@ app.get('/admin/users', (req, res) => {
                     </div>
                 </div>
             `).join('')}
-
-            <div style="margin-top: 40px; background: #333; color: #fff; padding: 20px; border-radius: 10px; font-family: monospace;">
-                <h3 style="color: #FF9800; margin-top: 0;">🛠️ سجل مراقبة الطلبات (Logs)</h3>
-                <p style="font-size: 0.8rem; color: #aaa;">هنا تظهر الطلبات التي تصل من الجوال في هذه اللحظة:</p>
-                <div id="logs">
-                    ${incomingLogs.length === 0 ? '<p style="color: #666;">لا توجد طلبات مسجلة حالياً...</p>' : incomingLogs.map(log => `
-                        <div style="border-bottom: 1px solid #444; padding: 10px 0; font-size: 0.9rem;">
-                            <span style="color: #999;">[${log.time}]</span> 
-                            <span style="color: ${log.type === 'ERROR' ? '#f44336' : log.type === 'SUCCESS' ? '#4CAF50' : '#2196F3'}; font-weight: bold;">${log.type}</span>: 
-                            ${log.message}
-                            ${log.data ? `<br><small style="color: #888;">البيانات: ${log.data}</small>` : ''}
-                        </div>
-                    `).join('')}
-                </div>
-                <button onclick="location.reload()" style="margin-top: 15px; padding: 5px 15px; cursor: pointer; background: #555; color: white; border: none; border-radius: 4px;">تحديث السجل</button>
-            </div>
         </div>
     </body>
     </html>
