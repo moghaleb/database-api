@@ -59,10 +59,10 @@ app.get('/admin/confirmed-orders', (req, res) => {
             </div>
 
             <div class="nav">
-
                 <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
                 <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
                 <a href="/admin/confirmed-orders" class="nav-btn">✅ الطلبات المؤكدة</a>
+                <a href="/admin/users" class="nav-btn">👥 بيانات العملاء</a>
                 <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
                 <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
                 <a href="/admin/products" class="nav-btn">🛍️ إدارة المنتجات</a>
