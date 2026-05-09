@@ -415,65 +415,86 @@ function renderLoginPageHTML(req, res, message = '') {
       <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        ::selection { background: #06b6d4; color: white; }
         body {
           font-family: 'Tajawal', sans-serif;
-          background: linear-gradient(135deg, #0f1729 0%, #1a2338 50%, #0f1729 100%);
+          background: #0f1419;
           display: flex;
           align-items: center;
           justify-content: center;
           min-height: 100vh;
           margin: 0;
           padding: 20px;
+          position: relative;
         }
         body::before {
           content: '';
           position: fixed;
-          top: 0; left: 0; width: 100%; height: 100%;
-          background: radial-gradient(ellipse 60% 50% at 50% 30%, rgba(59, 130, 246, 0.06) 0%, transparent 50%);
+          top: -50%; left: -50%;
+          width: 200%; height: 200%;
+          background: radial-gradient(ellipse 50% 40% at 50% 30%, rgba(6,182,212,0.06) 0%, transparent 50%),
+                      radial-gradient(ellipse 40% 30% at 70% 70%, rgba(16,185,129,0.04) 0%, transparent 50%);
           pointer-events: none;
+          animation: bgPulse 8s ease-in-out infinite alternate;
+        }
+        @keyframes bgPulse {
+          0% { transform: scale(1) rotate(0deg); }
+          100% { transform: scale(1.05) rotate(3deg); }
         }
         .login-card {
-          background: rgba(26, 35, 50, 0.9);
-          backdrop-filter: blur(20px);
-          border: 1px solid rgba(148, 163, 184, 0.1);
-          padding: 40px;
-          border-radius: 20px;
+          background: rgba(18, 22, 33, 0.92);
+          backdrop-filter: blur(24px);
+          -webkit-backdrop-filter: blur(24px);
+          border: 1px solid rgba(255,255,255,0.06);
+          padding: 44px;
+          border-radius: 24px;
           width: 400px;
           max-width: 100%;
-          box-shadow: 0 24px 80px rgba(0,0,0,0.4);
+          box-shadow: 0 24px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.02);
           position: relative;
+          overflow: hidden;
+        }
+        .login-card::before {
+          content: '';
+          position: absolute;
+          top: 0; left: 0; right: 0;
+          height: 2px;
+          background: linear-gradient(90deg, transparent, var(--accent, #06b6d4), transparent);
+          opacity: 0.6;
         }
         .login-logo {
-          width: 60px;
-          height: 60px;
-          background: linear-gradient(135deg, #3b82f6, #10b981);
+          width: 56px;
+          height: 56px;
+          background: linear-gradient(135deg, #06b6d4, #0891b2);
           border-radius: 16px;
           display: flex;
           align-items: center;
           justify-content: center;
           margin: 0 auto 20px;
-          font-size: 24px;
+          font-size: 22px;
           color: white;
-          box-shadow: 0 0 30px rgba(59, 130, 246, 0.3);
+          box-shadow: 0 0 40px rgba(6,182,212,0.3);
         }
         h3 {
           text-align: center;
           color: #f1f5f9;
-          margin: 0 0 8px;
-          font-size: 20px;
+          margin: 0 0 6px;
+          font-size: 22px;
+          font-weight: 700;
         }
         .login-sub {
           text-align: center;
-          color: #94a3b8;
-          font-size: 14px;
+          color: rgba(148,163,184,0.7);
+          font-size: 13px;
           margin-bottom: 28px;
+          letter-spacing: 0.5px;
         }
         label {
           display: block;
-          margin: 12px 0 6px;
-          color: #cbd5e1;
-          font-size: 14px;
-          font-weight: 500;
+          margin: 14px 0 6px;
+          color: rgba(203,213,225,0.8);
+          font-size: 13px;
+          font-weight: 600;
         }
         .input-group {
           position: relative;
@@ -483,53 +504,64 @@ function renderLoginPageHTML(req, res, message = '') {
           right: 14px;
           top: 50%;
           transform: translateY(-50%);
-          color: #64748b;
+          color: rgba(100,116,139,0.6);
+          font-size: 0.9rem;
+          transition: color 0.2s;
+        }
+        .input-group:focus-within i {
+          color: #06b6d4;
         }
         input {
           width: 100%;
-          padding: 12px 14px 12px 40px;
-          border: 1px solid rgba(148, 163, 184, 0.2);
-          border-radius: 10px;
-          background: rgba(15, 23, 41, 0.6);
+          padding: 13px 16px 13px 44px;
+          border: 1.5px solid rgba(148,163,184,0.12);
+          border-radius: 12px;
+          background: rgba(15,23,42,0.5);
           color: #f1f5f9;
-          font-size: 15px;
+          font-size: 14px;
           font-family: 'Tajawal', sans-serif;
-          transition: all 0.2s;
+          transition: all 0.25s;
         }
         input:focus {
           outline: none;
-          border-color: #3b82f6;
-          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+          border-color: #06b6d4;
+          box-shadow: 0 0 0 4px rgba(6,182,212,0.12);
+          background: rgba(15,23,42,0.7);
         }
-        input::placeholder { color: #475569; }
+        input::placeholder { color: rgba(71,85,105,0.6); }
         button {
           width: 100%;
-          padding: 12px;
-          background: linear-gradient(135deg, #3b82f6, #2563eb);
+          padding: 13px;
+          background: linear-gradient(135deg, #06b6d4, #0891b2);
           color: white;
           border: none;
-          border-radius: 10px;
-          margin-top: 20px;
-          font-size: 16px;
-          font-weight: 600;
+          border-radius: 12px;
+          margin-top: 24px;
+          font-size: 15px;
+          font-weight: 700;
           font-family: 'Tajawal', sans-serif;
           cursor: pointer;
           transition: all 0.3s;
+          position: relative;
+          overflow: hidden;
         }
         button:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3);
+          transform: translateY(-2px);
+          box-shadow: 0 12px 32px rgba(6,182,212,0.3);
+        }
+        button:active {
+          transform: translateY(0);
         }
         .help {
-          font-size: 13px;
-          color: #64748b;
+          font-size: 12px;
+          color: rgba(100,116,139,0.5);
           text-align: center;
-          margin-top: 20px;
+          margin-top: 24px;
           padding-top: 20px;
-          border-top: 1px solid rgba(148, 163, 184, 0.1);
+          border-top: 1px solid rgba(255,255,255,0.04);
         }
         .help strong {
-          color: #94a3b8;
+          color: rgba(148,163,184,0.7);
         }
       </style>
     </head>
