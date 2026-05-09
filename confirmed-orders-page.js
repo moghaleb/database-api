@@ -5,7 +5,7 @@ app.get('/admin/confirmed-orders', (req, res) => {
     if (storeFilter === 'noon') {
         query += " AND (cart_items LIKE '%noon%' OR customer_name LIKE '%noon%')";
     } else if (storeFilter === 'store1') {
-        query += " AND (cart_items NOT LIKE '%noon%' AND customer_name NOT LIKE '%noon%')";
+        query += " AND (cart_items NOT LIKE '%noon%' AND (customer_name NOT LIKE '%noon%' OR customer_name IS NULL))";
     }
     query += ' ORDER BY created_at DESC';
 

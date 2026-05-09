@@ -120,7 +120,7 @@ app.use(express.urlencoded({ extended: true }));
 //}
 
 // ======== Database Configuration ========
-const db = new sqlite3.Database(':memory:');
+const db = new sqlite3.Database(path.join(__dirname, 'database.db'));
 
 // ======== تهيئة الجداول ========
 db.serialize(() => {
@@ -1847,10 +1847,10 @@ app.post('/api/save-data', (req, res) => {
 
     console.log('📨 بيانات مستلمة:', { name, email, phone, message });
 
-    if (!name || !email) {
+    if (!name) {
         return res.status(400).json({
             status: 'error',
-            message: 'الاسم والبريد الإلكتروني مطلوبان'
+            message: 'الاسم مطلوب'
         });
     }
 
@@ -3608,7 +3608,7 @@ app.get('/admin/purchases/:phone', (req, res) => {
             .status-completed { background: #e3f2fd; color: #1565c0; }
             .status-cancelled { background: #ffebee; color: #c62828; }
             .back-btn { background: #2196F3; color: white; padding: 10px 25px; border-radius: 25px; text-decoration: none; font-weight: bold; transition: all 0.3s; }
-            .back-btn:hover { background: #1976D2; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3); }
+            .back-btn:hover { background: #1976D2; transform: translateY(-2px); }
             .item-list { background: #f9f9f9; padding: 15px; border-radius: 10px; margin-top: 15px; }
             .item-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed #ddd; }
             .item-row:last-child { border-bottom: none; }
@@ -3740,12 +3740,13 @@ app.get('/admin/confirmed-orders', (req, res) => {
             </div>
 
             <div class="nav">
-                <a href="/admin" class="nav-btn">📊 بيانات المستخدمين</a>
                 <a href="/admin/advanced" class="nav-btn">🛠️ لوحة التحكم</a>
                 <a href="/admin/orders" class="nav-btn">🛒 إدارة الطلبات</a>
                 <a href="/admin/confirmed-orders" class="nav-btn">✅ الطلبات المؤكدة</a>
+                <a href="/admin/users" class="nav-btn">👥 بيانات العملاء</a>
                 <a href="/admin/coupons" class="nav-btn">🎫 إدارة الكوبونات</a>
                 <a href="/admin/gift-cards" class="nav-btn">💳 إدارة القسائم</a>
+                <a href="/admin/products" class="nav-btn">🛍️ إدارة المنتجات</a>
                 <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
                 <a href="/" class="nav-btn">🏠 الرئيسية</a>
             </div>
@@ -3959,8 +3960,10 @@ app.get('/admin/advanced', (req, res) => {
                 <a href="/admin/advanced" class="btn btn-success">🛠️ لوحة التحكم</a>
                 <a href="/admin/orders" class="btn btn-success">🛒 إدارة الطلبات</a>
                 <a href="/admin/confirmed-orders" class="btn btn-primary">✅ الطلبات المؤكدة</a>
+                <a href="/admin/users" class="btn btn-info">👥 بيانات العملاء</a>
                 <a href="/admin/coupons" class="btn btn-info">🎫 إدارة الكوبونات</a>
                 <a href="/admin/gift-cards" class="btn btn-info">💳 إدارة القسائم</a>
+                <a href="/admin/products" class="btn btn-info">🛍️ إدارة المنتجات</a>
                 <a href="/admin/settings" class="btn btn-info">⚙️ إعدادات النظام</a>
 
                 <a href="/" class="btn btn-secondary">🏠 الرئيسية</a>
@@ -4123,9 +4126,9 @@ app.get('/admin/orders', (req, res) => {
     const storeFilter = req.query.store || 'all';
     let query = 'SELECT * FROM orders ORDER BY created_at DESC';
     if (storeFilter === 'noon') {
-        query = "SELECT * FROM orders WHERE cart_items LIKE '%noon%' OR customer_name LIKE '%noon%' ORDER BY created_at DESC";
+        query = "SELECT * FROM orders WHERE (cart_items LIKE '%noon%' OR customer_name LIKE '%noon%') ORDER BY created_at DESC";
     } else if (storeFilter === 'store1') {
-        query = "SELECT * FROM orders WHERE cart_items NOT LIKE '%noon%' AND customer_name NOT LIKE '%noon%' ORDER BY created_at DESC";
+        query = "SELECT * FROM orders WHERE (cart_items NOT LIKE '%noon%' AND (customer_name NOT LIKE '%noon%' OR customer_name IS NULL)) ORDER BY created_at DESC";
     }
     db.all(query, (err, rows) => {
         let html = `
