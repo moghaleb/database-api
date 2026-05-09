@@ -124,13 +124,13 @@ function addLog(type, message, data = null) {
 
 
 // ======== إنشاء مجلد التصدير ========
-//const exportsDir = process.env.NODE_ENV === 'production'
-//? '/var/www/redshe/exports'
-//: path.join(__dirname, 'exports');
-//if (!fs.existsSync(exportsDir)) {
-//fs.mkdirSync(exportsDir, { recursive: true });
-//console.log('✅ تم إنشاء مجلد التصدير:', exportsDir);
-//}
+const exportsDir = process.env.NODE_ENV === 'production'
+  ? '/var/www/redshe/exports'
+  : path.join(__dirname, 'exports');
+if (!fs.existsSync(exportsDir)) {
+  fs.mkdirSync(exportsDir, { recursive: true });
+  console.log('✅ تم إنشاء مجلد التصدير:', exportsDir);
+}
 
 // ======== Database Configuration ========
 const db = new sqlite3.Database(path.join(__dirname, 'database.db'));
@@ -1283,6 +1283,7 @@ app.get('/admin/products', (req, res) => {
                   <a href="/admin/products" class="active"><i class="fas fa-box"></i> <span>المنتجات</span></a>
                   <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
                   <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                  <a href="/admin/notifications"><i class="fas fa-bell"></i> <span>الإشعارات</span></a>
                   <a href="/admin/confirmed-orders"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
                   <div class="nav-section">النظام</div>
                   <a href="/admin/settings"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
@@ -1301,7 +1302,7 @@ app.get('/admin/products', (req, res) => {
 
           <div id="app">
               <div class="loading">
-                  <h3>🔄 جاري تحميل البيانات...</h3>
+                  <h3><i class="fas fa-spinner fa-spin"></i> جاري تحميل البيانات...</h3>
                   <p>يرجى الانتظار أثناء تحميل صفحة إدارة المنتجات</p>
               </div>
           </div>
@@ -1340,7 +1341,7 @@ app.get('/admin/products', (req, res) => {
                       </label>
                   </div>
                   <div style="display: flex; gap: 10px;">
-                      <button type="submit" class="btn btn-success" style="flex: 1;">💾 حفظ</button>
+                      <button type="submit" class="btn btn-success" style="flex: 1;"><i class="fas fa-save"></i> حفظ</button>
                       <button type="button" class="btn" style="background: #6c757d; color: white;" onclick="closeModal('addCategoryModal')">إلغاء</button>
                   </div>
               </form>
@@ -1407,10 +1408,10 @@ app.get('/admin/products', (req, res) => {
                                   <button class="btn btn-primary" onclick="viewCategoryPerfumes(\${category.id})">عرض العطور</button>
                                   <button class="btn" style="background: \${category.is_active ? '#ff9800' : '#4CAF50'}; color: white;" 
                                           onclick="toggleCategoryStatus(\${category.id}, \${category.is_active ? 0 : 1})">
-                                      \${category.is_active ? '❌ إيقاف' : '✅ تفعيل'}
+                                      \${category.is_active ? '<i class="fas fa-times-circle"></i> إيقاف' : '<i class="fas fa-check-circle"></i> تفعيل'}
                                   </button>
                                   <button class="btn" style="background: #f44336; color: white;" 
-                                          onclick="deleteCategory(\${category.id})">🗑️ حذف</button>
+                                          onclick="deleteCategory(\${category.id})"><i class="fas fa-trash"></i> حذف</button>
                               </div>
                               
                               <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
@@ -1418,7 +1419,7 @@ app.get('/admin/products', (req, res) => {
                                       الترتيب: \${category.sort_order}
                                   </span>
                                   <span style="background: \${category.is_active ? '#e8f5e8' : '#ffebee'}; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
-                                      \${category.is_active ? '✅ نشط' : '❌ غير نشط'}
+                                      \${category.is_active ? '<i class="fas fa-check-circle"></i> نشط' : '<i class="fas fa-times-circle"></i> غير نشط'}
                                   </span>
                               </div>
                           </div>
@@ -1427,10 +1428,10 @@ app.get('/admin/products', (req, res) => {
 
                   <div style="text-align: center; margin-top: 30px;">
                       <button class="btn btn-primary" onclick="loadAllPerfumes()" style="padding: 12px 30px; font-size: 16px;">
-                          🛍️ عرض جميع العطور
+                          <i class="fas fa-shopping-bag"></i> عرض جميع العطور
                       </button>
                       <button class="btn" style="background: #607d8b; color: white;" onclick="checkDatabase()">
-                          🔍 فحص قاعدة البيانات
+                          <i class="fas fa-search"></i> فحص قاعدة البيانات
                       </button>
                   </div>
               \`;
@@ -2231,6 +2232,426 @@ app.delete('/api/gift-cards/:id', (req, res) => {
             deleted_id: id
         });
     });
+});
+
+// ======== APIs الإشعارات ========
+
+app.get('/api/notifications-stats', (req, res) => {
+  const queries = [
+    'SELECT COUNT(*) as total FROM notifications',
+    'SELECT COUNT(*) as unread FROM notifications WHERE is_read = 0'
+  ];
+
+  Promise.all(queries.map(query =>
+    new Promise((resolve, reject) => {
+      db.get(query, (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    })
+  ))
+    .then(results => {
+      res.json({
+        status: 'success',
+        stats: {
+          total: results[0].total,
+          unread: results[1].unread
+        }
+      });
+    })
+    .catch(err => {
+      console.error('❌ خطأ في جلب إحصائيات الإشعارات:', err);
+      res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    });
+});
+
+app.get('/api/notifications', (req, res) => {
+  const { unread_only, page = 1, limit = 10 } = req.query;
+
+  let query = 'SELECT * FROM notifications';
+  const conditions = [];
+  const params = [];
+
+  if (unread_only === 'true') {
+    conditions.push('is_read = 0');
+  }
+
+  conditions.push('(expires_at IS NULL OR expires_at > datetime("now"))');
+
+  if (conditions.length > 0) {
+    query += ' WHERE ' + conditions.join(' AND ');
+  }
+
+  query += ' ORDER BY created_at DESC';
+
+  const offset = (parseInt(page) - 1) * parseInt(limit);
+  query += ' LIMIT ? OFFSET ?';
+  params.push(parseInt(limit), offset);
+
+  db.all(query, params, (err, notifications) => {
+    if (err) {
+      console.error('❌ خطأ في جلب الإشعارات:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+
+    let countQuery = 'SELECT COUNT(*) as total FROM notifications';
+    if (conditions.length > 0) {
+      countQuery += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    db.get(countQuery, params.slice(0, -2), (err, countResult) => {
+      if (err) {
+        console.error('❌ خطأ في جلب عدد الإشعارات:', err);
+        return res.status(500).json({
+          status: 'error',
+          message: err.message
+        });
+      }
+
+      const totalPages = Math.ceil(countResult.total / parseInt(limit));
+
+      res.json({
+        status: 'success',
+        notifications: notifications,
+        pagination: {
+          current_page: parseInt(page),
+          total_pages: totalPages,
+          total_notifications: countResult.total,
+          limit: parseInt(limit)
+        }
+      });
+    });
+  });
+});
+
+app.get('/api/notifications/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.get('SELECT * FROM notifications WHERE id = ?', [id], (err, notification) => {
+    if (err) {
+      console.error('❌ خطأ في جلب بيانات الإشعار:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+
+    if (!notification) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'الإشعار غير موجود'
+      });
+    }
+
+    res.json({
+      status: 'success',
+      notification: notification,
+      message: 'تم جلب بيانات الإشعار بنجاح'
+    });
+  });
+});
+
+app.post('/api/notifications', (req, res) => {
+  const {
+    title,
+    message,
+    type,
+    expires_at
+  } = req.body;
+
+  if (!title || !message) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'عنوان الإشعار ومحتوى الإشعار مطلوبان'
+    });
+  }
+
+  if (type && !['info', 'success', 'warning', 'error'].includes(type)) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'نوع الإشعار يجب أن يكون إما info أو success أو warning أو error'
+    });
+  }
+
+  db.run(
+    `INSERT INTO notifications (
+      title, message, type, expires_at
+    ) VALUES (?, ?, ?, ?)`,
+    [
+      title,
+      message,
+      type || 'info',
+      expires_at || null
+    ],
+    function (err) {
+      if (err) {
+        console.error('❌ خطأ في إنشاء الإشعار:', err);
+        return res.status(500).json({
+          status: 'error',
+          message: 'فشل في إنشاء الإشعار: ' + err.message
+        });
+      }
+
+      console.log('✅ تم إنشاء إشعار جديد:', { id: this.lastID, title });
+
+      res.json({
+        status: 'success',
+        message: 'تم إنشاء الإشعار بنجاح',
+        notification_id: this.lastID,
+        title: title
+      });
+    }
+  );
+});
+
+app.put('/api/notifications/:id', (req, res) => {
+  const { id } = req.params;
+  const {
+    title,
+    message,
+    type,
+    is_read,
+    expires_at
+  } = req.body;
+
+  if (type && !['info', 'success', 'warning', 'error'].includes(type)) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'نوع الإشعار يجب أن يكون إما info أو success أو warning أو error'
+    });
+  }
+
+  db.run(
+    `UPDATE notifications SET
+      title = COALESCE(?, title),
+      message = COALESCE(?, message),
+      type = COALESCE(?, type),
+      is_read = COALESCE(?, is_read),
+      expires_at = COALESCE(?, expires_at),
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?`,
+    [
+      title,
+      message,
+      type,
+      is_read !== undefined ? (is_read ? 1 : 0) : null,
+      expires_at,
+      id
+    ],
+    function (err) {
+      if (err) {
+        console.error('❌ خطأ في تحديث الإشعار:', err);
+        return res.status(500).json({
+          status: 'error',
+          message: 'فشل في تحديث الإشعار: ' + err.message
+        });
+      }
+
+      if (this.changes === 0) {
+        return res.status(404).json({
+          status: 'error',
+          message: 'الإشعار غير موجود'
+        });
+      }
+
+      console.log('✅ تم تحديث الإشعار:', { id, title, is_read });
+
+      res.json({
+        status: 'success',
+        message: 'تم تحديث الإشعار بنجاح',
+        updated_id: id,
+        changes: this.changes
+      });
+    }
+  );
+});
+
+app.delete('/api/notifications/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.run('DELETE FROM notifications WHERE id = ?', [id], function (err) {
+    if (err) {
+      console.error('❌ خطأ في حذف الإشعار:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+
+    if (this.changes === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'الإشعار غير موجود'
+      });
+    }
+
+    console.log('✅ تم حذف الإشعار:', { id });
+
+    res.json({
+      status: 'success',
+      message: 'تم حذف الإشعار بنجاح',
+      deleted_id: id
+    });
+  });
+});
+
+app.put('/api/notifications/read-all', (req, res) => {
+  db.run(
+    'UPDATE notifications SET is_read = 1 WHERE is_read = 0',
+    function (err) {
+      if (err) {
+        console.error('❌ خطأ في تحديث حالة الإشعارات:', err);
+        return res.status(500).json({
+          status: 'error',
+          message: 'فشل في تحديث حالة الإشعارات: ' + err.message
+        });
+      }
+
+      console.log('✅ تم تحديث جميع الإشعارات كمقروءة');
+
+      res.json({
+        status: 'success',
+        message: 'تم تحديث جميع الإشعارات كمقروءة',
+        updated_count: this.changes
+      });
+    }
+  );
+});
+
+app.delete('/api/notifications/read', (req, res) => {
+  db.run(
+    'DELETE FROM notifications WHERE is_read = 1',
+    function (err) {
+      if (err) {
+        console.error('❌ خطأ في حذف الإشعارات المقروءة:', err);
+        return res.status(500).json({
+          status: 'error',
+          message: 'فشل في حذف الإشعارات المقروءة: ' + err.message
+        });
+      }
+
+      console.log('✅ تم حذف جميع الإشعارات المقروءة');
+
+      res.json({
+        status: 'success',
+        message: 'تم حذف جميع الإشعارات المقروءة',
+        deleted_count: this.changes
+      });
+    }
+  );
+});
+
+app.get('/api/notifications/export', (req, res) => {
+  const { unread_only } = req.query;
+
+  let query = 'SELECT * FROM notifications';
+  const conditions = [];
+  const params = [];
+
+  if (unread_only === 'true') {
+    conditions.push('is_read = 0');
+  }
+
+  conditions.push('(expires_at IS NULL OR expires_at > datetime("now"))');
+
+  if (conditions.length > 0) {
+    query += ' WHERE ' + conditions.join(' AND ');
+  }
+
+  query += ' ORDER BY created_at DESC';
+
+  db.all(query, params, async (err, notifications) => {
+    if (err) {
+      console.error('❌ خطأ في جلب الإشعارات للتصدير:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: err.message
+      });
+    }
+
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('الإشعارات');
+
+      worksheet.columns = [
+        { header: 'العنوان', key: 'title', width: 25 },
+        { header: 'الرسالة', key: 'message', width: 40 },
+        { header: 'النوع', key: 'type', width: 15 },
+        { header: 'الحالة', key: 'is_read', width: 10 },
+        { header: 'تاريخ الإنشاء', key: 'created_at', width: 20 },
+        { header: 'تاريخ الانتهاء', key: 'expires_at', width: 20 }
+      ];
+
+      notifications.forEach(notification => {
+        let typeText = '';
+        switch(notification.type) {
+          case 'info':
+            typeText = 'معلومات';
+            break;
+          case 'success':
+            typeText = 'نجاح';
+            break;
+          case 'warning':
+            typeText = 'تحذير';
+            break;
+          case 'error':
+            typeText = 'خطأ';
+            break;
+          default:
+            typeText = notification.type;
+        }
+
+        worksheet.addRow({
+          title: notification.title,
+          message: notification.message,
+          type: typeText,
+          is_read: notification.is_read ? 'مقروء' : 'غير مقروء',
+          created_at: new Date(notification.created_at).toLocaleDateString('ar-SA'),
+          expires_at: notification.expires_at ? new Date(notification.expires_at).toLocaleDateString('ar-SA') : 'غير محدد'
+        });
+      });
+
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE0E0E0' }
+      };
+
+      const fileName = `notifications_export_${new Date().toISOString().replace(/:/g, '-')}.xlsx`;
+      const filePath = path.join(exportsDir, fileName);
+
+      await workbook.xlsx.writeFile(filePath);
+
+      console.log('✅ تم تصدير الإشعارات إلى:', filePath);
+
+      res.download(filePath, fileName, (err) => {
+        if (err) {
+          console.error('❌ خطأ في إرسال الملف:', err);
+        }
+
+        setTimeout(() => {
+          fs.unlink(filePath, (unlinkErr) => {
+            if (unlinkErr) {
+              console.error('❌ خطأ في حذف الملف المؤقت:', unlinkErr);
+            }
+          });
+        }, 5000);
+      });
+    } catch (error) {
+      console.error('❌ خطأ في إنشاء ملف Excel:', error);
+      res.status(500).json({
+        status: 'error',
+        message: 'فشل في إنشاء ملف Excel: ' + error.message
+      });
+    }
+  });
 });
 
 // ======== API معالجة الدفع - محدث بدعم طرق الدفع المختلفة ========
@@ -3506,6 +3927,7 @@ app.get('/admin/purchases/:phone', (req, res) => {
                     <a href="/admin/products"><i class="fas fa-box"></i> <span>المنتجات</span></a>
                     <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
                     <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                    <a href="/admin/notifications"><i class="fas fa-bell"></i> <span>الإشعارات</span></a>
                     <a href="/admin/confirmed-orders"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
                     <div class="nav-section">النظام</div>
                     <a href="/admin/settings"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
@@ -3522,7 +3944,7 @@ app.get('/admin/purchases/:phone', (req, res) => {
                 </div>
                 <div class="content">
                     <div class="page-hero" style="background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);">
-                        <h1>🛍️ مشتريات العميل: ${name}</h1>
+                        <h1><i class="fas fa-shopping-bag"></i> مشتريات العميل: ${name}</h1>
                         <p>رقم الهاتف: <strong>${phone}</strong></p>
                     </div>
     `;
@@ -3530,7 +3952,7 @@ app.get('/admin/purchases/:phone', (req, res) => {
         if (rows.length === 0) {
             html += `
             <div style="text-align: center; padding: 80px 20px; background: white; border-radius: 15px; box-shadow: 0 4px 16px rgba(0,0,0,0.05);">
-                <div style="font-size: 60px; margin-bottom: 20px;">📭</div>
+                <div style="font-size: 60px; margin-bottom: 20px;"><i class="fas fa-inbox" style="font-size: 60px; color: #ccc;"></i></div>
                 <h2 style="color: #666; margin-bottom: 10px;">لا توجد مشتريات لهذا العميل بعد</h2>
                 <p style="color: #999;">لم يقم هذا العميل بإتمام أي طلبات شراء من خلال التطبيق حتى الآن.</p>
             </div>
@@ -3558,13 +3980,13 @@ app.get('/admin/purchases/:phone', (req, res) => {
                     <span class="status-badge status-${order.order_status}">${statusMap[order.order_status] || order.order_status}</span>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
-                    <div>📅 التاريخ: <strong>${new Date(order.order_date).toLocaleString('ar-SA')}</strong></div>
-                    <div>💳 الدفع: <strong>${order.payment_method}</strong></div>
-                    <div>📍 المدينة: <strong>${order.address_city || 'غير محدد'}</strong></div>
-                    <div>🗺️ المنطقة: <strong>${order.address_area || 'غير محدد'}</strong></div>
+                    <div><i class="fas fa-calendar-alt"></i> التاريخ: <strong>${new Date(order.order_date).toLocaleString('ar-SA')}</strong></div>
+                    <div><i class="fas fa-credit-card"></i> الدفع: <strong>${order.payment_method}</strong></div>
+                    <div><i class="fas fa-map-marker-alt"></i> المدينة: <strong>${order.address_city || 'غير محدد'}</strong></div>
+                    <div><i class="fas fa-location-dot"></i> المنطقة: <strong>${order.address_area || 'غير محدد'}</strong></div>
                 </div>
                 <div class="item-list">
-                    <strong style="display: block; margin-bottom: 10px; color: #555;">📦 المنتجات المطلوبة:</strong>
+                    <strong style="display: block; margin-bottom: 10px; color: #555;"><i class="fas fa-box"></i> المنتجات المطلوبة:</strong>
                     ${items.map(item => `
                         <div class="item-row">
                             <span>${item.name} (${item.quantity}x)</span>
@@ -3637,7 +4059,7 @@ app.get('/admin/confirmed-orders', (req, res) => {
                 </div>
                 <div class="content">
                     <div class="page-hero" style="background: linear-gradient(135deg, #8e24aa 0%, #6a1b9a 100%);">
-                        <h1>✅ الطلبات المؤكدة</h1>
+                        <h1><i class="fas fa-check-circle"></i> الطلبات المؤكدة</h1>
                         <p>جميع الطلبات التي تم تأكيدها</p>
                     </div>
 
@@ -3656,7 +4078,7 @@ app.get('/admin/confirmed-orders', (req, res) => {
         if (rows.length === 0) {
             html += `
             <div class="empty-state">
-                <h3 style="color: #666; margin-bottom: 10px;">📭 لا توجد طلبات مؤكدة حتى الآن</h3>
+                <h3 style="color: #666; margin-bottom: 10px;"><i class="fas fa-inbox"></i> لا توجد طلبات مؤكدة حتى الآن</h3>
                 <p style="color: #999;">لم يتم تأكيد أي طلبات بعد</p>
             </div>
       `;
@@ -3747,7 +4169,7 @@ app.get('/admin/confirmed-orders', (req, res) => {
                 </div>
 
                 <div class="items-list">
-                    <h4 style="margin: 0 0 15px 0;">🛍️ العناصر المطلوبة:</h4>
+                    <h4 style="margin: 0 0 15px 0;"><i class="fas fa-boxes"></i> العناصر المطلوبة:</h4>
                     ${items.map(item => `
                         <div class="item-card">
                             <strong>${item.name || 'منتج'}</strong><br>
@@ -3756,7 +4178,7 @@ app.get('/admin/confirmed-orders', (req, res) => {
                             = <strong>${(item.price * (item.quantity || 1)).toFixed(2)} ر.س</strong>
                             ${item.selectedSize && item.selectedSize !== 'غير محدد' ? `<br>المقاس: ${item.selectedSize}` : ''}
                             ${item.colors && item.colors[0] && item.colors[0] !== 'غير محدد' ? `<br>اللون: ${item.colors[0]}` : ''}
-                            ${item.productUrl ? `<br><a href="${item.productUrl}" target="_blank" class="product-url">🔗 رابط المنتج</a>` : ''}
+                            ${item.productUrl ? `<br><a href="${item.productUrl}" target="_blank" class="product-url"><i class="fas fa-external-link-alt"></i> رابط المنتج</a>` : ''}
                             ${item.image ? `<br><img src="${item.image}" style="max-width: 60px; max-height: 60px; margin-top: 5px; border-radius: 5px;">` : ''}
                         </div>
                     `).join('')}
@@ -3837,6 +4259,7 @@ app.get('/admin/advanced', (req, res) => {
                     <a href="/admin/products"><i class="fas fa-box"></i> <span>المنتجات</span></a>
                     <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
                     <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                    <a href="/admin/notifications"><i class="fas fa-bell"></i> <span>الإشعارات</span></a>
                     <a href="/admin/confirmed-orders"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
                     <div class="nav-section">النظام</div>
                     <a href="/admin/settings"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
@@ -3853,27 +4276,27 @@ app.get('/admin/advanced', (req, res) => {
                 </div>
                 <div class="content">
                     <div class="page-hero" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                        <h1>🛠️ لوحة التحكم</h1>
+                        <h1><i class="fas fa-tools"></i> لوحة التحكم</h1>
                         <p>إدارة وعرض جميع البيانات من تطبيق الجوال</p>
                     </div>
                     
                     <div class="controls">
-                        <a href="/admin/advanced" class="btn btn-success">🛠️ لوحة التحكم</a>
-                        <a href="/admin/orders" class="btn btn-primary">🛒 إدارة الطلبات</a>
-                        <a href="/admin/confirmed-orders" class="btn btn-info">✅ الطلبات المؤكدة</a>
-                        <a href="/admin/users" class="btn btn-info">👥 بيانات العملاء</a>
-                        <a href="/admin/coupons" class="btn btn-info">🎫 إدارة الكوبونات</a>
-                        <a href="/admin/gift-cards" class="btn btn-info">💳 إدارة القسائم</a>
-                        <a href="/admin/products" class="btn btn-info">🛍️ إدارة المنتجات</a>
-                        <a href="/admin/settings" class="btn btn-info">⚙️ إعدادات النظام</a>
-                        <a href="/" class="btn btn-secondary">🏠 الرئيسية</a>
-                        <button onclick="clearAllData()" class="btn btn-danger">🗑️ مسح جميع البيانات</button>
+                        <a href="/admin/advanced" class="btn btn-success"><i class="fas fa-tools"></i> لوحة التحكم</a>
+                        <a href="/admin/orders" class="btn btn-primary"><i class="fas fa-shopping-cart"></i> إدارة الطلبات</a>
+                        <a href="/admin/confirmed-orders" class="btn btn-info"><i class="fas fa-check-circle"></i> الطلبات المؤكدة</a>
+                        <a href="/admin/users" class="btn btn-info"><i class="fas fa-users"></i> بيانات العملاء</a>
+                        <a href="/admin/coupons" class="btn btn-info"><i class="fas fa-tags"></i> إدارة الكوبونات</a>
+                        <a href="/admin/gift-cards" class="btn btn-info"><i class="fas fa-gift"></i> إدارة القسائم</a>
+                        <a href="/admin/products" class="btn btn-info"><i class="fas fa-box"></i> إدارة المنتجات</a>
+                        <a href="/admin/settings" class="btn btn-info"><i class="fas fa-cog"></i> إعدادات النظام</a>
+                        <a href="/" class="btn btn-secondary"><i class="fas fa-home"></i> الرئيسية</a>
+                        <button onclick="clearAllData()" class="btn btn-danger"><i class="fas fa-trash"></i> مسح جميع البيانات</button>
                         <div style="margin-right: auto; display: flex; align-items: center; gap: 15px;">
                             <div class="stats-card">
                                 <strong>عدد السجلات:</strong> <span style="color: var(--accent); font-weight: bold;">${rows.length}</span>
                             </div>
                             <div class="stats-card">
-                                <strong>الحالة:</strong> <span style="color: var(--success); font-weight: bold;">✅ نشط</span>
+                                <strong>الحالة:</strong> <span style="color: var(--success); font-weight: bold;"><i class="fas fa-check-circle"></i> نشط</span>
                             </div>
                         </div>
                     </div>
@@ -3897,7 +4320,7 @@ app.get('/admin/advanced', (req, res) => {
             html += `
                         <tr>
                             <td colspan="6" class="empty-state">
-                                <h3 style="color: #666; margin-bottom: 10px;">📭 لا توجد بيانات حتى الآن</h3>
+                                <h3 style="color: #666; margin-bottom: 10px;"><i class="fas fa-inbox"></i> لا توجد بيانات حتى الآن</h3>
                                 <p style="color: #999;">استخدم تطبيق الجوال لإرسال البيانات الأولى</p>
                             </td>
                         </tr>
@@ -3987,6 +4410,7 @@ app.get('/admin/users', (req, res) => {
                     <a href="/admin/products"><i class="fas fa-box"></i> <span>المنتجات</span></a>
                     <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
                     <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                    <a href="/admin/notifications"><i class="fas fa-bell"></i> <span>الإشعارات</span></a>
                     <a href="/admin/confirmed-orders"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
                     <div class="nav-section">النظام</div>
                     <a href="/admin/settings"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
@@ -4003,13 +4427,13 @@ app.get('/admin/users', (req, res) => {
                 </div>
                 <div class="content">
                     <div class="page-hero" style="background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);">
-                        <h1>👥 بيانات العملاء المسجلين</h1>
+                        <h1><i class="fas fa-users"></i> بيانات العملاء المسجلين</h1>
                         <p>إدارة وعرض بيانات العملاء الذين قاموا بالتسجيل في التطبيق</p>
                     </div>
 
                     ${rows.length === 0 ? `
                         <div class="empty-state">
-                            <div class="empty-icon">📭</div>
+                            <div class="empty-icon"><i class="fas fa-inbox"></i></div>
                             <h3>لا يوجد عملاء مسجلين حتى الآن</h3>
                         </div>
                     ` : rows.map(user => `
@@ -4081,6 +4505,7 @@ app.get('/admin/orders', (req, res) => {
                     <a href="/admin/products"><i class="fas fa-box"></i> <span>المنتجات</span></a>
                     <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
                     <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                    <a href="/admin/notifications"><i class="fas fa-bell"></i> <span>الإشعارات</span></a>
                     <a href="/admin/confirmed-orders"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
                     <div class="nav-section">النظام</div>
                     <a href="/admin/settings"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
@@ -4097,15 +4522,15 @@ app.get('/admin/orders', (req, res) => {
                 </div>
                 <div class="content">
                     <div class="page-hero" style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);">
-                        <h1>🛒 إدارة الطلبات</h1>
+                        <h1><i class="fas fa-shopping-cart"></i> إدارة الطلبات</h1>
                         <p>جميع الطلبات المرسلة من تطبيق الجوال</p>
                     </div>
 
             <!-- تبويبات تصفية الطلبات -->
             <div class="tabs">
-                <button class="tab" id="tabAll" onclick="location.href='/admin/orders'">📋 جميع الطلبات</button>
-                <button class="tab" id="tabStore1" onclick="location.href='/admin/orders?store=store1'" style="color: #1976D2;">🏪 المتجر الأول (lib/pages)</button>
-                <button class="tab noon" id="tabNoon" onclick="location.href='/admin/orders?store=noon'">🛒 طلبات noon</button>
+                <button class="tab" id="tabAll" onclick="location.href='/admin/orders'"><i class="fas fa-list"></i> جميع الطلبات</button>
+                <button class="tab" id="tabStore1" onclick="location.href='/admin/orders?store=store1'" style="color: #1976D2;"><i class="fas fa-store"></i> المتجر الأول (lib/pages)</button>
+                <button class="tab noon" id="tabNoon" onclick="location.href='/admin/orders?store=noon'"><i class="fas fa-shopping-bag"></i> طلبات noon</button>
             </div>
             <script>
                 const urlParams = new URLSearchParams(window.location.search);
@@ -4122,7 +4547,7 @@ app.get('/admin/orders', (req, res) => {
             <!-- قسم تصدير المبيعات -->
             <!-- قسم الطلبات المكتملة -->
             <div class="export-section" style="background: #e8f5e8; border-right: 4px solid #4CAF50;">
-                <h3 style="margin: 0 0 20px 0; color: #2e7d32;">✅ الطلبات المكتملة</h3>
+                <h3 style="margin: 0 0 20px 0; color: #2e7d32;"><i class="fas fa-check-circle"></i> الطلبات المكتملة</h3>
                 <div id="completed-orders" class="orders-container">
                     ${rows.filter(o => o.order_status === 'completed').map(order => {
             const items = JSON.parse(order.cart_items);
@@ -4159,7 +4584,7 @@ app.get('/admin/orders', (req, res) => {
             </div>
 
             <div class="export-section">
-                <h3 style="margin: 0 0 20px 0; color: #333;">📈 تصدير تقارير المبيعات</h3>
+                <h3 style="margin: 0 0 20px 0; color: #333;"><i class="fas fa-chart-line"></i> تصدير تقارير المبيعات</h3>
                 
                 <form id="exportForm" class="export-form">
                     <div class="form-group">
@@ -4187,13 +4612,13 @@ app.get('/admin/orders', (req, res) => {
                 </form>
 
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    <button onclick="exportSales()" class="btn btn-success">📊 تصدير مفصل (Excel)</button>
-                    <button onclick="exportAllSales()" class="btn btn-info">🚀 تصدير سريع (كل البيانات)</button>
-                    <button onclick="resetExportForm()" class="btn" style="background: #6c757d; color: white;">🔄 مسح الفلاتر</button>
+                    <button onclick="exportSales()" class="btn btn-success"><i class="fas fa-file-excel"></i> تصدير مفصل (Excel)</button>
+                    <button onclick="exportAllSales()" class="btn btn-info"><i class="fas fa-rocket"></i> تصدير سريع (كل البيانات)</button>
+                    <button onclick="resetExportForm()" class="btn" style="background: #6c757d; color: white;"><i class="fas fa-undo"></i> مسح الفلاتر</button>
                 </div>
 
                 <div style="margin-top: 15px; padding: 15px; background: #e8f5e8; border-radius: 8px; border-right: 4px solid #4CAF50;">
-                    <strong>💡 ملاحظة:</strong> 
+                    <strong><i class="fas fa-lightbulb"></i> ملاحظة:</strong> 
                     <ul style="margin: 10px 0 0 20px; color: #555;">
                         <li>التصدير المفصل يحتوي على 3 أوراق: ملخص، تفاصيل الطلبات، تحليل المنتجات</li>
                         <li>التصدير السريع يحتوي على البيانات الأساسية فقط</li>
@@ -4225,12 +4650,34 @@ app.get('/admin/orders', (req, res) => {
                     <div class="stat-label">إجمالي المبيعات</div>
                 </div>
             </div>
+
+            <div class="filters">
+                <div class="form-group" style="margin:0;flex:1;min-width:200px;">
+                    <input type="text" id="orderSearchInput" class="form-control" placeholder="بحث عن طلب..." oninput="filterOrders()">
+                </div>
+                <div class="form-group" style="margin:0;min-width:160px;">
+                    <select id="orderStatusFilter" class="form-control" onchange="filterOrders()">
+                        <option value="all">جميع الحالات</option>
+                        <option value="pending">قيد الانتظار</option>
+                        <option value="completed">مكتمل</option>
+                        <option value="cancelled">ملغي</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin:0;min-width:100px;">
+                    <select id="orderPerPage" class="form-control" onchange="filterOrders()">
+                        <option value="5">5 لكل صفحة</option>
+                        <option value="10" selected>10 لكل صفحة</option>
+                        <option value="20">20 لكل صفحة</option>
+                        <option value="50">50 لكل صفحة</option>
+                    </select>
+                </div>
+            </div>
     `;
 
         if (rows.length === 0) {
             html += `
             <div class="empty-state">
-                <h3 style="color: #666; margin-bottom: 10px;">📭 لا توجد طلبات حتى الآن</h3>
+                <h3 style="color: #666; margin-bottom: 10px;"><i class="fas fa-inbox"></i> لا توجد طلبات حتى الآن</h3>
                 <p style="color: #999;">لم يتم إرسال أي طلبات من التطبيق بعد</p>
             </div>
       `;
@@ -4255,7 +4702,7 @@ app.get('/admin/orders', (req, res) => {
                 }[order.payment_method] || order.payment_method;
 
                 html += `
-            <div id="order-card-${order.id}" class="order-card">
+            <div id="order-card-${order.id}" class="order-card" data-status="${order.order_status}" data-search="${order.order_number.toLowerCase()} ${(order.customer_name || '').toLowerCase()} ${(order.customer_phone || '')}">
                 <div class="order-header">
                     <div>
                         <span class="order-number">${order.order_number}</span>
@@ -4320,9 +4767,9 @@ app.get('/admin/orders', (req, res) => {
                         </select>
                     </div>
                 </div>
-                
+                            
                 <div class="items-list">
-                    <h4 style="margin: 0 0 15px 0;">🛍️ العناصر المطلوبة:</h4>
+                    <h4 style="margin: 0 0 15px 0;"><i class="fas fa-boxes"></i> العناصر المطلوبة:</h4>
                     ${items.map(item => `
                         <div class="item-card">
                             <strong>${item.name || 'منتج'}</strong><br>
@@ -4331,7 +4778,7 @@ app.get('/admin/orders', (req, res) => {
                             = <strong>${(item.price * (item.quantity || 1)).toFixed(2)} ر.س</strong>
                             ${item.selectedSize && item.selectedSize !== 'غير محدد' ? `<br>المقاس: ${item.selectedSize}` : ''}
                             ${item.colors && item.colors[0] && item.colors[0] !== 'غير محدد' ? `<br>اللون: ${item.colors[0]}` : ''}
-                            ${item.productUrl ? `<br><a href="${item.productUrl}" target="_blank" class="product-url">🔗 رابط المنتج</a>` : ''}
+                            ${item.productUrl ? `<br><a href="${item.productUrl}" target="_blank" class="product-url"><i class="fas fa-external-link-alt"></i> رابط المنتج</a>` : ''}
                             ${item.image ? `<br><img src="${item.image}" style="max-width: 60px; max-height: 60px; margin-top: 5px; border-radius: 5px;">` : ''}
                         </div>
                     `).join('')}
@@ -4339,6 +4786,9 @@ app.get('/admin/orders', (req, res) => {
             </div>
         `;
             });
+            html += `
+            <div class="pagination" id="orderPagination"></div>
+            `;
         }
 
         html += `
@@ -4347,6 +4797,57 @@ app.get('/admin/orders', (req, res) => {
         </div>
 
         <script>
+            let orderCurrentPage = 1;
+
+            function filterOrders() {
+                const searchVal = document.getElementById('orderSearchInput').value.toLowerCase();
+                const statusVal = document.getElementById('orderStatusFilter').value;
+                const cards = document.querySelectorAll('.order-card');
+                const visible = [];
+                cards.forEach(card => {
+                    const status = card.getAttribute('data-status');
+                    const search = card.getAttribute('data-search');
+                    const matchStatus = statusVal === 'all' || status === statusVal;
+                    const matchSearch = search.includes(searchVal);
+                    if (matchStatus && matchSearch) {
+                        card.style.display = '';
+                        visible.push(card);
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+                applyOrderPagination(visible);
+            }
+
+            function applyOrderPagination(visibleCards) {
+                const perPage = parseInt(document.getElementById('orderPerPage').value);
+                const totalPages = Math.ceil(visibleCards.length / perPage) || 1;
+                if (orderCurrentPage > totalPages) orderCurrentPage = totalPages;
+                const start = (orderCurrentPage - 1) * perPage;
+                const end = start + perPage;
+                visibleCards.forEach((card, i) => {
+                    card.style.display = (i >= start && i < end) ? '' : 'none';
+                });
+                renderOrderPagination(totalPages);
+            }
+
+            function renderOrderPagination(totalPages) {
+                const container = document.getElementById('orderPagination');
+                if (totalPages <= 1) { container.innerHTML = ''; return; }
+                let html = '';
+                html += '<button class="page-btn" onclick="goOrderPage(' + (orderCurrentPage - 1) + ')" ' + (orderCurrentPage <= 1 ? 'disabled' : '') + '><i class="fas fa-chevron-right"></i></button>';
+                for (let i = 1; i <= totalPages; i++) {
+                    html += '<button class="page-btn' + (i === orderCurrentPage ? ' active' : '') + '" onclick="goOrderPage(' + i + ')">' + i + '</button>';
+                }
+                html += '<button class="page-btn" onclick="goOrderPage(' + (orderCurrentPage + 1) + ')" ' + (orderCurrentPage >= totalPages ? 'disabled' : '') + '><i class="fas fa-chevron-left"></i></button>';
+                container.innerHTML = html;
+            }
+
+            function goOrderPage(page) {
+                orderCurrentPage = page;
+                filterOrders();
+            }
+
             function exportSales() {
                 const formData = new FormData(document.getElementById('exportForm'));
                 const params = new URLSearchParams();
@@ -4460,6 +4961,7 @@ app.get('/admin/coupons', (req, res) => {
                     <a href="/admin/products"><i class="fas fa-box"></i> <span>المنتجات</span></a>
                     <a href="/admin/coupons" class="active"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
                     <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                    <a href="/admin/notifications"><i class="fas fa-bell"></i> <span>الإشعارات</span></a>
                     <a href="/admin/confirmed-orders"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
                     <div class="nav-section">النظام</div>
                     <a href="/admin/settings"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
@@ -4476,15 +4978,15 @@ app.get('/admin/coupons', (req, res) => {
                 </div>
                 <div class="content">
                     <div class="page-hero" style="background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);">
-                        <h1>🎫 إدارة الكوبونات</h1>
+                        <h1><i class="fas fa-tags"></i> إدارة الكوبونات</h1>
                         <p>إنشاء وتعديل وحذف كوبونات الخصم مع تحديد الصلاحية</p>
                     </div>
 
             <!-- تبويبات تصفية الكوبونات -->
             <div class="tabs">
-                <button class="tab" id="tabAll" onclick="location.href='/admin/coupons'">📋 جميع الكوبونات</button>
-                <button class="tab" id="tabStore1" onclick="location.href='/admin/coupons?store=store1'" style="color: #1976D2;">🏪 المتجر الأول (lib/pages)</button>
-                <button class="tab noon" id="tabNoon" onclick="location.href='/admin/coupons?store=noon'">🛒 كوبونات noon</button>
+                <button class="tab" id="tabAll" onclick="location.href='/admin/coupons'"><i class="fas fa-list"></i> جميع الكوبونات</button>
+                <button class="tab" id="tabStore1" onclick="location.href='/admin/coupons?store=store1'" style="color: #1976D2;"><i class="fas fa-store"></i> المتجر الأول (lib/pages)</button>
+                <button class="tab noon" id="tabNoon" onclick="location.href='/admin/coupons?store=noon'"><i class="fas fa-shopping-bag"></i> كوبونات noon</button>
             </div>
             <script>
                 const urlParams = new URLSearchParams(window.location.search);
@@ -4499,7 +5001,7 @@ app.get('/admin/coupons', (req, res) => {
             </script>
 
             <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
-                <button onclick="document.getElementById('addCouponModal').style.display='block'" class="btn btn-success">➕ إضافة كوبون جديد</button>
+                <button onclick="document.getElementById('addCouponModal').style.display='block'" class="btn btn-success"><i class="fas fa-plus"></i> إضافة كوبون جديد</button>
             </div>
 
             <div class="stats-grid">
@@ -4520,12 +5022,35 @@ app.get('/admin/coupons', (req, res) => {
                     <div class="stat-label">كوبونات منتهية</div>
                 </div>
             </div>
+
+            <div class="filters">
+                <div class="form-group" style="margin:0;flex:1;min-width:200px;">
+                    <input type="text" id="searchInput" class="form-control" placeholder="بحث عن كوبون..." oninput="filterCoupons()">
+                </div>
+                <div class="form-group" style="margin:0;min-width:160px;">
+                    <select id="statusFilter" class="form-control" onchange="filterCoupons()">
+                        <option value="all">جميع الحالات</option>
+                        <option value="نشط">نشط</option>
+                        <option value="غير نشط">غير نشط</option>
+                        <option value="منتهي">منتهي</option>
+                        <option value="لم يبدأ">لم يبدأ</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin:0;min-width:100px;">
+                    <select id="perPage" class="form-control" onchange="filterCoupons()">
+                        <option value="5">5 لكل صفحة</option>
+                        <option value="10" selected>10 لكل صفحة</option>
+                        <option value="20">20 لكل صفحة</option>
+                        <option value="50">50 لكل صفحة</option>
+                    </select>
+                </div>
+            </div>
     `;
 
         if (rows.length === 0) {
             html += `
             <div class="empty-state">
-                <h3 style="color: #666; margin-bottom: 10px;">📭 لا توجد كوبونات حتى الآن</h3>
+                <h3 style="color: #666; margin-bottom: 10px;"><i class="fas fa-inbox"></i> لا توجد كوبونات حتى الآن</h3>
                 <p style="color: #999;">انقر على زر "إضافة كوبون جديد" لإنشاء أول كوبون</p>
             </div>
       `;
@@ -4556,20 +5081,20 @@ app.get('/admin/coupons', (req, res) => {
                 const daysLeftText = daysLeft > 0 ? `${daysLeft} يوم` : 'منتهي';
 
                 html += `
-            <div class="coupon-card">
+            <div class="coupon-card" data-status="${statusText}" data-search="${coupon.code.toLowerCase()} ${(coupon.description || '').toLowerCase()}">
                 <div class="coupon-header">
                     <div>
                         <span class="coupon-code">${coupon.code}</span>
                         <span class="coupon-status ${statusClass}" style="margin-right: 10px;">${statusText}</span>
-                        ${now > validUntil ? '<span style="color: #dc3545; font-size: 12px;">⏰ منتهي</span>' : ''}
-                        ${now < validFrom ? '<span style="color: #ffc107; font-size: 12px;">⏳ لم يبدأ</span>' : ''}
+                        ${now > validUntil ? '<span style="color: #dc3545; font-size: 12px;"><i class="fas fa-clock"></i> منتهي</span>' : ''}
+                        ${now < validFrom ? '<span style="color: #ffc107; font-size: 12px;"><i class="fas fa-hourglass-half"></i> لم يبدأ</span>' : ''}
                     </div>
                     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                        <button onclick="editCoupon(${coupon.id})" class="btn btn-primary">✏️ تعديل</button>
+                        <button onclick="editCoupon(${coupon.id})" class="btn btn-primary"><i class="fas fa-edit"></i> تعديل</button>
                         <button onclick="toggleCouponStatus(${coupon.id}, ${coupon.is_active ? 0 : 1})" class="btn ${coupon.is_active ? 'btn-warning' : 'btn-success'}">
-                            ${coupon.is_active ? '❌ إيقاف' : '✅ تفعيل'}
+                            ${coupon.is_active ? '<i class="fas fa-times-circle"></i> إيقاف' : '<i class="fas fa-check-circle"></i> تفعيل'}
                         </button>
-                        <button onclick="deleteCoupon(${coupon.id})" class="btn btn-danger">🗑️ حذف</button>
+                        <button onclick="deleteCoupon(${coupon.id})" class="btn btn-danger"><i class="fas fa-trash"></i> حذف</button>
                     </div>
                 </div>
 
@@ -4611,6 +5136,9 @@ app.get('/admin/coupons', (req, res) => {
             </div>
         `;
             });
+            html += `
+            <div class="pagination" id="pagination"></div>
+            `;
         }
 
         html += `
@@ -4620,7 +5148,7 @@ app.get('/admin/coupons', (req, res) => {
         <div id="addCouponModal" class="modal">
             <div class="modal-content">
                 <span class="close" onclick="closeModal('addCouponModal')">&times;</span>
-                <h2>🎫 إضافة كوبون جديد</h2>
+                <h2><i class="fas fa-tags"></i> إضافة كوبون جديد</h2>
                 <form id="addCouponForm">
                     <div class="form-group">
                         <label class="form-label">كود الكوبون *</label>
@@ -4688,7 +5216,7 @@ app.get('/admin/coupons', (req, res) => {
                     </div>
 
                     <div style="display: flex; gap: 10px; margin-top: 20px;">
-                        <button type="submit" class="btn btn-success" style="flex: 1;">💾 حفظ الكوبون</button>
+                        <button type="submit" class="btn btn-success" style="flex: 1;"><i class="fas fa-save"></i> حفظ الكوبون</button>
                         <button type="button" onclick="closeModal('addCouponModal')" class="btn btn-secondary">إلغاء</button>
                     </div>
                 </form>
@@ -4699,7 +5227,7 @@ app.get('/admin/coupons', (req, res) => {
         <div id="editCouponModal" class="modal">
             <div class="modal-content">
                 <span class="close" onclick="closeModal('editCouponModal')">&times;</span>
-                <h2>✏️ تعديل الكوبون</h2>
+                <h2><i class="fas fa-edit"></i> تعديل الكوبون</h2>
                 <form id="editCouponForm">
                     <input type="hidden" name="id" id="edit_coupon_id">
                     
@@ -4773,7 +5301,7 @@ app.get('/admin/coupons', (req, res) => {
                     </div>
 
                     <div style="display: flex; gap: 10px; margin-top: 20px;">
-                        <button type="submit" class="btn btn-success" style="flex: 1;">💾 حفظ التعديلات</button>
+                        <button type="submit" class="btn btn-success" style="flex: 1;"><i class="fas fa-save"></i> حفظ التعديلات</button>
                         <button type="button" onclick="closeModal('editCouponModal')" class="btn btn-secondary">إلغاء</button>
                     </div>
                 </form>
@@ -4933,6 +5461,57 @@ app.get('/admin/coupons', (req, res) => {
                 }
             }
 
+            function filterCoupons() {
+                const searchVal = document.getElementById('searchInput').value.toLowerCase();
+                const statusVal = document.getElementById('statusFilter').value;
+                const cards = document.querySelectorAll('.coupon-card');
+                const visible = [];
+                cards.forEach(card => {
+                    const status = card.getAttribute('data-status');
+                    const search = card.getAttribute('data-search');
+                    const matchStatus = statusVal === 'all' || status === statusVal;
+                    const matchSearch = search.includes(searchVal);
+                    if (matchStatus && matchSearch) {
+                        card.style.display = '';
+                        visible.push(card);
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+                applyPagination(visible);
+            }
+
+            let currentPage = 1;
+
+            function applyPagination(visibleCards) {
+                const perPage = parseInt(document.getElementById('perPage').value);
+                const totalPages = Math.ceil(visibleCards.length / perPage) || 1;
+                if (currentPage > totalPages) currentPage = totalPages;
+                const start = (currentPage - 1) * perPage;
+                const end = start + perPage;
+                visibleCards.forEach((card, i) => {
+                    card.style.display = (i >= start && i < end) ? '' : 'none';
+                });
+                renderPagination(totalPages);
+            }
+
+            function renderPagination(totalPages) {
+                const container = document.getElementById('pagination');
+                if (totalPages <= 1) { container.innerHTML = ''; return; }
+                let html = '';
+                html += '<button class="page-btn" onclick="goPage(' + (currentPage - 1) + ')" ' + (currentPage <= 1 ? 'disabled' : '') + '><i class="fas fa-chevron-right"></i></button>';
+                for (let i = 1; i <= totalPages; i++) {
+                    html += '<button class="page-btn' + (i === currentPage ? ' active' : '') + '" onclick="goPage(' + i + ')">' + i + '</button>';
+                }
+                html += '<button class="page-btn" onclick="goPage(' + (currentPage + 1) + ')" ' + (currentPage >= totalPages ? 'disabled' : '') + '><i class="fas fa-chevron-left"></i></button>';
+                container.innerHTML = html;
+            }
+
+            function goPage(page) {
+                currentPage = page;
+                filterCoupons();
+            }
+
             window.onclick = function(event) {
                 const modals = document.querySelectorAll('.modal');
                 modals.forEach(modal => {
@@ -4999,11 +5578,11 @@ app.get('/admin/gift-cards', (req, res) => {
                 </div>
                 <div class="content">
                     <div class="page-hero" style="background: linear-gradient(135deg, #9C27B0 0%, #6A1B9A 100%);">
-                        <h1>💳 إدارة القسائم الشرائية</h1>
+                        <h1><i class="fas fa-credit-card"></i> إدارة القسائم الشرائية</h1>
                         <p>إنشاء وتعديل وحذف القسائم الشرائية مع إدارة الرصيد والصلاحية</p>
                     </div>
-                <a href="/admin/settings" class="nav-btn">⚙️ إعدادات النظام</a>
-                <a href="/" class="nav-btn">🏠 الرئيسية</a>
+                <a href="/admin/settings" class="nav-btn"><i class="fas fa-cog"></i> إعدادات النظام</a>
+                <a href="/" class="nav-btn"><i class="fas fa-home"></i> الرئيسية</a>
                 <button onclick="showAddModal()" class="btn btn-success">+ إضافة قسيمة جديدة</button>
             </div>
 
@@ -5025,12 +5604,35 @@ app.get('/admin/gift-cards', (req, res) => {
                     <div class="stat-label">قسائم مستخدمة</div>
                 </div>
             </div>
+
+            <div class="filters">
+                <div class="form-group" style="margin:0;flex:1;min-width:200px;">
+                    <input type="text" id="gcSearchInput" class="form-control" placeholder="بحث عن قسيمة..." oninput="filterGiftCards()">
+                </div>
+                <div class="form-group" style="margin:0;min-width:160px;">
+                    <select id="gcStatusFilter" class="form-control" onchange="filterGiftCards()">
+                        <option value="all">جميع الحالات</option>
+                        <option value="نشط">نشط</option>
+                        <option value="غير نشط">غير نشط</option>
+                        <option value="منتهي">منتهي</option>
+                        <option value="مستخدم">مستخدم</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin:0;min-width:100px;">
+                    <select id="gcPerPage" class="form-control" onchange="filterGiftCards()">
+                        <option value="5">5 لكل صفحة</option>
+                        <option value="10" selected>10 لكل صفحة</option>
+                        <option value="20">20 لكل صفحة</option>
+                        <option value="50">50 لكل صفحة</option>
+                    </select>
+                </div>
+            </div>
     `;
 
         if (rows.length === 0) {
             html += `
             <div class="empty-state">
-                <h3 style="color: #666; margin-bottom: 10px;">💳 لا توجد قسائم حتى الآن</h3>
+                <h3 style="color: #666; margin-bottom: 10px;"><i class="fas fa-credit-card"></i> لا توجد قسائم حتى الآن</h3>
                 <p style="color: #999;">انقر على زر "إضافة قسيمة جديدة" لإنشاء أول قسيمة</p>
             </div>
       `;
@@ -5063,20 +5665,20 @@ app.get('/admin/gift-cards', (req, res) => {
                 const usagePercentage = (giftCard.used_amount / giftCard.initial_amount) * 100;
 
                 html += `
-            <div class="gift-card">
+            <div class="gift-card" data-status="${statusText}" data-search="${giftCard.card_number.toLowerCase()} ${giftCard.pin_code.toLowerCase()} ${(giftCard.customer_name || '').toLowerCase()} ${(giftCard.customer_phone || '')}">
                 <div class="gift-card-header">
                     <div>
                         <span class="gift-card-number">${giftCard.card_number}</span>
                         <span class="gift-card-status ${statusClass}" style="margin-right: 10px;">${statusText}</span>
-                        ${now > validUntil ? '<span style="color: #dc3545; font-size: 12px;">⏰ منتهي</span>' : ''}
-                        ${giftCard.current_balance <= 0 ? '<span style="color: #6c757d; font-size: 12px;">💰 مستخدم</span>' : ''}
+                        ${now > validUntil ? '<span style="color: #dc3545; font-size: 12px;"><i class="fas fa-clock"></i> منتهي</span>' : ''}
+                        ${giftCard.current_balance <= 0 ? '<span style="color: #6c757d; font-size: 12px;"><i class="fas fa-coins"></i> مستخدم</span>' : ''}
                     </div>
                     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                        <button onclick="editGiftCard(${giftCard.id})" class="btn btn-primary">✏️ تعديل</button>
+                        <button onclick="editGiftCard(${giftCard.id})" class="btn btn-primary"><i class="fas fa-edit"></i> تعديل</button>
                         <button onclick="toggleGiftCardStatus(${giftCard.id}, ${giftCard.is_active ? 0 : 1})" class="btn ${giftCard.is_active ? 'btn-warning' : 'btn-success'}">
-                            ${giftCard.is_active ? '❌ إيقاف' : '✅ تفعيل'}
+                            ${giftCard.is_active ? '<i class="fas fa-times-circle"></i> إيقاف' : '<i class="fas fa-check-circle"></i> تفعيل'}
                         </button>
-                        <button onclick="deleteGiftCard(${giftCard.id})" class="btn btn-danger">🗑️ حذف</button>
+                        <button onclick="deleteGiftCard(${giftCard.id})" class="btn btn-danger"><i class="fas fa-trash"></i> حذف</button>
                     </div>
                 </div>
 
@@ -5124,6 +5726,9 @@ app.get('/admin/gift-cards', (req, res) => {
             </div>
         `;
             });
+            html += `
+            <div class="pagination" id="gcPagination"></div>
+            `;
         }
 
         html += `
@@ -5133,7 +5738,7 @@ app.get('/admin/gift-cards', (req, res) => {
         <div id="addGiftCardModal" class="modal">
             <div class="modal-content">
                 <span class="close" onclick="closeModal('addGiftCardModal')">&times;</span>
-                <h2>💳 إضافة قسيمة جديدة</h2>
+                <h2><i class="fas fa-credit-card"></i> إضافة قسيمة جديدة</h2>
                 <form id="addGiftCardForm">
                     <div class="form-group">
                         <label class="form-label">رقم القسيمة *</label>
@@ -5187,7 +5792,7 @@ app.get('/admin/gift-cards', (req, res) => {
                     </div>
 
                     <div style="display: flex; gap: 10px; margin-top: 20px;">
-                        <button type="submit" class="btn btn-success" style="flex: 1;">💾 حفظ القسيمة</button>
+                        <button type="submit" class="btn btn-success" style="flex: 1;"><i class="fas fa-save"></i> حفظ القسيمة</button>
                         <button type="button" onclick="closeModal('addGiftCardModal')" class="btn btn-secondary">إلغاء</button>
                     </div>
                 </form>
@@ -5198,7 +5803,7 @@ app.get('/admin/gift-cards', (req, res) => {
         <div id="editGiftCardModal" class="modal">
             <div class="modal-content">
                 <span class="close" onclick="closeModal('editGiftCardModal')">&times;</span>
-                <h2>✏️ تعديل القسيمة</h2>
+                <h2><i class="fas fa-edit"></i> تعديل القسيمة</h2>
                 <form id="editGiftCardForm">
                     <input type="hidden" name="id" id="edit_gift_card_id">
                     
@@ -5263,7 +5868,7 @@ app.get('/admin/gift-cards', (req, res) => {
                     </div>
 
                     <div style="display: flex; gap: 10px; margin-top: 20px;">
-                        <button type="submit" class="btn btn-success" style="flex: 1;">💾 حفظ التعديلات</button>
+                        <button type="submit" class="btn btn-success" style="flex: 1;"><i class="fas fa-save"></i> حفظ التعديلات</button>
                         <button type="button" onclick="closeModal('editGiftCardModal')" class="btn btn-secondary">إلغاء</button>
                     </div>
                 </form>
@@ -5417,6 +6022,57 @@ app.get('/admin/gift-cards', (req, res) => {
                 }
             }
 
+            let gcCurrentPage = 1;
+
+            function filterGiftCards() {
+                const searchVal = document.getElementById('gcSearchInput').value.toLowerCase();
+                const statusVal = document.getElementById('gcStatusFilter').value;
+                const cards = document.querySelectorAll('.gift-card');
+                const visible = [];
+                cards.forEach(card => {
+                    const status = card.getAttribute('data-status');
+                    const search = card.getAttribute('data-search');
+                    const matchStatus = statusVal === 'all' || status === statusVal;
+                    const matchSearch = search.includes(searchVal);
+                    if (matchStatus && matchSearch) {
+                        card.style.display = '';
+                        visible.push(card);
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+                applyGcPagination(visible);
+            }
+
+            function applyGcPagination(visibleCards) {
+                const perPage = parseInt(document.getElementById('gcPerPage').value);
+                const totalPages = Math.ceil(visibleCards.length / perPage) || 1;
+                if (gcCurrentPage > totalPages) gcCurrentPage = totalPages;
+                const start = (gcCurrentPage - 1) * perPage;
+                const end = start + perPage;
+                visibleCards.forEach((card, i) => {
+                    card.style.display = (i >= start && i < end) ? '' : 'none';
+                });
+                renderGcPagination(totalPages);
+            }
+
+            function renderGcPagination(totalPages) {
+                const container = document.getElementById('gcPagination');
+                if (totalPages <= 1) { container.innerHTML = ''; return; }
+                let html = '';
+                html += '<button class="page-btn" onclick="goGcPage(' + (gcCurrentPage - 1) + ')" ' + (gcCurrentPage <= 1 ? 'disabled' : '') + '><i class="fas fa-chevron-right"></i></button>';
+                for (let i = 1; i <= totalPages; i++) {
+                    html += '<button class="page-btn' + (i === gcCurrentPage ? ' active' : '') + '" onclick="goGcPage(' + i + ')">' + i + '</button>';
+                }
+                html += '<button class="page-btn" onclick="goGcPage(' + (gcCurrentPage + 1) + ')" ' + (gcCurrentPage >= totalPages ? 'disabled' : '') + '><i class="fas fa-chevron-left"></i></button>';
+                container.innerHTML = html;
+            }
+
+            function goGcPage(page) {
+                gcCurrentPage = page;
+                filterGiftCards();
+            }
+
             window.onclick = function(event) {
                 const modals = document.querySelectorAll('.modal');
                 modals.forEach(modal => {
@@ -5466,6 +6122,7 @@ app.get('/admin/settings', (req, res) => {
                   <a href="/admin/products"><i class="fas fa-box"></i> <span>المنتجات</span></a>
                   <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
                   <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+                  <a href="/admin/notifications"><i class="fas fa-bell"></i> <span>الإشعارات</span></a>
                   <a href="/admin/confirmed-orders"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
                   <div class="nav-section">النظام</div>
                   <a href="/admin/settings" class="active"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
@@ -5482,7 +6139,7 @@ app.get('/admin/settings', (req, res) => {
               </div>
               <div class="content">
                   <div class="page-hero" style="background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);">
-                      <h1>⚙️ إعدادات النظام</h1>
+                      <h1><i class="fas fa-cog"></i> إعدادات النظام</h1>
                       <p>تخصيص إعدادات لوحة التحكم والمتجر</p>
                   </div>
 
@@ -5537,7 +6194,7 @@ app.get('/admin/settings', (req, res) => {
               </div>
 
               <div style="text-align: center; margin-top: 30px;">
-                  <button id="save-settings-btn" class="btn btn-success">💾 حفظ الإعدادات</button>
+                  <button id="save-settings-btn" class="btn btn-success"><i class="fas fa-save"></i> حفظ الإعدادات</button>
               </div>
           </div>
       </div>
@@ -5590,7 +6247,7 @@ app.get('/admin/settings', (req, res) => {
                       const allSuccess = results.every(result => result.status === 'success');
                       
                       if (allSuccess) {
-                          showToast('✅ تم حفظ الإعدادات بنجاح');
+                          showToast('تم حفظ الإعدادات بنجاح');
                           
                           if (settings.theme === 'dark') {
                               document.body.style.backgroundColor = '#222';
@@ -5600,11 +6257,11 @@ app.get('/admin/settings', (req, res) => {
                               document.body.style.color = '#333';
                           }
                       } else {
-                          showToast('❌ حدث خطأ في حفظ بعض الإعدادات', 'error');
+                          showToast('حدث خطأ في حفظ بعض الإعدادات', 'error');
                       }
                   })
                   .catch(error => {
-                      showToast('❌ حدث خطأ: ' + error, 'error');
+                      showToast('حدث خطأ: ' + error, 'error');
                   })
                   .finally(() => {
                       btn.innerHTML = originalText;
@@ -5629,6 +6286,378 @@ app.get('/admin/settings', (req, res) => {
   </body>
   </html>
   `);
+});
+
+// صفحة إدارة الإشعارات
+app.get('/admin/notifications', (req, res) => {
+  let html = `
+    <!DOCTYPE html>
+    <html dir="rtl" lang="ar">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>إدارة الإشعارات - متجر ريدشي</title>
+      <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+      <link rel="stylesheet" href="/admin-style.css">
+      <style>
+        .notification-type { display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap; }
+        .radio-group { display: flex; align-items: center; gap: 5px; }
+        .radio-group input { margin-left: 5px; accent-color: var(--accent); }
+        .status-read { background: #f1f5f9; color: #64748b; }
+        .status-unread { background: var(--accent-glow); color: var(--accent-dark); }
+      </style>
+    </head>
+    <body>
+      <div class="layout">
+        <aside class="sidebar">
+          <div class="sidebar-brand">
+            <h2><i class="fas fa-store-alt"></i> ريدشي</h2>
+            <div class="brand-sub">لوحة الإدارة</div>
+          </div>
+          <nav class="sidebar-nav">
+            <div class="nav-section">الرئيسية</div>
+            <a href="/admin"><i class="fas fa-chart-pie"></i> <span>لوحة البيانات</span></a>
+            <a href="/admin/advanced"><i class="fas fa-tachometer-alt"></i> <span>لوحة التحكم</span></a>
+            <div class="nav-section">الإدارة</div>
+            <a href="/admin/orders"><i class="fas fa-shopping-cart"></i> <span>الطلبات</span></a>
+            <a href="/admin/products"><i class="fas fa-box"></i> <span>المنتجات</span></a>
+            <a href="/admin/coupons"><i class="fas fa-tags"></i> <span>الكوبونات</span></a>
+            <a href="/admin/gift-cards"><i class="fas fa-gift"></i> <span>القسائم</span></a>
+            <a href="/admin/notifications" class="active"><i class="fas fa-bell"></i> <span>الإشعارات</span></a>
+            <a href="/admin/confirmed-orders"><i class="fas fa-check-circle"></i> <span>الطلبات المؤكدة</span></a>
+            <div class="nav-section">النظام</div>
+            <a href="/admin/settings"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
+            <a href="/admin/users"><i class="fas fa-users"></i> <span>العملاء</span></a>
+            <a href="/logout"><i class="fas fa-sign-out-alt"></i> <span>تسجيل الخروج</span></a>
+          </nav>
+        </aside>
+        <main class="main-content">
+          <div class="top-bar">
+            <div class="page-title"><i class="fas fa-bell"></i> إدارة الإشعارات</div>
+            <div class="user-info">
+              <span>مرحباً، المدير</span>
+            </div>
+          </div>
+          <div class="content">
+            <div class="page-hero" style="background: linear-gradient(135deg, #2196F3 0%, #1565C0 100%);">
+              <h1><i class="fas fa-bell"></i> إدارة الإشعارات</h1>
+              <p>إنشاء وتعديل وحذف الإشعارات مع إدارة الحالة والصلاحية</p>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
+              <button class="btn btn-success" onclick="openAddModal()">
+                <i class="fas fa-plus"></i> إضافة إشعار جديد
+              </button>
+            </div>
+
+            <div class="filters">
+              <div class="form-group" style="margin:0;min-width:200px;">
+                <label class="form-label">الحالة</label>
+                <select id="status-filter" class="form-control">
+                  <option value="">جميع الإشعارات</option>
+                  <option value="true">غير مقروءة</option>
+                  <option value="false">مقروءة</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0;display:flex;align-items:flex-end;gap:8px;">
+                <button class="btn btn-primary" onclick="filterNotifications()">
+                  <i class="fas fa-filter"></i> تطبيق الفلتر
+                </button>
+                <button class="btn btn-warning" onclick="markAllAsRead()">
+                  <i class="fas fa-check-double"></i> تحديد الكل كمقروء
+                </button>
+                <button class="btn btn-danger" onclick="deleteReadNotifications()">
+                  <i class="fas fa-trash"></i> حذف المقروءة
+                </button>
+                <button class="btn btn-info" onclick="exportNotifications()">
+                  <i class="fas fa-file-export"></i> تصدير Excel
+                </button>
+              </div>
+            </div>
+
+            <div class="table-container">
+              <table id="notifications-table">
+                <thead>
+                  <tr>
+                    <th>العنوان</th>
+                    <th>الرسالة</th>
+                    <th>النوع</th>
+                    <th>الحالة</th>
+                    <th>التاريخ</th>
+                    <th>الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                </tbody>
+              </table>
+              <div class="pagination" id="pagination"></div>
+            </div>
+          </div>
+
+          <div id="notification-modal" class="modal">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h2 class="modal-title" id="modal-title">إضافة إشعار جديد</h2>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+              </div>
+              <div class="modal-body">
+                <form id="notification-form">
+                  <input type="hidden" id="notification-id">
+                  <div class="form-group">
+                    <label class="form-label" for="notification-title">العنوان</label>
+                    <input type="text" id="notification-title" class="form-control" required>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="notification-message">الرسالة</label>
+                    <textarea id="notification-message" class="form-control" rows="4" required></textarea>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">نوع الإشعار</label>
+                    <div class="notification-type">
+                      <div class="radio-group">
+                        <input type="radio" id="type-info" name="notification-type" value="info" checked>
+                        <label for="type-info">معلومات</label>
+                      </div>
+                      <div class="radio-group">
+                        <input type="radio" id="type-success" name="notification-type" value="success">
+                        <label for="type-success">نجاح</label>
+                      </div>
+                      <div class="radio-group">
+                        <input type="radio" id="type-warning" name="notification-type" value="warning">
+                        <label for="type-warning">تحذير</label>
+                      </div>
+                      <div class="radio-group">
+                        <input type="radio" id="type-error" name="notification-type" value="error">
+                        <label for="type-error">خطأ</label>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="expires-at">تاريخ الانتهاء</label>
+                    <input type="datetime-local" id="expires-at" class="form-control">
+                    <div class="form-help">اترك فارغاً لعدم تحديد تاريخ انتهاء</div>
+                  </div>
+                  <div style="margin-top: 20px; display: flex; gap: 10px;">
+                    <button type="submit" class="btn btn-primary" style="flex:1;">حفظ</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">إلغاء</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <div id="notification-toast" class="notification"></div>
+
+          <script>
+            let currentPage = 1;
+            let editingNotificationId = null;
+
+            function showNotification(message, type) {
+              const notification = document.getElementById('notification-toast');
+              notification.textContent = message;
+              notification.className = 'notification notification-' + type;
+              notification.classList.add('show');
+              setTimeout(() => { notification.classList.remove('show'); }, 3000);
+            }
+
+            function fetchNotifications(page = 1) {
+              const unreadOnly = document.getElementById('status-filter').value;
+              const params = new URLSearchParams({ page: page, limit: 10 });
+              if (unreadOnly) params.append('unread_only', unreadOnly);
+
+              fetch('/api/notifications?' + params.toString())
+                .then(response => response.json())
+                .then(data => {
+                  if (data.status === 'success') {
+                    renderNotificationsTable(data.notifications);
+                    renderPagination(data.pagination);
+                    currentPage = page;
+                  } else {
+                    showNotification(data.message, 'error');
+                  }
+                })
+                .catch(error => {
+                  showNotification('حدث خطأ أثناء جلب الإشعارات', 'error');
+                });
+            }
+
+            function renderNotificationsTable(notifications) {
+              const tbody = document.querySelector('#notifications-table tbody');
+              tbody.innerHTML = '';
+
+              if (notifications.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fas fa-bell" style="font-size:2rem;opacity:0.4;"></i><p>لا توجد إشعارات حالياً</p></td></tr>';
+                return;
+              }
+
+              notifications.forEach(notification => {
+                const statusClass = notification.is_read ? 'status-read' : 'status-unread';
+                const statusText = notification.is_read ? 'مقروء' : 'غير مقروء';
+                let typeIcon = 'fas fa-bell';
+                let typeText = notification.type;
+                switch(notification.type) {
+                  case 'info': typeIcon = 'fas fa-info-circle'; typeText = 'معلومات'; break;
+                  case 'success': typeIcon = 'fas fa-check-circle'; typeText = 'نجاح'; break;
+                  case 'warning': typeIcon = 'fas fa-exclamation-triangle'; typeText = 'تحذير'; break;
+                  case 'error': typeIcon = 'fas fa-times-circle'; typeText = 'خطأ'; break;
+                }
+                const row = document.createElement('tr');
+                row.innerHTML = '<td>' + notification.title + '</td>' +
+                  '<td>' + (notification.message.length > 50 ? notification.message.substring(0, 50) + '...' : notification.message) + '</td>' +
+                  '<td><i class="' + typeIcon + '"></i> ' + typeText + '</td>' +
+                  '<td><span class="status ' + statusClass + '">' + statusText + '</span></td>' +
+                  '<td>' + new Date(notification.created_at).toLocaleDateString('ar-SA') + '</td>' +
+                  '<td><div class="actions"><button class="btn btn-primary btn-sm" onclick="editNotification(' + notification.id + ')"><i class="fas fa-edit"></i></button> <button class="btn btn-danger btn-sm" onclick="deleteNotification(' + notification.id + ')"><i class="fas fa-trash"></i></button></div></td>';
+                tbody.appendChild(row);
+              });
+            }
+
+            function renderPagination(pagination) {
+              const container = document.getElementById('pagination');
+              container.innerHTML = '';
+              const prevBtn = document.createElement('button');
+              prevBtn.className = 'page-btn';
+              prevBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
+              prevBtn.disabled = pagination.current_page === 1;
+              prevBtn.onclick = () => fetchNotifications(pagination.current_page - 1);
+              container.appendChild(prevBtn);
+              for (let i = 1; i <= pagination.total_pages; i++) {
+                const pageBtn = document.createElement('button');
+                pageBtn.className = 'page-btn' + (i === pagination.current_page ? ' active' : '');
+                pageBtn.textContent = i;
+                pageBtn.onclick = () => fetchNotifications(i);
+                container.appendChild(pageBtn);
+              }
+              const nextBtn = document.createElement('button');
+              nextBtn.className = 'page-btn';
+              nextBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
+              nextBtn.disabled = pagination.current_page === pagination.total_pages;
+              nextBtn.onclick = () => fetchNotifications(pagination.current_page + 1);
+              container.appendChild(nextBtn);
+            }
+
+            function filterNotifications() { fetchNotifications(1); }
+
+            function markAllAsRead() {
+              fetch('/api/notifications/read-all', { method: 'PUT' })
+                .then(response => response.json())
+                .then(data => {
+                  if (data.status === 'success') {
+                    showNotification(data.message, 'success');
+                    fetchNotifications(currentPage);
+                  } else { showNotification(data.message, 'error'); }
+                })
+                .catch(error => { showNotification('حدث خطأ أثناء تحديث حالة الإشعارات', 'error'); });
+            }
+
+            function deleteReadNotifications() {
+              if (!confirm('هل أنت متأكد من حذف جميع الإشعارات المقروءة؟')) return;
+              fetch('/api/notifications/read', { method: 'DELETE' })
+                .then(response => response.json())
+                .then(data => {
+                  if (data.status === 'success') {
+                    showNotification(data.message, 'success');
+                    fetchNotifications(currentPage);
+                  } else { showNotification(data.message, 'error'); }
+                })
+                .catch(error => { showNotification('حدث خطأ أثناء حذف الإشعارات المقروءة', 'error'); });
+            }
+
+            function openAddModal() {
+              editingNotificationId = null;
+              document.getElementById('modal-title').textContent = 'إضافة إشعار جديد';
+              document.getElementById('notification-form').reset();
+              document.getElementById('notification-modal').style.display = 'flex';
+            }
+
+            function closeModal() {
+              document.getElementById('notification-modal').style.display = 'none';
+            }
+
+            function editNotification(id) {
+              fetch('/api/notifications/' + id)
+                .then(response => response.json())
+                .then(data => {
+                  if (data.status === 'success') {
+                    const notification = data.notification;
+                    editingNotificationId = notification.id;
+                    document.getElementById('modal-title').textContent = 'تعديل الإشعار';
+                    document.getElementById('notification-id').value = notification.id;
+                    document.getElementById('notification-title').value = notification.title;
+                    document.getElementById('notification-message').value = notification.message;
+                    document.querySelector('input[name="notification-type"][value="' + notification.type + '"]').checked = true;
+                    if (notification.expires_at) {
+                      document.getElementById('expires-at').value = notification.expires_at.slice(0, 16);
+                    }
+                    document.getElementById('notification-modal').style.display = 'flex';
+                  } else { showNotification(data.message, 'error'); }
+                })
+                .catch(error => { showNotification('حدث خطأ في جلب بيانات الإشعار', 'error'); });
+            }
+
+            function deleteNotification(id) {
+              if (!confirm('⚠️ هل أنت متأكد من حذف هذا الإشعار؟')) return;
+              fetch('/api/notifications/' + id, { method: 'DELETE' })
+                .then(response => response.json())
+                .then(data => {
+                  if (data.status === 'success') {
+                    showNotification(data.message, 'success');
+                    fetchNotifications(currentPage);
+                  } else { showNotification(data.message, 'error'); }
+                })
+                .catch(error => { showNotification('حدث خطأ أثناء حذف الإشعار', 'error'); });
+            }
+
+            function exportNotifications() {
+              const unreadOnly = document.getElementById('status-filter').value;
+              const params = new URLSearchParams();
+              if (unreadOnly) params.append('unread_only', unreadOnly);
+              window.open('/api/notifications/export?' + params.toString(), '_blank');
+            }
+
+            document.getElementById('notification-form').addEventListener('submit', function(e) {
+              e.preventDefault();
+              const title = document.getElementById('notification-title').value;
+              const message = document.getElementById('notification-message').value;
+              const type = document.querySelector('input[name="notification-type"]:checked').value;
+              const expires_at = document.getElementById('expires-at').value || null;
+              const data = { title, message, type, expires_at };
+
+              const url = editingNotificationId ? '/api/notifications/' + editingNotificationId : '/api/notifications';
+              const method = editingNotificationId ? 'PUT' : 'POST';
+
+              fetch(url, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+              })
+                .then(response => response.json())
+                .then(data => {
+                  if (data.status === 'success') {
+                    showNotification(data.message, 'success');
+                    closeModal();
+                    fetchNotifications(currentPage);
+                  } else { showNotification(data.message, 'error'); }
+                })
+                .catch(error => { showNotification('حدث خطأ أثناء حفظ الإشعار', 'error'); });
+            });
+
+            document.addEventListener('DOMContentLoaded', function() {
+              fetchNotifications(1);
+            });
+
+            window.onclick = function(event) {
+              const modal = document.getElementById('notification-modal');
+              if (event.target === modal) { modal.style.display = 'none'; }
+            };
+          </script>
+        </main>
+      </div>
+    </body>
+    </html>
+  `;
+  res.send(html);
 });
 
 // API مسح جميع البيانات
