@@ -108,6 +108,18 @@ app.use(cookieParser(SESSION_SECRET));
 app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
 
+// سجل مراقبة للطلبات القادمة (للتصحيح)
+let incomingLogs = [];
+function addLog(type, message, data = null) {
+    incomingLogs.unshift({
+        time: new Date().toLocaleString('ar-SA'),
+        type,
+        message,
+        data: data ? JSON.stringify(data) : null
+    });
+    if (incomingLogs.length > 20) incomingLogs.pop();
+}
+
 
 
 // ======== إنشاء مجلد التصدير ========
@@ -1851,11 +1863,10 @@ app.get('/api/db-test', (req, res) => {
 // حفظ بيانات الاختبار
 app.post('/api/save-data', (req, res) => {
     const { name, email, phone, message } = req.body;
-
-    console.log('📨 [DEBUG] بيانات مستلمة من الجوال:', { name, email, phone, message });
+    addLog('INFO', 'استلام طلب تسجيل جديد', { name, email, phone });
 
     if (!name) {
-        console.log('⚠️ [DEBUG] رفض الطلب: الاسم مفقود');
+        addLog('ERROR', 'فشل التسجيل: الاسم مفقود');
         return res.status(400).json({
             status: 'error',
             message: 'الاسم مطلوب'
@@ -1867,6 +1878,7 @@ app.post('/api/save-data', (req, res) => {
         [name, email || '', phone || '', message || ''],
         function (err) {
             if (err) {
+                addLog('ERROR', 'خطأ في قاعدة البيانات: ' + err.message);
                 console.error('❌ خطأ في حفظ البيانات:', err);
                 return res.status(500).json({
                     status: 'error',
@@ -1874,6 +1886,7 @@ app.post('/api/save-data', (req, res) => {
                 });
             }
 
+            addLog('SUCCESS', 'تم حفظ العميل بنجاح برقم: ' + this.lastID);
             console.log('✅ بيانات محفوظة برقم:', this.lastID);
 
             res.json({
@@ -4121,6 +4134,22 @@ app.get('/admin/users', (req, res) => {
                     </div>
                 </div>
             `).join('')}
+
+            <div style="margin-top: 40px; background: #333; color: #fff; padding: 20px; border-radius: 10px; font-family: monospace;">
+                <h3 style="color: #FF9800; margin-top: 0;">🛠️ سجل مراقبة الطلبات (Logs)</h3>
+                <p style="font-size: 0.8rem; color: #aaa;">هنا تظهر الطلبات التي تصل من الجوال في هذه اللحظة:</p>
+                <div id="logs">
+                    ${incomingLogs.length === 0 ? '<p style="color: #666;">لا توجد طلبات مسجلة حالياً...</p>' : incomingLogs.map(log => `
+                        <div style="border-bottom: 1px solid #444; padding: 10px 0; font-size: 0.9rem;">
+                            <span style="color: #999;">[${log.time}]</span> 
+                            <span style="color: ${log.type === 'ERROR' ? '#f44336' : log.type === 'SUCCESS' ? '#4CAF50' : '#2196F3'}; font-weight: bold;">${log.type}</span>: 
+                            ${log.message}
+                            ${log.data ? `<br><small style="color: #888;">البيانات: ${log.data}</small>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+                <button onclick="location.reload()" style="margin-top: 15px; padding: 5px 15px; cursor: pointer; background: #555; color: white; border: none; border-radius: 4px;">تحديث السجل</button>
+            </div>
         </div>
     </body>
     </html>
