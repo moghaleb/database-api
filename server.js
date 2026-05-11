@@ -14,7 +14,7 @@ const HOST = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
 let sslOptions = null;
 let useSSL = false;
 
-// المسارات المحتملة لملفات SSL
+//  المسارات المحتملة لملفات SSLm
 const possibleSSLCertPaths = [
     '/etc/letsencrypt/live/redme.cfd/fullchain.pem',
     '/etc/letsencrypt/live/redme.cfd/cert.pem',
