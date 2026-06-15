@@ -1,6 +1,10 @@
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
+const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
 const sqlite3 = require('sqlite3').verbose();
 const ExcelJS = require('exceljs');
 const path = require('path');
@@ -10,52 +14,19 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
 
-// ======== إعدادات SSL الذكية ========
+// ======== إعدادات SSL - مقروءة من متغيرات البيئة فقط ========
 let sslOptions = null;
 let useSSL = false;
 
-//  المسارات المحتملة لملفات SSLm
-const possibleSSLCertPaths = [
-    '/etc/letsencrypt/live/redme.cfd/fullchain.pem',
-    '/etc/letsencrypt/live/redme.cfd/cert.pem',
-    '/etc/ssl/certs/redme.cfd.crt',
-    '/path/to/your/ssl/certificate.crt' // مسار مخصص
-];
+const SSL_CERT_PATH = process.env.SSL_CERT_PATH || '';
+const SSL_KEY_PATH = process.env.SSL_KEY_PATH || '';
 
-const possibleSSLKeyPaths = [
-    '/etc/letsencrypt/live/redme.cfd/privkey.pem',
-    '/etc/ssl/private/redme.cfd.key',
-    '/path/to/your/ssl/private.key' // مسار مخصص
-];
-
-// البحث عن ملفات SSL
-function findSSLCertificates() {
-    let certPath = null;
-    let keyPath = null;
-
-    // البحث عن الشهادة
-    for (const path of possibleSSLCertPaths) {
-        if (fs.existsSync(path)) {
-            certPath = path;
-            console.log(`✅ تم العثور على الشهادة في: ${path}`);
-            break;
-        }
-    }
-
-    // البحث عن المفتاح
-    for (const path of possibleSSLKeyPaths) {
-        if (fs.existsSync(path)) {
-            keyPath = path;
-            console.log(`✅ تم العثور على المفتاح في: ${path}`);
-            break;
-        }
-    }
-
-    if (certPath && keyPath) {
+if (SSL_CERT_PATH && SSL_KEY_PATH) {
+    if (fs.existsSync(SSL_CERT_PATH) && fs.existsSync(SSL_KEY_PATH)) {
         try {
-            return {
-                key: fs.readFileSync(keyPath),
-                cert: fs.readFileSync(certPath),
+            sslOptions = {
+                key: fs.readFileSync(SSL_KEY_PATH),
+                cert: fs.readFileSync(SSL_CERT_PATH),
                 secureProtocol: 'TLSv1_2_method',
                 ciphers: [
                     'ECDHE-RSA-AES128-GCM-SHA256',
@@ -63,51 +34,210 @@ function findSSLCertificates() {
                 ].join(':'),
                 honorCipherOrder: true
             };
+            useSSL = true;
+            console.log('🔐 تم تحميل شهادات SSL بنجاح!');
         } catch (error) {
             console.error('❌ خطأ في قراءة ملفات SSL:', error.message);
-            return null;
         }
+    } else {
+        console.log('⚠️  ملفات SSL غير موجودة في المسارات المحددة.');
     }
-
-    return null;
+} else {
+    console.log('ℹ️  لم يتم تكوين SSL (قم بتعيين SSL_CERT_PATH و SSL_KEY_PATH). سيتم استخدام HTTP.');
 }
 
-// محاولة تحميل SSL
-sslOptions = findSSLCertificates();
-useSSL = sslOptions !== null;
+// ======== Admin and API credentials ========
+const ADMIN_USER = process.env.ADMIN_USER || 'admin';
+const ADMIN_PASS = process.env.ADMIN_PASS || '';
+const API_TOKEN = process.env.API_TOKEN || '';
+const SESSION_SECRET = process.env.SESSION_SECRET || '';
 
-if (!useSSL) {
-    console.log('⚠️  لم يتم العثور على شهادات SSL. سيتم استخدام HTTP.');
-    console.log('💡 للحصول على شهادة SSL مجانية، قم بتشغيل:');
-    console.log('   sudo certbot --nginx -d redme.cfd -d www.redme.cfd');
-} else {
-    console.log('🔐 تم تحميل شهادات SSL بنجاح!');
+if (!ADMIN_PASS) {
+    console.warn('⚠️  تحذير: ADMIN_PASS غير معين! استخدم متغيرات البيئة لتأمين النظام.');
+}
+if (!API_TOKEN) {
+    console.warn('⚠️  تحذير: API_TOKEN غير معين! استخدم متغيرات البيئة لتأمين واجهات API.');
+}
+if (!SESSION_SECRET) {
+    console.warn('⚠️  تحذير: SESSION_SECRET غير معين! استخدم متغيرات البيئة لتأمين الجلسات.');
+}
+
+// Use a constant-time comparison to prevent timing attacks on password comparison
+function constantTimeCompare(a, b) {
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
+    if (a.length !== b.length) return false;
+    let result = 0;
+    for (let i = 0; i < a.length; i++) {
+        result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    }
+    return result === 0;
+}
+
+// ======== دالة تنظيف النصوص (XSS prevention) ========
+function h(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;');
+}
+
+// ======== دوال المصادقة ========
+function isAuthenticated(req) {
+    try {
+        const auth = req.signedCookies && req.signedCookies.admin_auth;
+        if (!auth) return false;
+        return auth === ADMIN_USER;
+    } catch (e) {
+        return false;
+    }
+}
+
+function requireAuth(req, res, next) {
+    if (isAuthenticated(req)) {
+        return next();
+    }
+    if (req.headers.accept && req.headers.accept.indexOf('application/json') !== -1) {
+        return res.status(401).json({ status: 'error', message: 'يرجى تسجيل الدخول أولاً' });
+    }
+    return res.redirect('/admin/login');
+}
+
+// Middleware للتحقق من توكن API
+function requireApiToken(req, res, next) {
+    // المسارات العامة المقصودة (مع تحديد نوع الطلب المسموح)
+    const publicGetRoutes = [
+        '/api/test', '/api/db-test', '/api/validate-coupon', '/api/validate-gift-card',
+        '/api/track-order', '/api/perfumes', '/api/perfumes-search',
+        '/api/categories', '/api/perfumes-stats', '/'
+    ];
+    const publicPostRoutes = [
+        '/api/save-data', '/api/process-payment'
+    ];
+
+    // تحديد ما إذا كان المسار عام (exact path match)
+    const exactPath = req.path.replace(/\/+$/, '') || '/';
+
+    // GET routes العامة
+    if (req.method === 'GET') {
+        const isPublic = publicGetRoutes.some(route =>
+            exactPath === route || exactPath.startsWith(route + '/')
+        );
+        if (isPublic) return next();
+    }
+
+    // POST routes العامة
+    if (req.method === 'POST') {
+        if (publicPostRoutes.includes(exactPath)) return next();
+    }
+
+    // باقي الطلبات تتطلب توكن
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ status: 'error', message: 'توكن API مطلوب' });
+    }
+    const token = authHeader.split(' ')[1];
+    if (token !== API_TOKEN) {
+        return res.status(401).json({ status: 'error', message: 'توكن API غير صالح' });
+    }
+    next();
+}
+
+// Middleware للتحقق من صحة رقم المعرف (ID)
+function validateId(req, res, next) {
+    const id = req.params.id;
+    if (id && !/^\d+$/.test(id)) {
+        return res.status(400).json({ status: 'error', message: 'معرّف غير صالح' });
+    }
+    next();
+}
+
+// Middleware للتحقق من صحة معرف الكوبون
+function validateCouponCode(req, res, next) {
+    const code = req.params.code;
+    if (code && !/^[a-zA-Z0-9_-]{1,50}$/.test(code)) {
+        return res.status(400).json({ status: 'error', message: 'كود كوبون غير صالح' });
+    }
+    next();
 }
 
 // ======== Middleware ========
+
+// Security headers
+app.use(helmet({
+    contentSecurityPolicy: false, // معطل للسماح بـ CDN و inline scripts في لوحة الإدارة
+    crossOriginEmbedderPolicy: false,
+}));
+
+// Rate limiting - عام
+const generalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 دقيقة
+    max: 1000,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { status: 'error', message: 'تم تجاوز عدد الطلبات المسموح بها، حاول لاحقاً' }
+});
+app.use(generalLimiter);
+
+// Rate limiting - للـ API الحساسة
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { status: 'error', message: 'تم تجاوز عدد طلبات API المسموح بها' }
+});
+
+// Rate limiting - لمحاولات تسجيل الدخول
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { status: 'error', message: 'تم تجاوز عدد محاولات تسجيل الدخول، حاول بعد 15 دقيقة' }
+});
+
+// CORS configuration
+const allowedOrigins = [
+    'https://redme.cfd',
+    'http://redme.cfd',
+    'https://www.redme.cfd',
+    'http://www.redme.cfd',
+    'https://database-api-kvxr.onrender.com',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'capacitor://localhost',
+    'ionic://localhost',
+];
+
 app.use(cors({
-    origin: [
-        'https://redme.cfd',
-        'http://redme.cfd',
-        'https://database-api-kvxr.onrender.com',
-        'https://www.redme.cfd',
-        'http://www.redme.cfd',
-        'http://localhost:3000',
-        'http://127.0.0.1:3000',
-        // أضف هنا مصدر التطبيق إذا كان مختلفًا
-        'capacitor://localhost',  // لتطبيقات Capacitor
-        'ionic://localhost',
-    ],
+    origin: function (origin, callback) {
+        // السماح بالطلبات بدون origin (Postman, Server-to-Server)
+        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            callback(new Error('غير مسموح بواسطة CORS'));
+        }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
-}))
+}));
 
-app.use(express.json());
-const SESSION_SECRET = process.env.SESSION_SECRET || 'redshe_shop_production_secret_2024_change_this';
+// Body parsing مع حد للحجم
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser(SESSION_SECRET));
 app.use(express.static('public'));
-app.use(express.urlencoded({ extended: true }));
+
+// ======== API Auth Middleware ========
+app.use('/api', requireApiToken);
+
+// ======== Login routes with rate limiting ========
+app.post('/login', loginLimiter);
+app.post('/admin/login', loginLimiter);
 
 // سجل مراقبة للطلبات القادمة (للتصحيح)
 let incomingLogs = [];
@@ -123,7 +253,123 @@ function addLog(type, message, data = null) {
 
 
 
-// ======== إنشاء مجلد التصدير ========
+// ======== دوال تسجيل الدخول ========
+function renderLoginPageHTML(req, res, message = '') {
+    const msgHtml = message ? `<p style="color:#ef4444;text-align:center;margin-top:12px;font-size:14px">${message}</p>` : '';
+    return res.send(`
+    <!DOCTYPE html>
+    <html dir="rtl">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      <title>تسجيل الدخول - لوحة الإدارة</title>
+      <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: 'Tajawal', sans-serif;
+          background: #0f1419;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          margin: 0;
+          padding: 20px;
+        }
+        .login-card {
+          background: rgba(18, 22, 33, 0.92);
+          border: 1px solid rgba(255,255,255,0.06);
+          padding: 44px;
+          border-radius: 24px;
+          width: 400px;
+          max-width: 100%;
+          box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+        }
+        .login-logo {
+          width: 56px; height: 56px;
+          background: linear-gradient(135deg, #06b6d4, #0891b2);
+          border-radius: 16px;
+          display: flex; align-items: center; justify-content: center;
+          margin: 0 auto 20px;
+          font-size: 22px; color: white;
+        }
+        h3 { text-align: center; color: #f1f5f9; margin: 0 0 6px; font-size: 22px; font-weight: 700; }
+        .login-sub { text-align: center; color: rgba(148,163,184,0.7); font-size: 13px; margin-bottom: 28px; }
+        label { display: block; margin: 14px 0 6px; color: rgba(203,213,225,0.8); font-size: 13px; font-weight: 600; }
+        input {
+          width: 100%; padding: 13px 16px;
+          border: 1.5px solid rgba(148,163,184,0.12);
+          border-radius: 12px;
+          background: rgba(15,23,42,0.5);
+          color: #f1f5f9; font-size: 14px;
+          font-family: 'Tajawal', sans-serif;
+          box-sizing: border-box;
+        }
+        input:focus { outline: none; border-color: #06b6d4; box-shadow: 0 0 0 4px rgba(6,182,212,0.12); }
+        button {
+          width: 100%; padding: 13px;
+          background: linear-gradient(135deg, #06b6d4, #0891b2);
+          color: white; border: none;
+          border-radius: 12px; margin-top: 24px;
+          font-size: 15px; font-weight: 700;
+          font-family: 'Tajawal', sans-serif;
+          cursor: pointer;
+        }
+        button:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(6,182,212,0.3); }
+      </style>
+    </head>
+    <body>
+      <div class="login-card">
+        <div class="login-logo"><i class="fas fa-store-alt"></i></div>
+        <h3>تسجيل الدخول</h3>
+        <p class="login-sub">لوحة إدارة متجر ريدشي</p>
+        <form method="post" action="/admin/login">
+          <label for="username">اسم المستخدم</label>
+          <input id="username" name="username" type="text" placeholder="أدخل اسم المستخدم" required>
+          <label for="password">كلمة المرور</label>
+          <input id="password" name="password" type="password" placeholder="أدخل كلمة المرور" required>
+          <button type="submit"><i class="fas fa-sign-in-alt"></i> دخول</button>
+        </form>
+        ${msgHtml}
+      </div>
+    </body>
+    </html>
+  `);
+}
+
+function handleLoginRequest(req, res) {
+    const { username, password } = req.body;
+    if (!username || !password) {
+        return renderLoginPageHTML(req, res, 'اسم المستخدم وكلمة المرور مطلوبان');
+    }
+    if (constantTimeCompare(username, ADMIN_USER) && constantTimeCompare(password, ADMIN_PASS)) {
+        res.cookie('admin_auth', ADMIN_USER, {
+            signed: true,
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            maxAge: 12 * 60 * 60 * 1000,
+            sameSite: 'lax'
+        });
+        return res.redirect('/admin');
+    }
+    return renderLoginPageHTML(req, res, 'بيانات اعتماد غير صحيحة');
+}
+
+app.get('/admin/login', (req, res) => {
+    if (isAuthenticated(req)) return res.redirect('/admin');
+    return renderLoginPageHTML(req, res);
+});
+app.post('/admin/login', handleLoginRequest);
+
+// مسار تسجيل الخروج
+app.get('/logout', (req, res) => {
+    res.clearCookie('admin_auth');
+    if (req.headers.accept && req.headers.accept.indexOf('application/json') !== -1) {
+        return res.json({ status: 'success', message: 'تم تسجيل الخروج' });
+    }
+    res.redirect('/');
+});
 
 // ======== Database Configuration ========
 const db = new sqlite3.Database(path.join(__dirname, 'database.db'));
@@ -1248,7 +1494,7 @@ app.post('/api/rebuild-products-tables', (req, res) => {
 });
 
 // ======== لوحة البيانات (Dashboard) ========
-app.get('/admin', (req, res) => {
+app.get('/admin', requireAuth, (req, res) => {
     const html = `
   <!DOCTYPE html>
   <html dir="rtl" lang="ar">
@@ -1589,7 +1835,7 @@ app.get('/admin', (req, res) => {
                               }
                               row.innerHTML = \`
                                   <td>\${order.order_number || '—'}</td>
-                                  <td>\${order.customer_name || 'غير محدد'}</td>
+                                  <td>\${String(order.customer_name || 'غير محدد').replace(/[<>&"']/g, function(c) { return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#x27;'}[c] })}</td>
                                   <td>\${order.total_amount || 0} ريال</td>
                                   <td><span class="status \${statusClass}">\${order.order_status || '—'}</span></td>
                                   <td>\${order.order_date ? new Date(order.order_date).toLocaleDateString('ar-SA') : '—'}</td>
@@ -1616,7 +1862,7 @@ app.get('/admin', (req, res) => {
 });
 
 // ======== صفحة إدارة المنتجات المحدثة ========
-app.get('/admin/products', (req, res) => {
+app.get('/admin/products', requireAuth, (req, res) => {
     const html = `
   <!DOCTYPE html>
   <html dir="rtl">
@@ -3239,307 +3485,288 @@ app.post('/api/process-payment', (req, res) => {
     let appliedCoupon = null;
     let appliedGiftCard = null;
 
-    // التحقق من الكوبون إذا كان موجوداً
-    const processCoupon = () => {
-        return new Promise((resolve, reject) => {
-            if (coupon_code) {
-                let query = 'SELECT * FROM coupons WHERE code = ? AND is_active = 1';
-                let params = [coupon_code];
+    // إنشاء رقم طلب فريد
+    const orderNumber = 'ORD-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
 
-                if (store_type) {
-                    query += ' AND (store_type = ? OR store_type = "all")';
-                    params.push(store_type);
-                }
+    // ===== معالجة الدفع في معاملة واحدة (لمنع سباق التوقيت) =====
+    db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
 
-                db.get(query, params, (err, coupon) => {
-                    if (err) {
-                        reject(err);
-                        return;
-                    }
+        // التحقق من الكوبون إذا كان موجوداً
+        const checkAndApplyCoupon = (callback) => {
+            if (!coupon_code) return callback(null);
 
-                    if (coupon) {
-                        // التحقق من صلاحية الكوبون
-                        const now = new Date();
-                        const validFrom = new Date(coupon.valid_from);
-                        const validUntil = new Date(coupon.valid_until);
+            let query = 'SELECT * FROM coupons WHERE code = ? AND is_active = 1';
+            let params = [coupon_code];
 
-                        if (now >= validFrom && now <= validUntil) {
-                            // التحقق من الحد الأقصى للاستخدام
-                            if (coupon.max_uses === -1 || coupon.used_count < coupon.max_uses) {
-                                // التحقق من الحد الأدنى للطلب
-                                if (calculatedFinalAmount >= coupon.min_order_amount) {
-                                    // حساب قيمة الخصم
-                                    if (coupon.discount_type === 'percentage') {
-                                        calculatedDiscountAmount = (calculatedFinalAmount * coupon.discount_value) / 100;
-                                    } else {
-                                        calculatedDiscountAmount = coupon.discount_value;
-                                    }
-
-                                    // التأكد من أن الخصم لا يتجاوز قيمة الطلب
-                                    if (calculatedDiscountAmount > calculatedFinalAmount) {
-                                        calculatedDiscountAmount = calculatedFinalAmount;
-                                    }
-
-                                    calculatedFinalAmount = calculatedFinalAmount - calculatedDiscountAmount;
-                                    appliedCoupon = coupon;
-
-                                    // زيادة عداد استخدامات الكوبون
-                                    db.run(
-                                        'UPDATE coupons SET used_count = used_count + 1 WHERE id = ?',
-                                        [coupon.id]
-                                    );
-
-                                    console.log('✅ تم تطبيق الكوبون:', {
-                                        code: coupon.code,
-                                        discount: calculatedDiscountAmount,
-                                        final: calculatedFinalAmount
-                                    });
-                                } else {
-                                    console.log('❌ قيمة الطلب أقل من الحد الأدنى للكوبون');
-                                }
-                            } else {
-                                console.log('❌ تم الوصول للحد الأقصى لاستخدام الكوبون');
-                            }
-                        } else {
-                            console.log('❌ الكوبون خارج الفترة الزمنية');
-                        }
-                    }
-                    resolve();
-                }
-                );
-            } else {
-                resolve();
+            if (store_type) {
+                query += ' AND (store_type = ? OR store_type = "all")';
+                params.push(store_type);
             }
-        });
-    };
 
-    // التحقق من القسيمة الشرائية إذا كانت موجودة
-    const processGiftCard = () => {
-        return new Promise((resolve, reject) => {
-            if (gift_card_number && gift_card_pin) {
-                db.get(
-                    'SELECT * FROM gift_cards WHERE card_number = ? AND pin_code = ? AND is_active = 1',
-                    [gift_card_number, gift_card_pin],
-                    (err, giftCard) => {
-                        if (err) {
-                            reject(err);
-                            return;
-                        }
+            db.get(query, params, (err, coupon) => {
+                if (err) return callback(err);
+                if (!coupon) return callback(null);
 
-                        if (giftCard) {
-                            // التحقق من صلاحية القسيمة
-                            const now = new Date();
-                            const validUntil = new Date(giftCard.valid_until);
+                const now = new Date();
+                const validFrom = new Date(coupon.valid_from);
+                const validUntil = new Date(coupon.valid_until);
 
-                            if (now <= validUntil) {
-                                // التحقق من الحد الأقصى للاستخدام
-                                if (giftCard.max_uses === -1 || giftCard.used_count < giftCard.max_uses) {
-                                    // التحقق من الرصيد المتاح
-                                    if (giftCard.current_balance > 0) {
-                                        // حساب المبلغ المستخدم من القسيمة
-                                        calculatedGiftCardAmount = Math.min(giftCard.current_balance, calculatedFinalAmount);
-                                        calculatedFinalAmount = calculatedFinalAmount - calculatedGiftCardAmount;
-                                        appliedGiftCard = giftCard;
+                if (now >= validFrom && now <= validUntil &&
+                    (coupon.max_uses === -1 || coupon.used_count < coupon.max_uses) &&
+                    calculatedFinalAmount >= coupon.min_order_amount) {
 
-                                        // تحديث رصيد القسيمة وعداد الاستخدام
-                                        const newBalance = giftCard.current_balance - calculatedGiftCardAmount;
-                                        const newUsedCount = giftCard.used_count + 1;
-
-                                        db.run(
-                                            'UPDATE gift_cards SET current_balance = ?, used_count = ?, used_amount = used_amount + ? WHERE id = ?',
-                                            [newBalance, newUsedCount, calculatedGiftCardAmount, giftCard.id]
-                                        );
-
-                                        console.log('✅ تم استخدام القسيمة:', {
-                                            card_number: giftCard.card_number,
-                                            used_amount: calculatedGiftCardAmount,
-                                            remaining_balance: newBalance,
-                                            final: calculatedFinalAmount
-                                        });
-                                    } else {
-                                        console.log('❌ لا يوجد رصيد متاح في القسيمة');
-                                    }
-                                } else {
-                                    console.log('❌ تم الوصول للحد الأقصى لاستخدام القسيمة');
-                                }
-                            } else {
-                                console.log('❌ القسيمة منتهية الصلاحية');
-                            }
-                        }
-                        resolve();
+                    if (coupon.discount_type === 'percentage') {
+                        calculatedDiscountAmount = (calculatedFinalAmount * coupon.discount_value) / 100;
+                    } else {
+                        calculatedDiscountAmount = coupon.discount_value;
                     }
-                );
-            } else {
-                resolve();
-            }
-        });
-    };
-
-    // معالجة الطلب بعد التحقق من الكوبون والقسيمة
-    Promise.all([processCoupon(), processGiftCard()])
-        .then(() => {
-            // إنشاء رقم طلب فريد
-            const orderNumber = 'ORD-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
-
-            // الاستعلام المحدث مع حقول طريقة الدفع والعنوان الجديدة
-            db.run(
-                `INSERT INTO orders (
-          order_number, cart_items, total_amount, discount_amount, coupon_code,
-          coupon_type, gift_card_number, gift_card_type, gift_card_amount, order_date, 
-          order_status, customer_name, customer_phone, customer_email, customer_secondary_phone,
-          payment_method, transfer_name, transfer_number, customer_address, address_city, 
-          address_area, address_detail, shipping_city, shipping_area, shipping_fee, 
-          final_amount, order_notes, expected_delivery, items_count, shipping_type
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    orderNumber,
-                    JSON.stringify(cart_items),
-                    parseFloat(total_amount), // المبلغ الأصلي
-                    parseFloat(calculatedDiscountAmount), // قيمة الخصم
-                    appliedCoupon ? appliedCoupon.code : null,
-                    appliedCoupon ? appliedCoupon.discount_type : null,
-                    appliedGiftCard ? appliedGiftCard.card_number : null,
-                    appliedGiftCard ? 'gift_card' : null,
-                    parseFloat(calculatedGiftCardAmount), // المبلغ المستخدم من القسيمة
-                    order_date || new Date().toISOString(),
-                    order_status || 'pending',
-                    customer_name || 'عميل',
-                    customer_phone || '',
-                    customer_email || '',
-                    customer_secondary_phone || '',
-
-                    // حقول طريقة الدفع الجديدة
-                    payment_method || 'online',
-                    transfer_name || '',
-                    transfer_number || '',
-
-                    // حقول العنوان الجديدة
-                    customer_address || '',
-                    address_city || '',
-                    address_area || '',
-                    address_detail || '',
-                    shipping_city || address_city || '',
-                    shipping_area || address_area || '',
-
-                    // معلومات إضافية
-                    parseFloat(shipping_fee) || 0,
-                    parseFloat(calculatedFinalAmount),
-                    order_notes || '',
-                    expected_delivery || 'تقريباً مابين 11-15/2025',
-                    items_count || cart_items.length,
-                    shipping_type || 'توصيل منزلي'
-                ],
-                function (err) {
-                    if (err) {
-                        console.error('❌ خطأ في حفظ الطلب:', err);
-                        return res.status(500).json({
-                            status: 'error',
-                            message: 'فشل في معالجة الطلب: ' + err.message
-                        });
+                    if (calculatedDiscountAmount > calculatedFinalAmount) {
+                        calculatedDiscountAmount = calculatedFinalAmount;
                     }
+                    calculatedFinalAmount -= calculatedDiscountAmount;
+                    appliedCoupon = coupon;
 
-                    console.log('✅ طلب جديد محفوظ:', {
-                        order_id: orderNumber,
-                        customer: customer_name,
-                        payment_method: payment_method,
-                        address: customer_address,
-                        city: address_city,
-                        area: address_area,
-                        original_total: total_amount,
-                        discount: calculatedDiscountAmount,
-                        gift_card: calculatedGiftCardAmount,
-                        final_total: calculatedFinalAmount
-                    });
+                    db.run('UPDATE coupons SET used_count = used_count + 1 WHERE id = ?', [coupon.id]);
+                }
+                callback(null);
+            });
+        };
 
-                    // حفظ تفاصيل المنتجات في جدول order_items - محدث بإضافة product_url
-                    const orderId = this.lastID;
-                    let itemsProcessed = 0;
-                    const totalItems = cart_items.length;
+        // التحقق من القسيمة الشرائية إذا كانت موجودة
+        const checkAndApplyGiftCard = (callback) => {
+            if (!gift_card_number || !gift_card_pin) return callback(null);
 
-                    cart_items.forEach(item => {
+            db.get(
+                'SELECT * FROM gift_cards WHERE card_number = ? AND pin_code = ? AND is_active = 1',
+                [gift_card_number, gift_card_pin],
+                (err, giftCard) => {
+                    if (err) return callback(err);
+                    if (!giftCard) return callback(null);
+
+                    const now = new Date();
+                    const validUntil = new Date(giftCard.valid_until);
+
+                    if (now <= validUntil &&
+                        (giftCard.max_uses === -1 || giftCard.used_count < giftCard.max_uses) &&
+                        giftCard.current_balance > 0) {
+
+                        calculatedGiftCardAmount = Math.min(giftCard.current_balance, calculatedFinalAmount);
+                        calculatedFinalAmount -= calculatedGiftCardAmount;
+                        appliedGiftCard = giftCard;
+
+                        const newBalance = giftCard.current_balance - calculatedGiftCardAmount;
+
                         db.run(
-                            `INSERT INTO order_items (order_id, product_id, product_name, quantity, price, total_price, product_url)
-               VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                            [
-                                orderId,
-                                item.id || item.product_id || 0,
-                                item.name || item.product_name || 'منتج غير معروف',
-                                item.quantity || 1,
-                                item.price || item.unit_price || 0,
-                                (item.price || item.unit_price || 0) * (item.quantity || 1),
-                                item.productUrl || item.product_url || item.url || item.link || item.permalink || ''
-                            ],
-                            function (err) {
-                                if (err) {
-                                    console.error('❌ خطأ في حفظ تفاصيل المنتج:', err);
-                                }
-
-                                itemsProcessed++;
-
-                                // عندما تتم معالجة جميع المنتجات
-                                if (itemsProcessed === totalItems) {
-                                    res.json({
-                                        status: 'success',
-                                        message: 'تم إرسال الطلب بنجاح إلى الإدارة',
-                                        order_id: orderNumber,
-                                        order_status: 'pending',
-                                        original_amount: parseFloat(total_amount),
-                                        discount_amount: calculatedDiscountAmount,
-                                        gift_card_amount: calculatedGiftCardAmount,
-                                        final_amount: calculatedFinalAmount,
-                                        payment_method: payment_method,
-
-                                        // معلومات الدفع الإضافية
-                                        payment_info: {
-                                            method: payment_method,
-                                            transfer_name: transfer_name || '',
-                                            transfer_number: transfer_number || ''
-                                        },
-
-                                        coupon_code: appliedCoupon ? appliedCoupon.code : null,
-                                        gift_card_number: appliedGiftCard ? appliedGiftCard.card_number : null,
-
-                                        // إرجاع بيانات العنوان للإدارة
-                                        customer_info: {
-                                            name: customer_name,
-                                            phone: customer_phone,
-                                            secondary_phone: customer_secondary_phone,
-                                            email: customer_email,
-                                            address: customer_address,
-                                            city: address_city,
-                                            area: address_area,
-                                            address_detail: address_detail
-                                        },
-
-                                        coupon_details: appliedCoupon ? {
-                                            code: appliedCoupon.code,
-                                            description: appliedCoupon.description,
-                                            discount_type: appliedCoupon.discount_type,
-                                            discount_value: appliedCoupon.discount_value
-                                        } : null,
-                                        gift_card_details: appliedGiftCard ? {
-                                            card_number: appliedGiftCard.card_number,
-                                            initial_amount: appliedGiftCard.initial_amount,
-                                            remaining_balance: appliedGiftCard.current_balance - calculatedGiftCardAmount
-                                        } : null,
-                                        items_count: cart_items.length,
-                                        timestamp: new Date().toISOString(),
-                                        admin_url: `https://redme.cfd/admin/orders`
-                                    });
-                                }
-                            }
+                            'UPDATE gift_cards SET current_balance = ?, used_count = used_count + 1, used_amount = used_amount + ? WHERE id = ?',
+                            [newBalance, calculatedGiftCardAmount, giftCard.id]
                         );
-                    });
+                    }
+                    callback(null);
                 }
             );
-        })
-        .catch(error => {
-            console.error('❌ خطأ في معالجة الكوبون أو القسيمة:', error);
-            return res.status(500).json({
-                status: 'error',
-                message: 'فشل في معالجة الكوبون أو القسيمة: ' + error.message
+        };
+
+        // تنفيذ التحقق من الكوبون والقسيمة ثم إدراج الطلب
+        checkAndApplyCoupon((err) => {
+            if (err) {
+                db.run('ROLLBACK');
+                console.error('❌ خطأ في التحقق من الكوبون:', err);
+                return res.status(500).json({ status: 'error', message: 'فشل في التحقق من الكوبون: ' + err.message });
+            }
+
+            checkAndApplyGiftCard((err) => {
+                if (err) {
+                    db.run('ROLLBACK');
+                    console.error('❌ خطأ في التحقق من القسيمة:', err);
+                    return res.status(500).json({ status: 'error', message: 'فشل في التحقق من القسيمة: ' + err.message });
+                }
+
+                // إدراج الطلب في قاعدة البيانات
+                db.run(
+                    `INSERT INTO orders (
+              order_number, cart_items, total_amount, discount_amount, coupon_code,
+              coupon_type, gift_card_number, gift_card_type, gift_card_amount, order_date, 
+              order_status, customer_name, customer_phone, customer_email, customer_secondary_phone,
+              payment_method, transfer_name, transfer_number, customer_address, address_city, 
+              address_area, address_detail, shipping_city, shipping_area, shipping_fee, 
+              final_amount, order_notes, expected_delivery, items_count, shipping_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        orderNumber,
+                        JSON.stringify(cart_items),
+                        parseFloat(total_amount),
+                        parseFloat(calculatedDiscountAmount),
+                        appliedCoupon ? appliedCoupon.code : null,
+                        appliedCoupon ? appliedCoupon.discount_type : null,
+                        appliedGiftCard ? appliedGiftCard.card_number : null,
+                        appliedGiftCard ? 'gift_card' : null,
+                        parseFloat(calculatedGiftCardAmount),
+                        order_date || new Date().toISOString(),
+                        order_status || 'pending',
+                        customer_name || 'عميل',
+                        customer_phone || '',
+                        customer_email || '',
+                        customer_secondary_phone || '',
+                        payment_method || 'online',
+                        transfer_name || '',
+                        transfer_number || '',
+                        customer_address || '',
+                        address_city || '',
+                        address_area || '',
+                        address_detail || '',
+                        shipping_city || address_city || '',
+                        shipping_area || address_area || '',
+                        parseFloat(shipping_fee) || 0,
+                        parseFloat(calculatedFinalAmount),
+                        order_notes || '',
+                        expected_delivery || 'تقريباً مابين 11-15/2025',
+                        items_count || cart_items.length,
+                        shipping_type || 'توصيل منزلي'
+                    ],
+                    function (err) {
+                        if (err) {
+                            db.run('ROLLBACK');
+                            console.error('❌ خطأ في حفظ الطلب:', err);
+                            return res.status(500).json({
+                                status: 'error',
+                                message: 'فشل في معالجة الطلب: ' + err.message
+                            });
+                        }
+
+                        // إنهاء المعاملة بنجاح
+                        db.run('COMMIT');
+
+                        console.log('✅ طلب جديد محفوظ:', {
+                            order_id: orderNumber,
+                            customer: customer_name,
+                            payment_method: payment_method,
+                            original_total: total_amount,
+                            discount: calculatedDiscountAmount,
+                            gift_card: calculatedGiftCardAmount,
+                            final_total: calculatedFinalAmount
+                        });
+
+                        // حفظ تفاصيل المنتجات في جدول order_items
+                        const orderId = this.lastID;
+                        let itemsProcessed = 0;
+                        const totalItems = cart_items.length;
+
+                        if (totalItems === 0) {
+                            return res.json({
+                                status: 'success',
+                                message: 'تم إرسال الطلب بنجاح إلى الإدارة',
+                                order_id: orderNumber,
+                                order_status: 'pending',
+                                original_amount: parseFloat(total_amount),
+                                discount_amount: calculatedDiscountAmount,
+                                gift_card_amount: calculatedGiftCardAmount,
+                                final_amount: calculatedFinalAmount,
+                                payment_method: payment_method,
+                                payment_info: {
+                                    method: payment_method,
+                                    transfer_name: transfer_name || '',
+                                    transfer_number: transfer_number || ''
+                                },
+                                coupon_code: appliedCoupon ? appliedCoupon.code : null,
+                                gift_card_number: appliedGiftCard ? appliedGiftCard.card_number : null,
+                                customer_info: {
+                                    name: customer_name,
+                                    phone: customer_phone,
+                                    secondary_phone: customer_secondary_phone,
+                                    email: customer_email,
+                                    address: customer_address,
+                                    city: address_city,
+                                    area: address_area,
+                                    address_detail: address_detail
+                                },
+                                coupon_details: appliedCoupon ? {
+                                    code: appliedCoupon.code,
+                                    description: appliedCoupon.description,
+                                    discount_type: appliedCoupon.discount_type,
+                                    discount_value: appliedCoupon.discount_value
+                                } : null,
+                                gift_card_details: appliedGiftCard ? {
+                                    card_number: appliedGiftCard.card_number,
+                                    initial_amount: appliedGiftCard.initial_amount,
+                                    remaining_balance: appliedGiftCard.current_balance - calculatedGiftCardAmount
+                                } : null,
+                                items_count: 0,
+                                timestamp: new Date().toISOString(),
+                                admin_url: `https://redme.cfd/admin/orders`
+                            });
+                        }
+
+                        cart_items.forEach(item => {
+                            db.run(
+                                `INSERT INTO order_items (order_id, product_id, product_name, quantity, price, total_price, product_url)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                                [
+                                    orderId,
+                                    item.id || item.product_id || 0,
+                                    item.name || item.product_name || 'منتج غير معروف',
+                                    item.quantity || 1,
+                                    item.price || item.unit_price || 0,
+                                    (item.price || item.unit_price || 0) * (item.quantity || 1),
+                                    item.productUrl || item.product_url || item.url || item.link || item.permalink || ''
+                                ],
+                                function (err) {
+                                    if (err) {
+                                        console.error('❌ خطأ في حفظ تفاصيل المنتج:', err);
+                                    }
+                                    itemsProcessed++;
+                                    if (itemsProcessed === totalItems) {
+                                        res.json({
+                                            status: 'success',
+                                            message: 'تم إرسال الطلب بنجاح إلى الإدارة',
+                                            order_id: orderNumber,
+                                            order_status: 'pending',
+                                            original_amount: parseFloat(total_amount),
+                                            discount_amount: calculatedDiscountAmount,
+                                            gift_card_amount: calculatedGiftCardAmount,
+                                            final_amount: calculatedFinalAmount,
+                                            payment_method: payment_method,
+                                            payment_info: {
+                                                method: payment_method,
+                                                transfer_name: transfer_name || '',
+                                                transfer_number: transfer_number || ''
+                                            },
+                                            coupon_code: appliedCoupon ? appliedCoupon.code : null,
+                                            gift_card_number: appliedGiftCard ? appliedGiftCard.card_number : null,
+                                            customer_info: {
+                                                name: customer_name,
+                                                phone: customer_phone,
+                                                secondary_phone: customer_secondary_phone,
+                                                email: customer_email,
+                                                address: customer_address,
+                                                city: address_city,
+                                                area: address_area,
+                                                address_detail: address_detail
+                                            },
+                                            coupon_details: appliedCoupon ? {
+                                                code: appliedCoupon.code,
+                                                description: appliedCoupon.description,
+                                                discount_type: appliedCoupon.discount_type,
+                                                discount_value: appliedCoupon.discount_value
+                                            } : null,
+                                            gift_card_details: appliedGiftCard ? {
+                                                card_number: appliedGiftCard.card_number,
+                                                initial_amount: appliedGiftCard.initial_amount,
+                                                remaining_balance: appliedGiftCard.current_balance - calculatedGiftCardAmount
+                                            } : null,
+                                            items_count: cart_items.length,
+                                            timestamp: new Date().toISOString(),
+                                            admin_url: `https://redme.cfd/admin/orders`
+                                        });
+                                    }
+                                }
+                            );
+                        });
+                    }
+                );
             });
         });
+    });
 });
 
 // API جلب تفاصيل طلب محدد (للمزامنة)
@@ -4389,7 +4616,7 @@ app.use('/admin', (req, res, next) => {
 
 
 // صفحة مشتريات عميل محدد
-app.get('/admin/purchases/:phone', (req, res) => {
+app.get('/admin/purchases/:phone', requireAuth, (req, res) => {
     const { phone } = req.params;
     const name = req.query.name || 'عميل';
 
@@ -4481,14 +4708,14 @@ app.get('/admin/purchases/:phone', (req, res) => {
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
                     <div><i class="fas fa-calendar-alt"></i> التاريخ: <strong>${new Date(order.order_date).toLocaleString('ar-SA')}</strong></div>
                     <div><i class="fas fa-credit-card"></i> الدفع: <strong>${order.payment_method}</strong></div>
-                    <div><i class="fas fa-map-marker-alt"></i> المدينة: <strong>${order.address_city || 'غير محدد'}</strong></div>
-                    <div><i class="fas fa-location-dot"></i> المنطقة: <strong>${order.address_area || 'غير محدد'}</strong></div>
+                    <div><i class="fas fa-map-marker-alt"></i> المدينة: <strong>${h(order.address_city) || 'غير محدد'}</strong></div>
+                    <div><i class="fas fa-location-dot"></i> المنطقة: <strong>${h(order.address_area) || 'غير محدد'}</strong></div>
                 </div>
                 <div class="item-list">
                     <strong style="display: block; margin-bottom: 10px; color: #555;"><i class="fas fa-box"></i> المنتجات المطلوبة:</strong>
                     ${items.map(item => `
                         <div class="item-row">
-                            <span>${item.name} (${item.quantity}x)</span>
+                            <span>${h(item.name)} (${item.quantity}x)</span>
                             <strong>${item.price} ر.س</strong>
                         </div>
                     `).join('')}
@@ -4513,7 +4740,7 @@ app.get('/admin/purchases/:phone', (req, res) => {
 });
 
 // صفحة الطلبات المؤكدة
-app.get('/admin/confirmed-orders', (req, res) => {
+app.get('/admin/confirmed-orders', requireAuth, (req, res) => {
     db.all('SELECT * FROM orders WHERE order_status = "confirmed" ORDER BY created_at DESC', (err, rows) => {
         let html = `
     <!DOCTYPE html>
@@ -4614,27 +4841,27 @@ app.get('/admin/confirmed-orders', (req, res) => {
 
                 <div class="customer-info">
                     <strong>معلومات العميل:</strong><br>
-                    الاسم: ${order.customer_name || 'غير محدد'} |
-                    الهاتف: ${order.customer_phone || 'غير محدد'} |
-                    ${order.customer_secondary_phone ? `هاتف إضافي: ${order.customer_secondary_phone} | ` : ''}
-                    البريد: ${order.customer_email || 'غير محدد'}<br>
+                    الاسم: ${h(order.customer_name) || 'غير محدد'} |
+                    الهاتف: ${h(order.customer_phone) || 'غير محدد'} |
+                    ${order.customer_secondary_phone ? `هاتف إضافي: ${h(order.customer_secondary_phone)} | ` : ''}
+                    البريد: ${h(order.customer_email) || 'غير محدد'}<br>
                     طريقة الدفع: <strong>${paymentMethodText}</strong>
 
                     <!-- عرض معلومات الحوالة إذا كانت موجودة -->
                     ${order.transfer_name ? `<div style="background: #e8f5e8; padding: 12px; border-radius: 8px; margin-top: 10px; border-right: 3px solid #4CAF50;">
                         <strong>معلومات الحوالة:</strong><br>
-                        اسم المرسل: ${order.transfer_name} |
-                        رقم الحوالة: ${order.transfer_number}
+                        اسم المرسل: ${h(order.transfer_name)} |
+                        رقم الحوالة: ${h(order.transfer_number)}
                     </div>` : ''}
 
                     <!-- عرض العنوان الجديد -->
-                    ${order.customer_address ? `<br><strong>العنوان:</strong> ${order.customer_address}` : ''}
-                    ${order.address_city ? ` | <strong>المدينة:</strong> ${order.address_city}` : ''}
-                    ${order.address_area ? ` | <strong>المنطقة:</strong> ${order.address_area}` : ''}
-                    ${order.address_detail ? `<br><strong>تفاصيل العنوان:</strong> ${order.address_detail}` : ''}
+                    ${order.customer_address ? `<br><strong>العنوان:</strong> ${h(order.customer_address)}` : ''}
+                    ${order.address_city ? ` | <strong>المدينة:</strong> ${h(order.address_city)}` : ''}
+                    ${order.address_area ? ` | <strong>المنطقة:</strong> ${h(order.address_area)}` : ''}
+                    ${order.address_detail ? `<br><strong>تفاصيل العنوان:</strong> ${h(order.address_detail)}` : ''}
 
-                    ${order.coupon_code ? `<br>كود الخصم: <strong>${order.coupon_code}</strong> (خصم: ${order.discount_amount} ر.س)` : ''}
-                    ${order.gift_card_number ? `<br>رقم القسيمة: <strong>${order.gift_card_number}</strong> (مستخدم: ${order.gift_card_amount} ر.س)` : ''}
+                    ${order.coupon_code ? `<br>كود الخصم: <strong>${h(order.coupon_code)}</strong> (خصم: ${order.discount_amount} ر.س)` : ''}
+                    ${order.gift_card_number ? `<br>رقم القسيمة: <strong>${h(order.gift_card_number)}</strong> (مستخدم: ${order.gift_card_amount} ر.س)` : ''}
                 </div>
 
                 <div class="order-details">
@@ -4671,14 +4898,14 @@ app.get('/admin/confirmed-orders', (req, res) => {
                     <h4 style="margin: 0 0 15px 0;"><i class="fas fa-boxes"></i> العناصر المطلوبة:</h4>
                     ${items.map(item => `
                         <div class="item-card">
-                            <strong>${item.name || 'منتج'}</strong><br>
-                            <span style="color: #2196F3; font-weight: bold;">رقم المنتج: ${item.id || item.product_id || 'غير معروف'}</span><br>
+                            <strong>${h(item.name) || 'منتج'}</strong><br>
+                            <span style="color: #2196F3; font-weight: bold;">رقم المنتج: ${h(item.id) || h(item.product_id) || 'غير معروف'}</span><br>
                             السعر: ${item.price} ر.س × ${item.quantity || 1}
                             = <strong>${(item.price * (item.quantity || 1)).toFixed(2)} ر.س</strong>
-                            ${item.selectedSize && item.selectedSize !== 'غير محدد' ? `<br>المقاس: ${item.selectedSize}` : ''}
-                            ${item.colors && item.colors[0] && item.colors[0] !== 'غير محدد' ? `<br>اللون: ${item.colors[0]}` : ''}
-                            ${item.productUrl ? `<br><a href="${item.productUrl}" target="_blank" class="product-url"><i class="fas fa-external-link-alt"></i> رابط المنتج</a>` : ''}
-                            ${item.image ? `<br><img src="${item.image}" style="max-width: 60px; max-height: 60px; margin-top: 5px; border-radius: 5px;">` : ''}
+                            ${item.selectedSize && item.selectedSize !== 'غير محدد' ? `<br>المقاس: ${h(item.selectedSize)}` : ''}
+                            ${item.colors && item.colors[0] && item.colors[0] !== 'غير محدد' ? `<br>اللون: ${h(item.colors[0])}` : ''}
+                            ${item.productUrl ? `<br><a href="${h(item.productUrl)}" target="_blank" class="product-url"><i class="fas fa-external-link-alt"></i> رابط المنتج</a>` : ''}
+                            ${item.image ? `<br><img src="${h(item.image)}" style="max-width: 60px; max-height: 60px; margin-top: 5px; border-radius: 5px;">` : ''}
                         </div>
                     `).join('')}
                 </div>
@@ -4725,7 +4952,7 @@ app.get('/admin/confirmed-orders', (req, res) => {
 
 
 // صفحة الإدارة المتقدمة
-app.get('/admin/advanced', (req, res) => {
+app.get('/admin/advanced', requireAuth, (req, res) => {
     db.all('SELECT * FROM test_users ORDER BY created_at DESC', (err, rows) => {
         let html = `
     <!DOCTYPE html>
@@ -4829,10 +5056,10 @@ app.get('/admin/advanced', (req, res) => {
                 html += `
                         <tr>
                             <td><span class="badge">${user.id}</span></td>
-                            <td><strong>${user.name || 'غير محدد'}</strong></td>
-                            <td>${user.email || 'غير محدد'}</td>
-                            <td>${user.phone || 'غير محدد'}</td>
-                            <td>${user.message || 'لا توجد رسالة'}</td>
+                            <td><strong>${h(user.name) || 'غير محدد'}</strong></td>
+                            <td>${h(user.email) || 'غير محدد'}</td>
+                            <td>${h(user.phone) || 'غير محدد'}</td>
+                            <td>${h(user.message) || 'لا توجد رسالة'}</td>
                             <td style="font-size: 13px; color: #666;">${user.created_at}</td>
                         </tr>
         `;
@@ -4876,7 +5103,7 @@ app.get('/admin/advanced', (req, res) => {
 });
 
 // صفحة بيانات المستخدمين (العملاء)
-app.get('/admin/users', (req, res) => {
+app.get('/admin/users', requireAuth, (req, res) => {
     db.all('SELECT * FROM test_users ORDER BY created_at DESC', (err, rows) => {
         if (err) {
             return res.status(500).send('خطأ في قاعدة البيانات');
@@ -4939,14 +5166,14 @@ app.get('/admin/users', (req, res) => {
                         <div class="card" style="margin-bottom: 16px; border-right: 4px solid var(--accent);">
                             <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
                                 <div>
-                                    <h3 style="color: var(--accent); margin: 0 0 8px;">${user.name}</h3>
+                                    <h3 style="color: var(--accent); margin: 0 0 8px;">${h(user.name)}</h3>
                                     <div style="color: var(--text-muted); font-size: 0.9rem;">
-                                        <i class="fas fa-envelope"></i> ${user.email} | <i class="fas fa-phone"></i> ${user.phone || 'غير متوفر'}
+                                        <i class="fas fa-envelope"></i> ${h(user.email)} | <i class="fas fa-phone"></i> ${h(user.phone) || 'غير متوفر'}
                                     </div>
-                                    ${user.message ? `<div style="margin-top: 10px; background: var(--bg); padding: 12px; border-radius: 6px; font-size: 0.9rem;"><i class="fas fa-comment"></i> ${user.message}</div>` : ''}
+                                    ${user.message ? `<div style="margin-top: 10px; background: var(--bg); padding: 12px; border-radius: 6px; font-size: 0.9rem;"><i class="fas fa-comment"></i> ${h(user.message)}</div>` : ''}
                                     <div style="margin-top: 10px; font-size: 0.8rem; color: var(--text-light);"><i class="fas fa-calendar"></i> تاريخ التسجيل: ${new Date(user.created_at).toLocaleString('ar-SA')}</div>
                                 </div>
-                                <a href="/admin/purchases/${user.phone || ''}?name=${encodeURIComponent(user.name)}" class="btn btn-primary btn-sm"><i class="fas fa-shopping-bag"></i> المشتريات</a>
+                                <a href="/admin/purchases/${encodeURIComponent(user.phone || '')}?name=${encodeURIComponent(user.name)}" class="btn btn-primary btn-sm"><i class="fas fa-shopping-bag"></i> المشتريات</a>
                             </div>
                         </div>
                     `).join('')}
@@ -4964,7 +5191,7 @@ app.get('/admin/users', (req, res) => {
 // (Moved to orders-page.js)
 
 // صفحة إدارة الكوبونات
-app.get('/admin/coupons', (req, res) => {
+app.get('/admin/coupons', requireAuth, (req, res) => {
     const storeFilter = req.query.store || 'all';
     let query = 'SELECT * FROM coupons ORDER BY created_at DESC';
     if (storeFilter === 'noon') {
@@ -5151,7 +5378,7 @@ app.get('/admin/coupons', (req, res) => {
                         <strong>المتجر:</strong> ${coupon.store_type === 'noon' ? 'متجر نون' : (coupon.store_type === 'store1' ? 'المتجر الأول' : 'جميع المتاجر')}
                     </div>
                     <div class="detail-item">
-                        <strong>الوصف:</strong> ${coupon.description || 'لا يوجد وصف'}
+                        <strong>الوصف:</strong> ${h(coupon.description) || 'لا يوجد وصف'}
                     </div>
                     <div class="detail-item">
                         <strong>نوع الخصم:</strong> ${discountTypeText}
@@ -5581,7 +5808,7 @@ app.get('/admin/coupons', (req, res) => {
 });
 
 // صفحة إدارة القسائم الشرائية
-app.get('/admin/gift-cards', (req, res) => {
+app.get('/admin/gift-cards', requireAuth, (req, res) => {
     db.all('SELECT * FROM gift_cards ORDER BY created_at DESC', (err, rows) => {
         let html = `
     <!DOCTYPE html>
@@ -5759,13 +5986,13 @@ app.get('/admin/gift-cards', (req, res) => {
                         <strong>متبقي:</strong> <span style="color: ${daysLeft > 7 ? '#28a745' : daysLeft > 3 ? '#ffc107' : '#dc3545'}">${daysLeftText}</span>
                     </div>
                     <div class="detail-item">
-                        <strong>العميل:</strong> ${giftCard.customer_name || 'غير محدد'}
+                        <strong>العميل:</strong> ${h(giftCard.customer_name) || 'غير محدد'}
                     </div>
                     <div class="detail-item">
-                        <strong>هاتف العميل:</strong> ${giftCard.customer_phone || 'غير محدد'}
+                        <strong>هاتف العميل:</strong> ${h(giftCard.customer_phone) || 'غير محدد'}
                     </div>
                     <div class="detail-item">
-                        <strong>ملاحظات:</strong> ${giftCard.notes || 'لا توجد ملاحظات'}
+                        <strong>ملاحظات:</strong> ${h(giftCard.notes) || 'لا توجد ملاحظات'}
                     </div>
                     <div class="detail-item">
                         <strong>تاريخ الإنشاء:</strong> ${new Date(giftCard.created_at).toLocaleDateString('ar-SA')}
@@ -6142,7 +6369,7 @@ app.get('/admin/gift-cards', (req, res) => {
 });
 
 // صفحة إعدادات الـ admin
-app.get('/admin/settings', (req, res) => {
+app.get('/admin/settings', requireAuth, (req, res) => {
     res.send(`
   <!DOCTYPE html>
   <html dir="rtl">
@@ -6337,7 +6564,7 @@ app.get('/admin/settings', (req, res) => {
 });
 
 // صفحة إدارة الإشعارات
-app.get('/admin/notifications', (req, res) => {
+app.get('/admin/notifications', requireAuth, (req, res) => {
   let html = `
     <!DOCTYPE html>
     <html dir="rtl" lang="ar">

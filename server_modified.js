@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
+const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
 const sqlite3 = require('sqlite3').verbose();
 const ExcelJS = require('exceljs');
 const path = require('path');
@@ -10,52 +12,19 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
 
-// ======== إعدادات SSL الذكية ========
+// ======== إعدادات SSL - مقروءة من متغيرات البيئة فقط ========
 let sslOptions = null;
 let useSSL = false;
 
-// المسارات المحتملة لملفات SSL
-const possibleSSLCertPaths = [
-  '/etc/letsencrypt/live/redme.cfd/fullchain.pem',
-  '/etc/letsencrypt/live/redme.cfd/cert.pem',
-  '/etc/ssl/certs/redme.cfd.crt',
-  '/path/to/your/ssl/certificate.crt' // مسار مخصص
-];
+const SSL_CERT_PATH = process.env.SSL_CERT_PATH || '';
+const SSL_KEY_PATH = process.env.SSL_KEY_PATH || '';
 
-const possibleSSLKeyPaths = [
-  '/etc/letsencrypt/live/redme.cfd/privkey.pem',
-  '/etc/ssl/private/redme.cfd.key',
-  '/path/to/your/ssl/private.key' // مسار مخصص
-];
-
-// البحث عن ملفات SSL
-function findSSLCertificates() {
-  let certPath = null;
-  let keyPath = null;
-
-  // البحث عن الشهادة
-  for (const path of possibleSSLCertPaths) {
-    if (fs.existsSync(path)) {
-      certPath = path;
-      console.log(`✅ تم العثور على الشهادة في: ${path}`);
-      break;
-    }
-  }
-
-  // البحث عن المفتاح
-  for (const path of possibleSSLKeyPaths) {
-    if (fs.existsSync(path)) {
-      keyPath = path;
-      console.log(`✅ تم العثور على المفتاح في: ${path}`);
-      break;
-    }
-  }
-
-  if (certPath && keyPath) {
+if (SSL_CERT_PATH && SSL_KEY_PATH) {
+  if (fs.existsSync(SSL_CERT_PATH) && fs.existsSync(SSL_KEY_PATH)) {
     try {
-      return {
-        key: fs.readFileSync(keyPath),
-        cert: fs.readFileSync(certPath),
+      sslOptions = {
+        key: fs.readFileSync(SSL_KEY_PATH),
+        cert: fs.readFileSync(SSL_CERT_PATH),
         secureProtocol: 'TLSv1_2_method',
         ciphers: [
           'ECDHE-RSA-AES128-GCM-SHA256',
@@ -63,44 +32,77 @@ function findSSLCertificates() {
         ].join(':'),
         honorCipherOrder: true
       };
+      useSSL = true;
+      console.log('🔐 تم تحميل شهادات SSL بنجاح!');
     } catch (error) {
       console.error('❌ خطأ في قراءة ملفات SSL:', error.message);
-      return null;
     }
+  } else {
+    console.log('⚠️  ملفات SSL غير موجودة في المسارات المحددة.');
   }
-
-  return null;
-}
-
-// محاولة تحميل SSL
-sslOptions = findSSLCertificates();
-useSSL = sslOptions !== null;
-
-if (!useSSL) {
-  console.log('⚠️  لم يتم العثور على شهادات SSL. سيتم استخدام HTTP.');
-  console.log('💡 للحصول على شهادة SSL مجانية، قم بتشغيل:');
-  console.log('   sudo certbot --nginx -d redme.cfd -d www.redme.cfd');
 } else {
-  console.log('🔐 تم تحميل شهادات SSL بنجاح!');
+  console.log('ℹ️  لم يتم تكوين SSL (قم بتعيين SSL_CERT_PATH و SSL_KEY_PATH). سيتم استخدام HTTP.');
 }
 
 // ======== Middleware ========
+
+// Security headers
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+
+// Rate limiting - عام
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { status: 'error', message: 'تم تجاوز عدد الطلبات المسموح بها، حاول لاحقاً' }
+});
+app.use(generalLimiter);
+
+// Rate limiting - لمحاولات تسجيل الدخول
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { status: 'error', message: 'تم تجاوز عدد محاولات تسجيل الدخول، حاول بعد 15 دقيقة' }
+});
+
+// CORS configuration
+const allowedOrigins = [
+  'https://redme.cfd',
+  'http://redme.cfd',
+  'https://www.redme.cfd',
+  'http://www.redme.cfd',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000'
+];
+
 app.use(cors({
-  origin: [
-    'https://redme.cfd',
-    'http://redme.cfd',
-    'https://www.redme.cfd',
-    'http://www.redme.cfd',
-    'http://localhost:3000',
-    'http://127.0.0.1:3000'
-  ],
-  credentials: true
-}))
-app.use(express.json());
-const SESSION_SECRET = process.env.SESSION_SECRET || 'redshe_shop_production_secret_2024_change_this';
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('غير مسموح بواسطة CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+const SESSION_SECRET = process.env.SESSION_SECRET || '';
+if (!SESSION_SECRET) {
+  console.warn('⚠️  تحذير: SESSION_SECRET غير معين! استخدم متغيرات البيئة لتأمين الجلسات.');
+}
+
+app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser(SESSION_SECRET));
 app.use(express.static('public'));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ======== إعداد بيانات مسؤول افتراضي ========
 const ADMIN_CREDENTIALS = {
@@ -594,12 +596,12 @@ function renderLoginPageHTML(req, res, message = '') {
 // ======== Routes ========
 
 // مسارات تسجيل الدخول
-app.post('/login', (req, res) => handleLoginRequest(req, res));
+app.post('/login', loginLimiter, (req, res) => handleLoginRequest(req, res));
 app.get('/admin/login', (req, res) => {
   if (isAuthenticated(req)) return res.redirect('/admin');
   return renderLoginPageHTML(req, res);
 });
-app.post('/admin/login', (req, res) => handleLoginRequest(req, res));
+app.post('/admin/login', loginLimiter, (req, res) => handleLoginRequest(req, res));
 
 // مسار تسجيل الخروج
 app.get('/logout', (req, res) => {

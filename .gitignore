@@ -4,3 +4,19 @@ node_modules/
 .DS_Store
 dist/
 coverage/
+
+# Database files - DO NOT commit database data
+database.db
+*.sqlite
+*.sqlite3
+
+# Export directories
+exports/
+/exports/
+
+# OS files
+Thumbs.db
+Desktop.ini
+
+# Secrets / legacy credential files
+New Text Document.txt

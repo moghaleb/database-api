@@ -3,14 +3,18 @@ app.get('/admin/orders', (req, res) => {
     const storeFilter = req.query.store || 'all';
     const statusFilter = req.query.status || 'all';
 
+    // استخدام معاملات آمنة بدلاً من دمج القيم مباشرة في الاستعلام
     let query = 'SELECT * FROM orders ORDER BY created_at DESC';
+    const queryParams = [];
     if (storeFilter === 'noon') {
-        query = "SELECT * FROM orders WHERE (cart_items LIKE '%noon%' OR customer_name LIKE '%noon%') ORDER BY created_at DESC";
+        query = "SELECT * FROM orders WHERE (cart_items LIKE ? OR customer_name LIKE ?) ORDER BY created_at DESC";
+        queryParams.push('%noon%', '%noon%');
     } else if (storeFilter === 'store1') {
-        query = "SELECT * FROM orders WHERE (cart_items NOT LIKE '%noon%' AND (customer_name NOT LIKE '%noon%' OR customer_name IS NULL)) ORDER BY created_at DESC";
+        query = "SELECT * FROM orders WHERE (cart_items NOT LIKE ? AND (customer_name NOT LIKE ? OR customer_name IS NULL)) ORDER BY created_at DESC";
+        queryParams.push('%noon%', '%noon%');
     }
 
-    db.all(query, (err, rows) => {
+    db.all(query, queryParams, (err, rows) => {
         if (err) {
             return res.status(500).send('Database error');
         }

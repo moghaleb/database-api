@@ -35,19 +35,9 @@ Login page (backend-integrated)
 
 The administration login form is now served by the backend when you visit `/admin`.
 
-- Default credentials (for local testing):
-	- username: `admin`
-	- password: `admin123`
-
-You can override the admin username/password with environment variables `ADMIN_USER` and `ADMIN_PASS`.
+Set these via environment variables `ADMIN_USER` and `ADMIN_PASS`. Do not use default credentials in production.
 
 If you need to test the API directly, you can POST JSON or submit a form to `/login`.
-
-PowerShell example (JSON API):
-
-```powershell
-Invoke-RestMethod -Uri https://redme.cfd/api/login -Method POST -ContentType 'application/json' -Body (ConvertTo-Json @{username='admin'; password='admin123'}) | ConvertTo-Json -Depth 5
-```
 
 To simulate a browser login (form submit), visit `https://redme.cfd/admin` and use the login form.
 

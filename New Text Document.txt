@@ -40,10 +40,10 @@ app.get('/api/test', (req, res) => {
 app.get('/api/db-test', async (req, res) => {
   try {
     const connection = await mysql.createConnection({
-      host: 'sql100.infinityfree.com',
-      user: 'if0_40105600',
-      password: '51cQxMoRBkFwA',
-      database: 'if0_40105600_db',
+      host: process.env.MYSQL_HOST || 'localhost',
+      user: process.env.MYSQL_USER || 'root',
+      password: process.env.MYSQL_PASSWORD || '',
+      database: process.env.MYSQL_DATABASE || 'app_db',
       connectTimeout: 60000,
       timeout: 60000
     });
@@ -84,10 +84,10 @@ app.post('/api/save-data', async (req, res) => {
     }
 
     const connection = await mysql.createConnection({
-      host: 'sql100.infinityfree.com',
-      user: 'if0_40105600',
-      password: '51cQxMoRBkFwA',
-      database: 'if0_40105600_db',
+      host: process.env.MYSQL_HOST || 'localhost',
+      user: process.env.MYSQL_USER || 'root',
+      password: process.env.MYSQL_PASSWORD || '',
+      database: process.env.MYSQL_DATABASE || 'app_db',
       connectTimeout: 60000,
       timeout: 60000
     });
@@ -134,10 +134,10 @@ app.post('/api/save-data', async (req, res) => {
 app.get('/api/users', async (req, res) => {
   try {
     const connection = await mysql.createConnection({
-      host: 'sql100.infinityfree.com',
-      user: 'if0_40105600',
-      password: '51cQxMoRBkFwA',
-      database: 'if0_40105600_db'
+      host: process.env.MYSQL_HOST || 'localhost',
+      user: process.env.MYSQL_USER || 'root',
+      password: process.env.MYSQL_PASSWORD || '',
+      database: process.env.MYSQL_DATABASE || 'app_db'
     });
 
     const [rows] = await connection.execute('SELECT * FROM app_users ORDER BY created_at DESC LIMIT 10');
