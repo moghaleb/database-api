@@ -356,6 +356,10 @@ function handleLoginRequest(req, res) {
     return renderLoginPageHTML(req, res, 'بيانات اعتماد غير صحيحة');
 }
 
+app.get('/login', (req, res) => {
+    if (isAuthenticated(req)) return res.redirect('/admin');
+    return renderLoginPageHTML(req, res);
+});
 app.get('/admin/login', (req, res) => {
     if (isAuthenticated(req)) return res.redirect('/admin');
     return renderLoginPageHTML(req, res);
