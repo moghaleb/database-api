@@ -1,5 +1,8 @@
-# Use official Node LTS image
-FROM node:24-alpine
+# Use official Node image (Debian-based for native module compatibility)
+FROM node:24-bookworm-slim
+
+# Install build tools for native modules (sqlite3, etc.)
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
 WORKDIR /usr/src/app
@@ -7,7 +10,7 @@ WORKDIR /usr/src/app
 # Copy package files first to leverage Docker cache
 COPY package.json package-lock.json* ./
 
-# Install dependencies
+# Install dependencies (will build sqlite3 from source if needed)
 RUN npm install --production
 
 # Copy app sources
