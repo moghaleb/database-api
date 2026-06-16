@@ -7,3 +7,11 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: ADMIN_USER
+        value: admin
+      - key: ADMIN_PASS
+        value: zBmhVNskMAovKC3cLinEdejx
+      - key: API_TOKEN
+        value: 1y6JAC9fY2c0PQBplH4Vw7K8MqEkGgztsTxaeFOmnWirh3ZvDb5XUNLjdoISRu
+      - key: SESSION_SECRET
+        value: wBWtX3MH0NZSEK6YIQy1iRLg987dVc5qFzpPsjlbvh4Goaxk
