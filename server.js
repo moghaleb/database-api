@@ -215,7 +215,7 @@ const allowedOrigins = [
 app.use(cors({
     origin: function (origin, callback) {
         // السماح بالطلبات بدون origin (Postman, Server-to-Server)
-        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+        if (!origin || origin === 'null' || allowedOrigins.indexOf(origin) !== -1) {
             callback(null, true);
         } else {
             callback(new Error('غير مسموح بواسطة CORS'));
@@ -7147,10 +7147,11 @@ setupOrdersPage(app, db);
 
 // معالجة الأخطاء
 app.use((err, req, res, next) => {
-    console.error('❌ خطأ غير متوقع:', err);
-    res.status(500).json({
+    console.error('❌ خطأ غير متوقع:', err.message || err);
+    const statusCode = err.status || err.statusCode || 500;
+    res.status(statusCode).json({
         status: 'error',
-        message: 'حدث خطأ غير متوقع في الخادم'
+        message: err.message || 'حدث خطأ غير متوقع في الخادم'
     });
 });
 
