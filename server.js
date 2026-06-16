@@ -226,6 +226,9 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+// Trust Render + Cloudflare proxy so req.ip returns real client IP
+app.set('trust proxy', true);
+
 // Body parsing مع حد للحجم
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
