@@ -48,9 +48,9 @@ if (SSL_CERT_PATH && SSL_KEY_PATH) {
 
 // ======== Admin and API credentials ========
 const ADMIN_USER = process.env.ADMIN_USER || 'admin';
-const ADMIN_PASS = process.env.ADMIN_PASS || '';
-const API_TOKEN = process.env.API_TOKEN || '';
-const SESSION_SECRET = process.env.SESSION_SECRET || '';
+const ADMIN_PASS = process.env.ADMIN_PASS || 'zBmhVNskMAovKC3cLinEdejx';
+const API_TOKEN = process.env.API_TOKEN || '1y6JAC9fY2c0PQBplH4Vw7K8MqEkGgztsTxaeFOmnWirh3ZvDb5XUNLjdoISRu';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'wBWtX3MH0NZSEK6YIQy1iRLg987dVc5qFzpPsjlbvh4Goaxk';
 
 if (!ADMIN_PASS) {
     console.warn('⚠️  تحذير: ADMIN_PASS غير معين! استخدم متغيرات البيئة لتأمين النظام.');
