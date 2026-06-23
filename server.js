@@ -111,10 +111,13 @@ function requireApiToken(req, res, next) {
     const publicGetRoutes = [
         '/api/test', '/api/db-test', '/api/validate-coupon', '/api/validate-gift-card',
         '/api/track-order', '/api/perfumes', '/api/perfumes-search',
-        '/api/categories', '/api/perfumes-stats', '/'
+        '/api/categories', '/api/perfumes-stats', '/',
+        '/api/orders-stats', '/api/coupons-stats', '/api/gift-cards-stats',
+        '/api/notifications-stats', '/api/recent-orders'
     ];
     const publicPostRoutes = [
-        '/api/save-data', '/api/process-payment'
+        '/api/save-data', '/api/process-payment',
+        '/api/validate-coupon', '/api/track-order'
     ];
 
     // تحديد ما إذا كان المسار عام (exact path match)
@@ -2506,6 +2509,111 @@ app.get('/api/validate-coupon', (req, res) => {
     );
 });
 
+// ======== POST للتحقق من الكوبون (للتطبيق) ========
+app.post('/api/validate-coupon', (req, res) => {
+    const { code, order_amount, store_type } = req.body;
+
+    if (!code || !order_amount) {
+        return res.status(400).json({
+            status: 'error',
+            message: 'كود الكوبون وقيمة الطلب مطلوبان'
+        });
+    }
+
+    let query = 'SELECT * FROM coupons WHERE code = ? AND is_active = 1';
+    const params = [code];
+
+    if (store_type) {
+        query += ' AND (store_type = ? OR store_type = "all")';
+        params.push(store_type);
+    }
+
+    db.get(query, params, (err, coupon) => {
+        if (err) {
+            console.error('❌ خطأ في البحث عن الكوبون:', err);
+            return res.status(500).json({
+                status: 'error',
+                message: err.message
+            });
+        }
+
+        if (!coupon) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'كوبون غير صالح أو غير موجود'
+            });
+        }
+
+        const now = new Date();
+        const validFrom = new Date(coupon.valid_from);
+        const validUntil = new Date(coupon.valid_until);
+
+        if (now < validFrom) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'هذا الكوبون غير فعال حتى ' + validFrom.toLocaleDateString('ar-SA')
+            });
+        }
+
+        if (now > validUntil) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'هذا الكوبون منتهي الصلاحية'
+            });
+        }
+
+        if (coupon.max_uses > 0 && coupon.used_count >= coupon.max_uses) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'تم الوصول إلى الحد الأقصى لاستخدام هذا الكوبون'
+            });
+        }
+
+        const orderAmount = parseFloat(order_amount);
+        if (orderAmount < coupon.min_order_amount) {
+            return res.status(400).json({
+                status: 'error',
+                message: `الحد الأدنى لقيمة الطلب هو ${coupon.min_order_amount} ريال`
+            });
+        }
+
+        let discountAmount = 0;
+        if (coupon.discount_type === 'percentage') {
+            discountAmount = (orderAmount * coupon.discount_value) / 100;
+        } else {
+            discountAmount = coupon.discount_value;
+        }
+
+        if (discountAmount > orderAmount) {
+            discountAmount = orderAmount;
+        }
+
+        const finalAmount = orderAmount - discountAmount;
+
+        res.json({
+            status: 'success',
+            message: 'كوبون صالح',
+            valid: true,
+            coupon: {
+                id: coupon.id,
+                code: coupon.code,
+                store_type: coupon.store_type,
+                description: coupon.description,
+                discount_type: coupon.discount_type,
+                discount_value: coupon.discount_value,
+                min_order_amount: coupon.min_order_amount,
+                discount_amount: discountAmount,
+                final_amount: finalAmount
+            },
+            calculation: {
+                original_amount: orderAmount,
+                discount_amount: discountAmount,
+                final_amount: finalAmount
+            }
+        });
+    });
+});
+
 // ======== واجهات القسائم الشرائية ========
 app.post('/api/validate-gift-card', (req, res) => {
     const { card_number, pin_code, order_amount } = req.body;
@@ -3864,6 +3972,63 @@ app.put('/api/orders/:id/status', (req, res) => {
 // ======== تتبع الطلبات ========
 app.get('/api/track-order', (req, res) => {
     const { order_number, phone } = req.query;
+
+    if (!order_number) {
+        return res.status(400).json({
+            status: 'error',
+            message: 'يرجى إدخال رقم الطلب'
+        });
+    }
+
+    let query = 'SELECT * FROM orders WHERE order_number = ?';
+    let params = [order_number];
+
+    if (phone) {
+        query += ' AND customer_phone = ?';
+        params.push(phone);
+    }
+
+    db.get(query, params, (err, order) => {
+        if (err) {
+            console.error('❌ خطأ في تتبع الطلب:', err);
+            return res.status(500).json({
+                status: 'error',
+                message: err.message
+            });
+        }
+
+        if (!order) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'الطلب غير موجود'
+            });
+        }
+
+        res.json({
+            status: 'success',
+            order: {
+                id: order.id,
+                order_number: order.order_number,
+                order_status: order.order_status,
+                customer_name: order.customer_name,
+                customer_phone: order.customer_phone,
+                total_amount: order.total_amount,
+                final_amount: order.final_amount,
+                order_date: order.order_date,
+                expected_delivery: order.expected_delivery,
+                shipping_type: order.shipping_type,
+                shipping_city: order.shipping_city,
+                shipping_area: order.shipping_area,
+                order_notes: order.order_notes
+            },
+            message: 'تم العثور على الطلب'
+        });
+    });
+});
+
+// ======== POST لتتبع الطلب (للتطبيق) ========
+app.post('/api/track-order', (req, res) => {
+    const { order_number, phone } = req.body;
 
     if (!order_number) {
         return res.status(400).json({
