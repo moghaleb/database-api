@@ -109,15 +109,15 @@ function requireAuth(req, res, next) {
 function requireApiToken(req, res, next) {
     // المسارات العامة المقصودة (مع تحديد نوع الطلب المسموح)
     const publicGetRoutes = [
-        '/api/test', '/api/db-test', '/api/validate-coupon', '/api/validate-gift-card',
-        '/api/track-order', '/api/perfumes', '/api/perfumes-search',
-        '/api/categories', '/api/perfumes-stats', '/',
-        '/api/orders-stats', '/api/coupons-stats', '/api/gift-cards-stats',
-        '/api/notifications-stats', '/api/recent-orders'
+        '/test', '/db-test', '/validate-coupon', '/validate-gift-card',
+        '/track-order', '/perfumes', '/perfumes-search',
+        '/categories', '/perfumes-stats', '/',
+        '/orders-stats', '/coupons-stats', '/gift-cards-stats',
+        '/notifications-stats', '/recent-orders'
     ];
     const publicPostRoutes = [
-        '/api/save-data', '/api/process-payment',
-        '/api/validate-coupon', '/api/track-order'
+        '/save-data', '/process-payment',
+        '/validate-coupon', '/track-order'
     ];
 
     // تحديد ما إذا كان المسار عام (exact path match)
