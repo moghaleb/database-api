@@ -136,6 +136,11 @@ function requireApiToken(req, res, next) {
         if (publicPostRoutes.includes(exactPath)) return next();
     }
 
+    // إذا كان المسؤول مسجل الدخول، اسمح بالمرور
+    if (isAuthenticated(req)) {
+        return next();
+    }
+
     // باقي الطلبات تتطلب توكن
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
